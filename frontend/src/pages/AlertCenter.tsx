@@ -279,20 +279,9 @@ export default function AlertCenter() {
             className="mt-1 block w-full min-w-[100px] sm:w-32 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm"
           >
             <option value="">All</option>
-            <option value="STATE_CHANGE">State Change</option>
-            <option value="ENTER_NOW">Enter Now</option>
-            <option value="TARGET_REACHED">Target Reached</option>
-            <option value="WEAK_BREAKOUT">Weak Breakout</option>
-            <option value="PULLBACK_RESET">Pullback Reset</option>
-            <option value="VERDICT_CHANGE">Verdict Change</option>
-            <option value="DAY_GO">Day GO</option>
-            <option value="DAY_WAIT">Day Wait</option>
-            <option value="SWING_GO">Swing GO</option>
-            <option value="SWING_WATCH">Swing Watch</option>
-            <option value="REGULAR_TRADE">Regular Trade</option>
-            <option value="VWAP_LOST">VWAP Lost</option>
-            <option value="OR_BREAKOUT">OR Breakout</option>
-            <option value="STOP_LOSS_HIT">Stop Loss Hit</option>
+            <option value="ENTER_NOW">Entry Conditions Met</option>
+            <option value="TARGET_REACHED">Target Hit</option>
+            <option value="EXIT_SIGNAL">Exit Immediately</option>
             <option value="PROTECT_PROFITS">Protect Profits</option>
             <option value="VIX_SPIKE">VIX Spike</option>
           </select>

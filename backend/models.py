@@ -298,9 +298,41 @@ class DayTradeResponse(BaseModel):
     execution_fields: list[dict] = Field(default_factory=list)
     entry_guidance: dict = Field(default_factory=dict)
     timeframe_state: dict = Field(default_factory=dict)
+    layered_decision: dict = Field(default_factory=dict)
     option_risk_context: dict = Field(default_factory=dict)
     # Structured AI coaching summary (Anthropic / OpenAI / deterministic fallback)
     ai_coach: dict = Field(default_factory=dict)
+
+
+class CarryTradeRequest(BaseModel):
+    ticker: str
+    force_refresh: bool = False
+
+
+class TradeDashboardStoryRequest(BaseModel):
+    ticker: str
+    force_refresh: bool = False
+
+
+class CarryTradeResponse(BaseModel):
+    ticker: str
+    company_name: str = ""
+    active_window: bool = False
+    frozen: bool = False
+    verdict: str = "Neutral"
+    bias: str = "NO TRADE"
+    carry_score: int = 0
+    confidence: str = "LOW"
+    entry_window: str = "12:15 PM - 12:55 PM PT"
+    expected_hold: str = "1 Night"
+    recommended_dte: str = "7-14 Days"
+    risk: str = "Medium"
+    reasons: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    execution_plan: dict = Field(default_factory=dict)
+    exit_plan: dict = Field(default_factory=dict)
+    score_breakdown: dict = Field(default_factory=dict)
+    metrics: dict = Field(default_factory=dict)
 
 
 class SwingTradeRequest(BaseModel):

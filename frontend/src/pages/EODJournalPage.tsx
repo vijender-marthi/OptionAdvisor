@@ -69,7 +69,21 @@ interface StockAnalysis {
   rs: string
   volRatio: number | null
   sectorEtf: string
-  bias: 'bull' | 'bear' | 'neutral'
+  bias: 'bull' | 'bear' | 'neutral' | 'NO_ENTRY' | 'NEUTRAL_BOUNCE' | 'NEUTRAL_FADE' | 'EXPIRED' | string
+  biasOriginal?: string
+  biasGateReasons?: string[]
+  ma20DistancePct?: number | null
+  ma20Slope?: 'rising' | 'falling' | string | null
+  priorDayMovePct?: number | null
+  earningsDate?: string | null
+  earningsDaysRemaining?: number | null
+  biasExpiryDate?: string | null
+  directionalBiasExpired?: boolean
+  calendarSpreadsOnly?: boolean
+  morningConfirmation?: { time?: string; mandatory?: boolean; rules?: string[] }
+  flipConditions?: string[]
+  entryChecklistRequiredScore?: number
+  primaryTriggerWindow?: string
   bullScore: number
   bearScore: number
   confidence: number
@@ -848,10 +862,10 @@ function EodHistoryCompareTable({
         <div style={{ fontSize: 11, fontWeight: 800, color: muted }}>{rows.length} tickers</div>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ width: '100%', minWidth: 1360, borderCollapse: 'collapse', fontSize: 11 }}>
           <thead style={{ color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             <tr>
-              {['Ticker', 'Bias', 'Close', 'ORH', 'ORL', 'OR Mid', 'VWAP', 'Bull E/S/T1/T2', 'Bear E/S/T1/T2', 'Flat', 'Today Price', 'vs OR Mid', 'Triggered?'].map(h => (
+              {['Ticker', 'Bias', '% from MA20', 'MA20 slope', 'Bias expiry', 'Close', 'ORH', 'ORL', 'OR Mid', 'VWAP', 'Bull E/S/T1/T2', 'Bear E/S/T1/T2', 'Flat', 'Today Price', 'vs OR Mid', 'Triggered?'].map(h => (
                 <th key={h} style={{ ...cell, textAlign: h === 'Ticker' || h === 'Bias' || h === 'Triggered?' ? 'left' : 'right', fontWeight: 800 }}>{h}</th>
               ))}
             </tr>
@@ -863,6 +877,11 @@ function EodHistoryCompareTable({
                 <tr key={saved.ticker} style={{ color: tx }}>
                   <td style={{ ...cell, fontWeight: 800, fontFamily: 'monospace' }}>{saved.ticker}</td>
                   <td style={{ ...cell, color: saved.bias === 'bull' ? '#3fb950' : saved.bias === 'bear' ? '#f85149' : '#d29922', textAlign: 'left' }}>{saved.bias}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: saved.ma20DistancePct != null ? (Math.abs(saved.ma20DistancePct) > 8 ? '#f85149' : muted) : muted }}>
+                    {saved.ma20DistancePct != null ? `${saved.ma20DistancePct > 0 ? '+' : ''}${saved.ma20DistancePct.toFixed(2)}%` : '—'}
+                  </td>
+                  <td style={{ ...cell, textAlign: 'right', color: saved.ma20Slope === 'rising' ? '#3fb950' : saved.ma20Slope === 'falling' ? '#f85149' : muted }}>{saved.ma20Slope ?? '—'}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: saved.directionalBiasExpired ? '#f85149' : muted }}>{saved.biasExpiryDate ?? '—'}</td>
                   <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.close.toFixed(2)}</td>
                   <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.orh.toFixed(2)}</td>
                   <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.orl.toFixed(2)}</td>
@@ -1041,7 +1060,7 @@ function ArmExamplePanel({ colors }: { colors: PanelColors }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function EODJournalPage() {
-  const { theme } = useApp()
+  const { theme, user } = useApp()
   const isDark = theme !== 'light'
 
   const [journalMode, setJournalMode] = useState<'day' | 'swing'>(() => {
@@ -1323,12 +1342,37 @@ export default function EODJournalPage() {
   }
 
   // Explicitly snapshot today's entry (analysis + notes) so it can be reviewed later.
-  const handleSaveEntry = () => {
+  const handleSaveEntry = async () => {
     if (!analysis) return
-    saveSnapshot(todayKey(), analysis.ticker, analysis, sectors)
-    saveNotes(todayKey(), notes)
-    pruneSnapshots(SNAPSHOT_KEEP_DAYS)
-    setEntrySaved('Saved ✓')
+    let savedAnalysis = analysis
+    let savedSectors = sectors
+    try {
+      if (user?.email) {
+        const res = await saveEodJournalSnapshot(user.email, {
+          mode: journalMode,
+          date: todayKey(),
+          ticker: analysis.ticker,
+          snapshot: { analysis, sectors, savedAt: new Date().toISOString() },
+          notes: { ...(notes[analysis.ticker] ?? {}) },
+          checks: checkState,
+        })
+        const snap = res.entry.snapshot as { analysis?: StockAnalysis; sectors?: SectorEntry[]; savedAt?: string }
+        if (snap.analysis) {
+          savedAnalysis = snap.analysis
+          setAnalysis(savedAnalysis)
+          if (Array.isArray(snap.sectors)) {
+            savedSectors = snap.sectors
+            setSectors(savedSectors)
+          }
+        }
+      }
+      saveSnapshot(todayKey(), savedAnalysis.ticker, savedAnalysis, savedSectors)
+      saveNotes(todayKey(), notes)
+      pruneSnapshots(SNAPSHOT_KEEP_DAYS)
+      setEntrySaved('Saved ✓')
+    } catch (e) {
+      setEntrySaved(e instanceof Error ? e.message : 'Save failed')
+    }
     setTimeout(() => setEntrySaved(null), 2000)
   }
 
@@ -1713,6 +1757,10 @@ export default function EODJournalPage() {
                       {analysis.bias === 'bull' && <Pill color={isDark ? '#3fb950' : '#15803d'} bg={eodBullBg(isDark)} border={isDark ? '#1a4a1f' : '#3d7a0f'}>↑ BULL BIAS</Pill>}
                       {analysis.bias === 'bear' && <Pill color={isDark ? '#f85149' : '#b91c1c'} bg={eodBearBg(isDark)} border={isDark ? '#5a1a1a' : '#b91c1c'}>↓ BEAR BIAS</Pill>}
                       {analysis.bias === 'neutral' && <Pill color={isDark ? '#d29922' : '#9a6700'} bg={eodNeutBg(isDark)} border={isDark ? '#4a3800' : '#e0b050'}>→ NEUTRAL</Pill>}
+                      {analysis.bias === 'NO_ENTRY' && <Pill color={isDark ? '#f85149' : '#b91c1c'} bg={eodBearBg(isDark)} border={isDark ? '#5a1a1a' : '#b91c1c'}>NO ENTRY</Pill>}
+                      {analysis.bias === 'NEUTRAL_BOUNCE' && <Pill color={isDark ? '#d29922' : '#9a6700'} bg={eodNeutBg(isDark)} border={isDark ? '#4a3800' : '#e0b050'}>NEUTRAL-BOUNCE</Pill>}
+                      {analysis.bias === 'NEUTRAL_FADE' && <Pill color={isDark ? '#d29922' : '#9a6700'} bg={eodNeutBg(isDark)} border={isDark ? '#4a3800' : '#e0b050'}>NEUTRAL-FADE</Pill>}
+                      {analysis.bias === 'EXPIRED' && <Pill color={isDark ? '#f85149' : '#b91c1c'} bg={eodBearBg(isDark)} border={isDark ? '#5a1a1a' : '#b91c1c'}>BIAS EXPIRED</Pill>}
                       {/* Structure */}
                       <Pill color="#58a6ff" bg="#0d1a28" border="#1a3050">{analysis.structure}</Pill>
                       {/* IVR */}
@@ -2010,9 +2058,41 @@ export default function EODJournalPage() {
                         </div>
                         <div style={{ marginTop: 8, padding: '7px 9px', background: eodOverlay(isDark), borderRadius: 5, fontSize: 11, color: eodTxFaint(isDark) }}>
                           If opposite case triggers → flip or stay flat. Never force the primary scenario.
-                        </div>
-                      </div>
+                  </div>
+                </div>
+                {(analysis.ma20DistancePct != null || analysis.ma20Slope || analysis.earningsDate || (analysis.biasGateReasons?.length ?? 0) > 0) && (
+                  <div style={{ marginTop: 12, borderTop: `1px solid ${bdr}`, paddingTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                    <div style={{ fontSize: 11, color: txMuted }}>
+                      <strong style={{ color: tx }}>MA20 distance</strong><br />
+                      <span style={{ fontFamily: 'monospace', color: analysis.ma20DistancePct != null && Math.abs(analysis.ma20DistancePct) > 8 ? '#f85149' : tx }}>
+                        {analysis.ma20DistancePct != null ? `${analysis.ma20DistancePct > 0 ? '+' : ''}${analysis.ma20DistancePct.toFixed(2)}%` : '—'}
+                      </span>
                     </div>
+                    <div style={{ fontSize: 11, color: txMuted }}>
+                      <strong style={{ color: tx }}>MA20 slope</strong><br />
+                      <span style={{ color: analysis.ma20Slope === 'rising' ? '#3fb950' : analysis.ma20Slope === 'falling' ? '#f85149' : tx }}>{analysis.ma20Slope ?? '—'}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: txMuted }}>
+                      <strong style={{ color: tx }}>Earnings</strong><br />
+                      <span>{analysis.earningsDate ?? '—'}{analysis.earningsDaysRemaining != null ? ` · ${analysis.earningsDaysRemaining}d` : ''}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: txMuted }}>
+                      <strong style={{ color: tx }}>Bias expires</strong><br />
+                      <span style={{ fontFamily: 'monospace' }}>{analysis.biasExpiryDate ?? '—'}</span>
+                    </div>
+                    {(analysis.biasGateReasons?.length ?? 0) > 0 && (
+                      <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#d29922', lineHeight: 1.5 }}>
+                        {analysis.biasGateReasons?.map(reason => <div key={reason}>• {reason}</div>)}
+                      </div>
+                    )}
+                    {(analysis.flipConditions?.length ?? 0) > 0 && (
+                      <div style={{ gridColumn: '1 / -1', fontSize: 11, color: txMuted, lineHeight: 1.5 }}>
+                        <strong style={{ color: tx }}>Flip triggers:</strong> {analysis.flipConditions?.join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
                     {/* Confidence meter */}
                     <div style={{ background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 8, padding: '12px 14px' }}>

@@ -338,6 +338,7 @@ export interface DayTradeScanResult {
     final_action?: string
     required_next_condition?: string
   }
+  layered_decision?: Record<string, unknown>
   /** VWAP-based entry guidance with pending confirmations, breakout levels, and human-readable action text */
   entry_guidance?: {
     state: string
@@ -372,6 +373,7 @@ export interface DayTradeScanResult {
       message: string
       condition: string
     }>
+    layered_decision?: Record<string, unknown>
     orh_breakout_lifecycle?: {
       state?: string
       signal?: string | null
@@ -560,6 +562,59 @@ export const evaluateTradeWorksheet = async (
 
 export const analyzeDayTrade = async (ticker: string, forceRefresh = false): Promise<DayTradeScanResult> => {
   const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
+  return data
+}
+
+export interface CarryTradeScanResult {
+  ticker: string
+  company_name: string
+  active_window: boolean
+  frozen: boolean
+  verdict: 'High Probability Carry' | 'Acceptable Carry' | 'Neutral' | 'Wait' | 'Do Not Carry' | string
+  bias: 'LONG CALL' | 'LONG PUT' | 'NO TRADE' | string
+  carry_score: number
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | string
+  entry_window: string
+  expected_hold: string
+  recommended_dte: string
+  risk: string
+  reasons: string[]
+  blockers: string[]
+  execution_plan: Record<string, unknown>
+  exit_plan: Record<string, unknown>
+  score_breakdown: Record<string, number>
+  metrics: Record<string, unknown>
+}
+
+export const analyzeCarryTrade = async (ticker: string, forceRefresh = false): Promise<CarryTradeScanResult> => {
+  const { data } = await api.post<CarryTradeScanResult>('/carry-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
+  return data
+}
+
+export interface TradeDashboardStory {
+  ticker: string
+  company_name: string
+  market_story: string
+  market_phase: { phase: string; confidence: string; reason: string }
+  structure_map: { state: string; sequence: string[]; display: string; pivots: Array<{ label: string; price: number; index: number; kind: string }> }
+  opportunity_verdict: {
+    verdict: string
+    score: number
+    breakdown: Record<string, number>
+    bias: string
+    confidence: string
+    main_reason: string
+    main_blocker: string
+  }
+  execution_plan: Record<string, unknown>
+  invalidation: { level?: number | null; rules: string[] }
+  bias_change: { neutral_if: string[]; opposite_if: string[]; vwap?: number | null }
+  position_guidance: Record<string, unknown>
+  metrics: Record<string, unknown>
+}
+
+export const getTradeDashboardStory = async (ticker: string, forceRefresh = false): Promise<TradeDashboardStory> => {
+  const { data } = await api.post<TradeDashboardStory>('/trade-dashboard/story', { ticker: ticker.trim(), force_refresh: forceRefresh })
   return data
 }
 

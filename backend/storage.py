@@ -1445,6 +1445,10 @@ def alert_center_list(
     page_size = max(1, min(100, page_size))
     clauses = ["email = ?"]
     params: list[Any] = [normalized]
+    clauses.append("UPPER(COALESCE(signal, '')) != ?")
+    params.append("STATE_CHANGE")
+    clauses.append("UPPER(COALESCE(JSON_EXTRACT(meta_json, '$.alertType'), JSON_EXTRACT(meta_json, '$.alert_type'), '')) != ?")
+    params.append("STATE_CHANGE")
     if group:
         clauses.append("alert_group = ?")
         params.append(group.strip().lower())
@@ -1536,8 +1540,13 @@ def alert_center_active_counts_by_ticker(
     tickers: Optional[list[str]] = None,
 ) -> dict[str, int]:
     normalized = normalize_email(email)
-    clauses = ["email = ?", "status = ?"]
-    params: list[Any] = [normalized, "ACTIVE"]
+    clauses = [
+        "email = ?",
+        "status = ?",
+        "UPPER(COALESCE(signal, '')) != ?",
+        "UPPER(COALESCE(JSON_EXTRACT(meta_json, '$.alertType'), JSON_EXTRACT(meta_json, '$.alert_type'), '')) != ?",
+    ]
+    params: list[Any] = [normalized, "ACTIVE", "STATE_CHANGE", "STATE_CHANGE"]
 
     cleaned: list[str] = []
     if tickers:

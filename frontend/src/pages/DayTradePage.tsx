@@ -69,13 +69,79 @@ function dtDecisionStyle(decision: unknown) {
 
 function DayTradeTimeframeVerdictCards({
   timeframeState,
+  layeredDecision,
   finalDecision,
   dt,
 }: {
   timeframeState: DayTradeTimeframeState | null
+  layeredDecision?: Record<string, unknown> | null
   finalDecision: string
   dt: DtTokens
 }) {
+  const layered = layeredDecision as Record<string, any> | null | undefined
+  const layeredFinal = layered?.final_decision as Record<string, any> | undefined
+  if (layered && layeredFinal) {
+    const decisionStyle = dtDecisionStyle(layeredFinal.action || finalDecision)
+    const layerCards = [
+      { title: 'Market State', data: layered.market_state, status: layered.market_state?.label, score: layered.market_state?.confidence, reason: layered.market_state?.reason },
+      { title: 'Market Structure', data: layered.market_structure, status: layered.market_structure?.label, score: layered.market_structure?.confidence, reason: layered.market_structure?.reason, extra: Array.isArray(layered.market_structure?.sequence) ? layered.market_structure.sequence.join(' → ') : '' },
+      { title: 'Opportunity', data: layered.opportunity, status: layered.opportunity?.label, score: layered.opportunity?.confidence, reason: layered.opportunity?.expected_trigger, extra: Array.isArray(layered.opportunity?.missing_confirmations) && layered.opportunity.missing_confirmations.length ? `Missing: ${layered.opportunity.missing_confirmations[0]}` : '' },
+      { title: 'Execution', data: layered.execution, status: layered.execution?.label, score: layered.execution?.confidence, reason: layered.execution?.reason, extra: Array.isArray(layered.execution?.missing_confirmations) && layered.execution.missing_confirmations.length ? layered.execution.missing_confirmations[0] : '' },
+      { title: 'Risk', data: layered.risk, status: layered.risk?.label, score: layered.risk?.confidence, reason: Array.isArray(layered.risk?.notes) ? layered.risk.notes[0] : '', extra: layered.risk?.position_size ? `Size: ${layered.risk.position_size}` : '' },
+    ]
+    return (
+      <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Layers size={15} style={{ color: dt.accent }} />
+            <div>
+              <div style={{ fontSize: '0.6rem', fontWeight: 800, color: dt.muted, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Layered Decision Architecture</div>
+              <div style={{ fontSize: '0.72rem', color: dt.muted }}>Market State → Structure → Opportunity → Execution → Risk</div>
+            </div>
+          </div>
+          <span className="font-mono" style={{ border: `1px solid ${decisionStyle.border}`, background: decisionStyle.bg, color: decisionStyle.color, borderRadius: 999, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 900, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {dtLabel(layeredFinal.action || finalDecision)} · {layeredFinal.confidence ?? '—'}%
+          </span>
+        </div>
+        <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Trade Quality', layeredFinal.quality],
+            ['Final Action', layeredFinal.action],
+            ['Next Condition', layeredFinal.next_condition],
+            ['Total Score', layeredFinal.confidence != null ? `${layeredFinal.confidence}/100` : '—'],
+          ].map(([label, value]) => (
+            <div key={label} style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 9, padding: '8px 10px' }}>
+              <div style={{ fontSize: '0.56rem', fontWeight: 900, color: dt.muted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</div>
+              <div style={{ marginTop: 3, fontSize: '0.7rem', fontWeight: 800, color: dt.text, lineHeight: 1.35 }}>{dtLabel(value)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-2 lg:grid-cols-5">
+          {layerCards.map(card => {
+            const score = Number(card.score ?? 0)
+            const statusStyle = dtStatusStyle(score >= 75 ? 'CONFIRMED' : score >= 60 ? 'PENDING' : 'FAILED')
+            return (
+              <div key={card.title} style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 10, padding: 12 }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, color: dt.muted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{card.title}</div>
+                  <span style={{ border: `1px solid ${statusStyle.border}`, background: statusStyle.bg, color: statusStyle.color, borderRadius: 999, padding: '3px 7px', fontSize: '0.58rem', fontWeight: 800 }}>{score || '—'}%</span>
+                </div>
+                <div style={{ color: dt.text, fontSize: '0.74rem', fontWeight: 800, lineHeight: 1.35, marginTop: 8 }}>{dtLabel(card.status)}</div>
+                {card.extra && <div style={{ color: dt.accent, fontSize: '0.66rem', lineHeight: 1.35, marginTop: 5 }}>{card.extra}</div>}
+                <div style={{ color: dt.muted, fontSize: '0.66rem', lineHeight: 1.35, marginTop: 6 }}>{card.reason || '—'}</div>
+              </div>
+            )
+          })}
+        </div>
+        {layeredFinal.explanation && (
+          <div style={{ marginTop: 10, border: `1px solid ${dt.border}`, background: dt.bgDeep, color: dt.text, borderRadius: 10, padding: '8px 10px', fontSize: '0.72rem', lineHeight: 1.45 }}>
+            {layeredFinal.explanation}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (!timeframeState) return null
   const decisionStyle = dtDecisionStyle(timeframeState.final_decision || finalDecision)
   const cards = [
@@ -1421,6 +1487,7 @@ export default function DayTradePage() {
 
           <DayTradeTimeframeVerdictCards
             timeframeState={(result?.timeframe_state ?? ((result?.metrics as Record<string, unknown> | undefined)?.timeframe_state as DayTradeTimeframeState | undefined) ?? null)}
+            layeredDecision={(result?.layered_decision ?? ((result?.metrics as Record<string, unknown> | undefined)?.layered_decision as Record<string, unknown> | undefined) ?? (result?.entry_guidance?.layered_decision as Record<string, unknown> | undefined) ?? null)}
             finalDecision={result?.final_decision ?? result?.verdict ?? 'WAIT'}
             dt={dt}
           />

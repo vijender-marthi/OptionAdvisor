@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Fragment, useEffect, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   RefreshCw, TrendingUp, TrendingDown, ScanLine, ArrowUpRight, CheckCircle, XCircle, MinusCircle,
@@ -407,9 +407,337 @@ function EngineTag({ row }: { row: SignalFeedRow }) {
   return <span className="rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-1.5 py-0.5 text-[9px] font-bold text-gray-500 uppercase">Skip</span>
 }
 
+function scannerSignalValues(row: SignalFeedRow) {
+  const rvol = metricVal(row.metrics, 'volume_ratio')
+  const rsi = metricVal(row.metrics, 'rsi')
+  const ivRank = metricVal(row.metrics, 'iv_rank')
+  const rs = metricVal(row.metrics, 'relative_strength')
+  const vwapPosition = dm(row, 'vwap_position')
+  const atrUsed = dm(row, 'daily_range_used_pct')
+  const priceStruct = dm(row, 'price_structure')
+  const rvolDay = dm(row, 'rvol') ?? rvol
+  const vixVal = dm(row, 'vix') ?? sm(row, 'vix')
+  const spyBias = sm(row, 'spy_bias') ?? dm(row, 'spy_bias')
+  const weeklyPhase = sm(row, 'weekly_range_phase')
+  const earnDays = sm(row, 'earnings_calendar_days_until')
+  const marketCtx = sm(row, 'market_context') ?? dm(row, 'market_context')
+
+  const rvolNum = rvolDay != null ? Number(rvolDay) : null
+  const atrNum = atrUsed != null ? Number(atrUsed) : null
+  const vwapPos = vwapPosition != null ? String(vwapPosition).toLowerCase() : null
+  const structStr = priceStruct ? String(priceStruct).replace(/_/g, '/') : '—'
+  const spyBiasStr = spyBias ? String(spyBias) : (marketCtx ? String(marketCtx) : '—')
+  const weeklyStr = weeklyPhase ? String(weeklyPhase) : '—'
+  const earnNum = earnDays != null ? Number(earnDays) : null
+  const vixNum = vixVal != null ? Number(vixVal) : null
+
+  return {
+    rvolStr: rvolNum != null ? `${rvolNum.toFixed(1)}×` : '—',
+    rvolTone: rvolNum == null ? 'gray' : rvolNum >= 2 ? 'green' : rvolNum >= 1.2 ? 'amber' : 'gray',
+    atrStr: atrNum != null ? `${Math.round(atrNum)}%` : '—',
+    atrTone: atrNum == null ? 'gray' : atrNum <= 60 ? 'green' : atrNum <= 80 ? 'amber' : 'red',
+    vwapStr: vwapPos == null ? '—' : vwapPos === 'above' ? 'Yes ↑' : vwapPos === 'below' ? 'No ↓' : 'At VWAP',
+    vwapTone: vwapPos == null ? 'gray' : vwapPos === 'above' ? 'green' : vwapPos === 'below' ? 'red' : 'amber',
+    spyBiasStr,
+    spyTone: String(spyBiasStr).toLowerCase().includes('bull') ? 'green' : String(spyBiasStr).toLowerCase().includes('bear') ? 'red' : 'amber',
+    structStr,
+    structTone: structStr.toLowerCase().includes('hh') ? 'green' : structStr.toLowerCase().includes('ll') ? 'red' : 'gray',
+    weeklyStr,
+    weeklyTone: weeklyStr.toLowerCase().includes('early') ? 'green' : weeklyStr.toLowerCase().includes('extended') || weeklyStr.toLowerCase().includes('late') ? 'amber' : 'gray',
+    vixStr: vixNum != null ? vixNum.toFixed(1) : '—',
+    vixTone: vixNum == null ? 'gray' : vixNum < 20 ? 'green' : vixNum < 30 ? 'amber' : 'red',
+    earningsStr: earnNum == null ? '—' : earnNum <= 3 ? `In ${earnNum}d ⚠` : earnNum <= 7 ? `This week (${earnNum}d)` : earnNum <= 14 ? `Next week (${earnNum}d)` : `${earnNum}d away`,
+    earningsTone: earnNum == null ? 'gray' : earnNum <= 7 ? 'red' : earnNum <= 14 ? 'amber' : 'green',
+    rsiStr: rsi != null ? fmtNum(rsi) : '—',
+    ivRankStr: ivRank != null ? fmtNum(ivRank) : '—',
+    rsStr: rs != null ? fmtPct(rs) : '—',
+  }
+}
+
+function toneTextClass(tone: string): string {
+  if (tone === 'green') return 'text-emerald-600 dark:text-emerald-400'
+  if (tone === 'red') return 'text-red-600 dark:text-red-400'
+  if (tone === 'amber') return 'text-amber-600 dark:text-amber-400'
+  if (tone === 'blue') return 'text-blue-600 dark:text-blue-400'
+  return 'text-gray-600 dark:text-gray-400'
+}
+
+function ScannerTableCell({ label, value, tone = 'gray' }: { label: string; value: string; tone?: string }) {
+  return (
+    <div>
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</div>
+      <div className={`mt-0.5 font-semibold ${toneTextClass(tone)}`}>{value}</div>
+    </div>
+  )
+}
+
+function rowTone(row: SignalFeedRow): string {
+  const agreement = normalizeAgreement(row)
+  const day = row.day_decision.toUpperCase()
+  const swing = row.swing_decision.toUpperCase()
+  if (agreement === 'CONFLICT') return 'border-l-purple-500 bg-purple-50/70 dark:bg-purple-950/25 hover:bg-purple-50 dark:hover:bg-purple-950/35'
+  if (day === 'READY' || day === 'GO' || day === 'STRONG_GO' || swing === 'READY' || swing === 'GO' || swing === 'STRONG_GO') {
+    return 'border-l-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/25 hover:bg-emerald-50 dark:hover:bg-emerald-950/35'
+  }
+  if (day === 'WATCH' || swing === 'WATCH') return 'border-l-blue-500 bg-blue-50/70 dark:bg-blue-950/25 hover:bg-blue-50 dark:hover:bg-blue-950/35'
+  if (agreement === 'EXTENDED' || day === 'WAIT' || swing === 'WAIT') return 'border-l-amber-500 bg-amber-50/70 dark:bg-amber-950/25 hover:bg-amber-50 dark:hover:bg-amber-950/35'
+  return 'border-l-gray-400 bg-gray-50/70 dark:bg-gray-900/45 hover:bg-gray-100 dark:hover:bg-gray-800/60'
+}
+
+function structureLabel(row: SignalFeedRow): string {
+  const values = scannerSignalValues(row)
+  const s = values.structStr
+  if (s === 'HH/HL') return 'HH → HL'
+  if (s === 'LL/LH' || s === 'LH/LL') return 'LL → LH'
+  return 'Mixed'
+}
+
+function structureTransition(row: SignalFeedRow): string {
+  const s = structureLabel(row)
+  if (s === 'HH → HL') return 'Bullish continuation'
+  if (s === 'LL → LH') return 'Bearish continuation'
+  return 'Range / compression'
+}
+
+function scannerBlockers(row: SignalFeedRow): string[] {
+  const values = scannerSignalValues(row)
+  const blockers: string[] = []
+  if (normalizeAgreement(row) === 'CONFLICT') blockers.push('Engine conflict')
+  if (String(row.agreement_badge || '').toUpperCase() === 'EXTENDED') blockers.push('Extended')
+  if (values.weeklyStr.toLowerCase().includes('extended')) blockers.push('Swing extended')
+  if (values.atrTone === 'red') blockers.push('ATR consumed')
+  if (values.rvolTone === 'gray') blockers.push('Low RVOL')
+  if (row.day_decision.toUpperCase() === 'AVOID' && row.swing_decision.toUpperCase() === 'AVOID') blockers.push('No engine edge')
+  return blockers.length ? blockers : ['Clear']
+}
+
+function scannerSummary(row: SignalFeedRow): string {
+  const values = scannerSignalValues(row)
+  const day = row.day_decision.toUpperCase()
+  const swing = row.swing_decision.toUpperCase()
+  const bullish = values.structStr === 'HH/HL' || values.vwapTone === 'green'
+  const bearish = values.structStr === 'LL/LH' || values.structStr === 'LH/LL' || values.vwapTone === 'red'
+  if ((day === 'READY' || day === 'GO' || day === 'STRONG_GO') && (swing === 'READY' || swing === 'GO' || swing === 'STRONG_GO')) {
+    return bullish ? 'Bullish candidate · day and swing align' : bearish ? 'Bearish candidate · day and swing align' : 'Best candidate · engines align'
+  }
+  if (day === 'WATCH' && swing.includes('EXTENDED')) return 'Trade today only · swing extended'
+  if (day === 'WATCH') return bullish ? 'Bullish intraday watch' : bearish ? 'Bearish intraday watch' : 'Intraday watch'
+  if (swing === 'WATCH' || swing === 'READY') return 'Swing setup developing'
+  if (normalizeAgreement(row) === 'CONFLICT') return 'Engine conflict · inspect before trading'
+  return 'Avoid until structure improves'
+}
+
+function invalidationText(row: SignalFeedRow): string {
+  const values = scannerSignalValues(row)
+  const orLow = dm(row, 'or_low')
+  const orHigh = dm(row, 'or_high')
+  const vwap = dm(row, 'vwap')
+  if (values.structStr === 'HH/HL') {
+    const level = typeof orLow === 'number' ? orLow : typeof vwap === 'number' ? vwap : null
+    return level ? `Break below ${level.toFixed(2)} invalidates the bullish structure.` : 'Lose VWAP or break the last higher low.'
+  }
+  if (values.structStr === 'LL/LH' || values.structStr === 'LH/LL') {
+    const level = typeof orHigh === 'number' ? orHigh : typeof vwap === 'number' ? vwap : null
+    return level ? `Break above ${level.toFixed(2)} invalidates the bearish structure.` : 'Reclaim VWAP or break the last lower high.'
+  }
+  return 'Wait for confirmed HH/HL or LH/LL before defining a clean invalidation level.'
+}
+
+function StructureDiagram({ row }: { row: SignalFeedRow }) {
+  const values = scannerSignalValues(row)
+  const bearish = values.structStr === 'LL/LH' || values.structStr === 'LH/LL'
+  const mixed = values.structStr !== 'HH/HL' && !bearish
+  const points = mixed
+    ? [{ label: 'Mixed', x: 14, y: 52 }, { label: 'Current', x: 48, y: 46 }, { label: 'Range', x: 82, y: 54 }]
+    : bearish
+      ? [{ label: 'LH', x: 14, y: 22 }, { label: 'LL', x: 40, y: 72 }, { label: 'LH', x: 64, y: 36 }, { label: 'Current', x: 88, y: 70 }]
+      : [{ label: 'HL', x: 14, y: 70 }, { label: 'HH', x: 40, y: 28 }, { label: 'HL', x: 64, y: 58 }, { label: 'Current', x: 88, y: 24 }]
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Market Structure</div>
+          <div className="mt-1 text-lg font-black text-gray-900 dark:text-white">{structureLabel(row)}</div>
+        </div>
+        <div className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${mixed ? 'border-amber-400/50 text-amber-600 dark:text-amber-300' : bearish ? 'border-red-400/50 text-red-600 dark:text-red-300' : 'border-emerald-400/50 text-emerald-600 dark:text-emerald-300'}`}>
+          {structureTransition(row)}
+        </div>
+      </div>
+      <svg viewBox="0 0 100 86" className="h-44 w-full">
+        <polyline
+          points={points.map(p => `${p.x},${p.y}`).join(' ')}
+          fill="none"
+          stroke={mixed ? '#f59e0b' : bearish ? '#ef4444' : '#10b981'}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {points.map(p => (
+          <g key={`${p.label}-${p.x}`}>
+            <circle cx={p.x} cy={p.y} r="3.5" fill={mixed ? '#f59e0b' : bearish ? '#ef4444' : '#10b981'} />
+            <text x={p.x} y={p.y - 7} textAnchor="middle" className="fill-gray-700 text-[6px] font-bold dark:fill-gray-200">{p.label}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="grid grid-cols-4 gap-2 text-center text-[10px]">
+        {points.map((p, idx) => (
+          <div key={`${p.label}-timeline-${idx}`} className="rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-800 dark:bg-gray-900/70">
+            <div className="font-black text-gray-900 dark:text-white">{p.label}</div>
+            <div className="mt-0.5 font-mono text-gray-500">{idx === points.length - 1 ? 'Current' : `Pivot ${idx + 1}`}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function engineField(block: SignalFeedRow['day'], names: string[]): string {
+  const fields = block.execution_fields || []
+  const found = fields.find(f => names.some(name => f.label.toLowerCase().includes(name.toLowerCase())))
+  return found?.value || '—'
+}
+
+function EngineDecisionCard({ title, block, tone }: { title: string; block: SignalFeedRow['day']; tone: 'blue' | 'emerald' }) {
+  const accent = tone === 'blue' ? 'text-blue-600 dark:text-blue-300 border-blue-400/40 bg-blue-50 dark:bg-blue-950/25' : 'text-emerald-600 dark:text-emerald-300 border-emerald-400/40 bg-emerald-50 dark:bg-emerald-950/25'
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">{title}</div>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${accent}`}>{block.final_decision || block.verdict || '—'}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <ScannerTableCell label="Confidence" value={`${block.confidence ?? 0}%`} tone={block.confidence >= 70 ? 'green' : block.confidence >= 50 ? 'amber' : 'gray'} />
+        <ScannerTableCell label="Risk" value={block.risk_state || '—'} tone={String(block.risk_state).toUpperCase().includes('HIGH') ? 'red' : 'gray'} />
+        <ScannerTableCell label="Entry" value={engineField(block, ['entry'])} tone="green" />
+        <ScannerTableCell label="Stop" value={engineField(block, ['stop'])} tone="red" />
+        <ScannerTableCell label="Target 1" value={engineField(block, ['target 1', 't1'])} tone="blue" />
+        <ScannerTableCell label="Target 2" value={engineField(block, ['target 2', 't2', 'holding'])} tone="blue" />
+      </div>
+      <p className="mt-3 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-600 dark:border-gray-800 dark:text-gray-400">
+        {block.reason || block.normalized_reason || 'No engine reason available.'}
+      </p>
+    </div>
+  )
+}
+
+function SupportingMetric({ label, value, tone = 'gray' }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/70">
+      <div className="text-[9px] font-black uppercase tracking-[0.12em] text-gray-400">{label}</div>
+      <div className={`mt-1 font-mono text-sm font-black ${toneTextClass(tone)}`}>{value}</div>
+    </div>
+  )
+}
+
+function ScannerExpandedPanel({ row }: { row: SignalFeedRow }) {
+  const navigate = useNavigate()
+  const { requestAnalysis } = useApp()
+  const values = scannerSignalValues(row)
+  const blockers = scannerBlockers(row)
+  const overall = scannerSummary(row)
+  const dayRoute = getEngineRoute('day', row.ticker)
+  const swingRoute = getEngineRoute('swing', row.ticker)
+  const optionsRoute = getEngineRoute('regular', row.ticker)
+  const storyLines = [
+    values.structStr === 'HH/HL' ? 'Intraday trend remains bullish.' : values.structStr === 'LL/LH' || values.structStr === 'LH/LL' ? 'Intraday trend remains bearish.' : 'Intraday structure is mixed.',
+    values.vwapTone === 'green' ? 'Price is above VWAP.' : values.vwapTone === 'red' ? 'Price is below VWAP.' : 'Price is near VWAP.',
+    `${values.structStr} structure is the primary decision driver.`,
+    row.swing_decision.toUpperCase().includes('EXTENDED') || values.weeklyStr.toLowerCase().includes('extended') ? 'Swing engine is avoiding new entries because price is extended.' : `Swing engine is ${row.swing_decision.toLowerCase()}.`,
+    overall,
+  ]
+  return (
+    <div className="space-y-4 border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/80">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-lg font-black text-gray-900 dark:text-white">{row.ticker}</span>
+            <span className="text-sm text-gray-500">{row.company_name}</span>
+          </div>
+          <div className="mt-1 text-sm font-semibold text-gray-700 dark:text-gray-300">{overall}</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a href={dayRoute} onClick={e => { e.preventDefault(); navigate(dayRoute) }} className="rounded-lg border border-blue-400/40 px-3 py-2 text-xs font-black text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/30">Day Trade <ArrowUpRight size={11} className="inline" /></a>
+          <a href={swingRoute} onClick={e => { e.preventDefault(); navigate(swingRoute) }} className="rounded-lg border border-emerald-400/40 px-3 py-2 text-xs font-black text-emerald-600 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30">Swing Trade <ArrowUpRight size={11} className="inline" /></a>
+          <a href={optionsRoute} onClick={e => { e.preventDefault(); requestAnalysis(row.ticker); navigate(optionsRoute) }} className="rounded-lg border border-violet-400/40 px-3 py-2 text-xs font-black text-violet-600 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/30">Options <ArrowUpRight size={11} className="inline" /></a>
+          <a href={row.actions?.chart_url || dayRoute} target="_blank" rel="noreferrer" className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-black text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900">Full Chart <ArrowUpRight size={11} className="inline" /></a>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
+        <StructureDiagram row={row} />
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Market Story</div>
+          <div className="mt-3 space-y-2 text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+            {storyLines.map(line => <div key={line}>{line}</div>)}
+          </div>
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-800 dark:bg-gray-900/60">
+            <div className="font-black text-gray-900 dark:text-white">Trend Transition</div>
+            <div className="mt-1 text-gray-600 dark:text-gray-400">{structureTransition(row)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <EngineDecisionCard title="Day Trade" block={row.day} tone="blue" />
+        <EngineDecisionCard title="Swing Trade" block={row.swing} tone="emerald" />
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
+        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Supporting Metrics</div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <SupportingMetric label="RVOL" value={values.rvolStr} tone={values.rvolTone} />
+          <SupportingMetric label="ATR Used" value={values.atrStr} tone={values.atrTone} />
+          <SupportingMetric label="VWAP" value={values.vwapStr} tone={values.vwapTone} />
+          <SupportingMetric label="RSI" value={values.rsiStr} />
+          <SupportingMetric label="IV Rank" value={values.ivRankStr} />
+          <SupportingMetric label="Weekly Phase" value={values.weeklyStr.toUpperCase()} tone={values.weeklyTone} />
+          <SupportingMetric label="Relative Strength" value={values.rsStr} />
+          <SupportingMetric label="VIX" value={values.vixStr} tone={values.vixTone} />
+          <SupportingMetric label="Earnings" value={values.earningsStr} tone={values.earningsTone} />
+          <SupportingMetric label="Trend Score" value={fmtNum(metricVal(row.metrics, 'bull_score') ?? metricVal(row.metrics, 'bear_score'))} />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
+        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Final Verdict</div>
+        <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_1fr_1.2fr]">
+          <div>
+            <div className="text-xs text-gray-500">Day</div>
+            <div className="text-lg font-black text-blue-600 dark:text-blue-300">{row.day_decision}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">Swing</div>
+            <div className="text-lg font-black text-emerald-600 dark:text-emerald-300">{row.swing_decision}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">Overall</div>
+            <div className="text-lg font-black text-gray-900 dark:text-white">{overall}</div>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/60">
+            <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">Reason</div>
+            <div className="mt-1 text-sm text-gray-700 dark:text-gray-300">{row.ai_summary || row.agreement_reason || row.day.reason || 'Structure and engine verdicts are shown above.'}</div>
+          </div>
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20">
+            <div className="text-[10px] font-black uppercase tracking-wide text-red-500">Invalidation</div>
+            <div className="mt-1 text-sm font-semibold text-red-700 dark:text-red-300">{invalidationText(row)}</div>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {blockers.map(blocker => (
+            <span key={blocker} className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${blocker === 'Clear' ? 'border-emerald-400/40 text-emerald-600 dark:text-emerald-300' : 'border-amber-400/40 text-amber-700 dark:text-amber-300'}`}>{blocker}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TickerScannerPage() {
+  const navigate = useNavigate()
   const [cacheSeed] = useState(() => readScannerCache())
   const [rows, setRows] = useState<SignalFeedRow[]>(() => cacheSeed?.rows ?? [])
   const [loading, setLoading] = useState(() => !(cacheSeed?.rows?.length))
@@ -452,20 +780,21 @@ export default function TickerScannerPage() {
     return b.price_change_pct - a.price_change_pct
   }), [rows])
 
-  const selectedRow = selected ? rows.find(r => r.ticker === selected) ?? null : null
-
   // Market snapshot values from first row's day.metrics
-  const snap = useMemo((): { spyPct: number | null; vix: number | null; tickAvg: number | null; pcRatio: number | null; ctxStr: string } | null => {
+  const snap = useMemo((): { spyPct: number | null; qqqPct: number | null; vix: number | null; breadth: string; bias: string; ctxStr: string } | null => {
     const r = rows[0]
     if (!r) return null
     const d  = r.day.metrics   as Record<string, unknown> | undefined
     const sw = r.swing.metrics as Record<string, unknown> | undefined
     const spyPct:  number | null = typeof d?.spy_change_pct === 'number' ? d.spy_change_pct as number : null
+    const qqqPct:  number | null = typeof d?.qqq_change_pct === 'number' ? d.qqq_change_pct as number : null
     const vix:     number | null = typeof d?.vix  === 'number' ? d.vix  as number : typeof sw?.vix === 'number' ? sw.vix as number : null
-    const tickAvg: number | null = null  // not yet in signal feed metrics
-    const pcRatio: number | null = null  // not yet in signal feed metrics
     const ctxStr = String(r.metrics?.market_context ?? '')
-    return { spyPct, vix, tickAvg, pcRatio, ctxStr }
+    const strong = rows.filter(row => ['READY', 'GO', 'STRONG_GO', 'WATCH'].includes(row.day_decision.toUpperCase())).length
+    const avoid = rows.filter(row => ['AVOID', 'NO_EDGE'].includes(row.day_decision.toUpperCase())).length
+    const breadth = rows.length ? `${strong}/${rows.length} actionable` : '—'
+    const bias = (spyPct ?? 0) > 0 && (qqqPct ?? 0) > 0 ? 'Bullish' : (spyPct ?? 0) < 0 && (qqqPct ?? 0) < 0 ? 'Bearish' : avoid > strong ? 'Defensive' : 'Mixed'
+    return { spyPct, qqqPct, vix, breadth, bias, ctxStr }
   }, [rows])
 
   return (
@@ -501,8 +830,8 @@ export default function TickerScannerPage() {
       {/* ── Market Snapshot ── */}
       {snap && (
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Market Snapshot</div>
-          <div className="flex gap-3 flex-wrap">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Market Overview</div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <MarketCard
               label="SPY"
               value={snap.spyPct != null ? fmtPct(snap.spyPct) : snap.ctxStr || '—'}
@@ -510,27 +839,19 @@ export default function TickerScannerPage() {
               tone={snap.spyPct != null ? spyTone(snap.spyPct) : 'gray'}
             />
             <MarketCard
+              label="QQQ"
+              value={snap.qqqPct != null ? fmtPct(snap.qqqPct) : '—'}
+              sub={snap.qqqPct != null ? (snap.qqqPct > 0 ? 'Growth tape: bull' : snap.qqqPct < 0 ? 'Growth tape: bear' : 'Growth tape: flat') : 'Growth tape unavailable'}
+              tone={snap.qqqPct != null ? spyTone(snap.qqqPct) : 'gray'}
+            />
+            <MarketCard
               label="VIX"
               value={snap.vix != null ? fmtNum(snap.vix) : '—'}
               sub={vixSub(snap.vix)}
               tone={vixTone(snap.vix)}
             />
-            {snap.tickAvg != null && (
-              <MarketCard
-                label="TICK avg"
-                value={snap.tickAvg > 0 ? `+${Math.round(snap.tickAvg)}` : String(Math.round(snap.tickAvg))}
-                sub={tickSub(snap.tickAvg)}
-                tone={tickTone(snap.tickAvg)}
-              />
-            )}
-            {snap.pcRatio != null && (
-              <MarketCard
-                label="Put/Call"
-                value={snap.pcRatio.toFixed(2)}
-                sub={pcSub(snap.pcRatio)}
-                tone={pcTone(snap.pcRatio)}
-              />
-            )}
+            <MarketCard label="Breadth" value={snap.breadth} sub="Scanner rows with day-trade interest" tone={snap.breadth.startsWith('0/') ? 'gray' : 'green'} />
+            <MarketCard label="Overall Bias" value={snap.bias} sub="SPY/QQQ plus scanner breadth" tone={snap.bias === 'Bullish' ? 'green' : snap.bias === 'Bearish' || snap.bias === 'Defensive' ? 'red' : 'amber'} />
           </div>
         </div>
       )}
@@ -549,11 +870,11 @@ export default function TickerScannerPage() {
           No tickers in your Signal Feed yet. Add some in My Tickers first.
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
+        <div className="space-y-4">
 
           {/* ── Watchlist table ── */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Watchlist — relative strength
               </span>
@@ -565,105 +886,97 @@ export default function TickerScannerPage() {
                 <RefreshCw size={16} className="inline animate-spin mr-2" />Loading…
               </div>
             ) : (
-              <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
-                {sorted.map(row => {
-                  const pct = row.price_change_pct
-                  const isUp = pct >= 0
-                  const rs = metricVal(row.metrics, 'relative_strength')
-                  const barW = rsBars(rs, pct)
-                  const isSelected = selected === row.ticker
-
-                  return (
-                    <button
-                      key={row.ticker}
-                      type="button"
-                      onClick={() => setSelected(isSelected ? null : row.ticker)}
-                      className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
-                        isSelected
-                          ? 'bg-violet-50 dark:bg-violet-900/20 border-l-2 border-violet-500'
-                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/40 border-l-2 border-transparent'
-                      }`}
-                    >
-                      {/* Symbol */}
-                      <span className="font-mono font-bold text-gray-900 dark:text-white w-14 text-sm shrink-0">{row.ticker}</span>
-
-                      {/* RS bar */}
-                      <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${isUp ? 'bg-emerald-500' : 'bg-red-500'}`}
-                          style={{ width: `${barW}%` }}
-                        />
-                      </div>
-
-                      {/* % change */}
-                      <span className={`font-mono text-xs font-bold w-16 text-right shrink-0 ${isUp ? 'text-emerald-500' : 'text-red-500'}`}>
-                        {fmtPct(pct)}
-                      </span>
-
-                      {/* Direction icon */}
-                      <span className="hidden sm:block shrink-0">
-                        {isUp ? <TrendingUp size={13} className="text-emerald-500" /> : <TrendingDown size={13} className="text-red-500" />}
-                      </span>
-
-                      {/* Engine tag */}
-                      <div className="hidden sm:flex shrink-0">
-                        <EngineTag row={row} />
-                      </div>
-                    </button>
-                  )
-                })}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] border-collapse text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-950/50 text-[10px] uppercase tracking-[0.08em] text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-black">Ticker</th>
+                      <th className="px-3 py-2 text-right font-black">Price</th>
+                      <th className="px-3 py-2 text-left font-black">Relative Strength</th>
+                      <th className="px-3 py-2 text-left font-black">5m Struct</th>
+                      <th className="px-3 py-2 text-left font-black">Trend</th>
+                      <th className="px-3 py-2 text-left font-black">Day</th>
+                      <th className="px-3 py-2 text-left font-black">Swing</th>
+                      <th className="px-3 py-2 text-left font-black">Blockers</th>
+                      <th className="px-3 py-2 text-left font-black">Summary</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map(row => {
+                      const pct = row.price_change_pct
+                      const isUp = pct >= 0
+                      const isSelected = selected === row.ticker
+                      const values = scannerSignalValues(row)
+                      const agreement = normalizeAgreement(row)
+                      const dayOut = outcomeBox(row.day_decision)
+                      const swingOut = outcomeBox(row.swing_decision)
+                      const blockers = scannerBlockers(row)
+                      return (
+                        <Fragment key={row.ticker}>
+                          <tr
+                            onClick={() => setSelected(isSelected ? null : row.ticker)}
+                            className={`cursor-pointer border-l-4 border-t border-gray-100 transition-colors dark:border-t-gray-800/70 ${rowTone(row)} ${isSelected ? 'ring-1 ring-inset ring-violet-400/40' : ''}`}
+                          >
+                            <td className="px-3 py-3 align-top">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-sm font-black text-gray-900 dark:text-white">{row.ticker}</span>
+                                {isUp ? <TrendingUp size={13} className="text-emerald-500" /> : <TrendingDown size={13} className="text-red-500" />}
+                              </div>
+                              <div className="max-w-[160px] truncate text-[10px] text-gray-500">{row.company_name}</div>
+                            </td>
+                            <td className="px-3 py-3 text-right align-top">
+                              <div className="font-mono font-bold text-gray-900 dark:text-gray-100">${row.price.toFixed(2)}</div>
+                              <div className={`font-mono text-[11px] font-bold ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{fmtPct(pct)}</div>
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <div className="font-mono font-black text-gray-900 dark:text-gray-100">{values.rsStr}</div>
+                              <div className="mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+                                <div className={isUp ? 'h-full bg-emerald-500' : 'h-full bg-red-500'} style={{ width: `${rsBars(metricVal(row.metrics, 'relative_strength'), pct)}%` }} />
+                              </div>
+                            </td>
+                            <td className={`px-3 py-3 align-top font-black ${toneTextClass(values.structTone)}`}>{values.structStr}</td>
+                            <td className="px-3 py-3 align-top">
+                              <div className={`font-bold ${toneTextClass(values.vwapTone)}`}>{values.vwapStr}</div>
+                              <div className="text-[10px] text-gray-500">{values.weeklyStr.toUpperCase()}</div>
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <div className={`font-bold ${toneTextClass(dayOut.tone)}`}>{row.day_decision}</div>
+                              <div className="text-[10px] text-gray-500">{row.day.confidence}%</div>
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <div className={`font-bold ${toneTextClass(swingOut.tone)}`}>{row.swing_decision}</div>
+                              <div className="text-[10px] text-gray-500">{row.swing.confidence}%</div>
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <div className="flex max-w-[220px] flex-wrap gap-1">
+                                {blockers.slice(0, 3).map(blocker => (
+                                  <span key={blocker} className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${blocker === 'Clear' ? 'border-emerald-400/40 text-emerald-600 dark:text-emerald-300' : 'border-amber-400/40 text-amber-700 dark:text-amber-300'}`}>{blocker}</span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <div className="max-w-[280px] font-semibold leading-snug text-gray-800 dark:text-gray-200">{scannerSummary(row)}</div>
+                              <div className="mt-1 text-[10px] text-gray-500">{agreement.replace(/_/g, ' ')}</div>
+                            </td>
+                          </tr>
+                          {isSelected && (
+                            <tr className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
+                              <td colSpan={9} className="p-0">
+                                <ScannerExpandedPanel row={row} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
 
-          {/* ── Signal breakdown panel — desktop ── */}
-          <div className="hidden lg:block sticky top-4">
-            {selectedRow ? (
-              <SignalBreakdown row={selectedRow} />
-            ) : (
-              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 p-6 text-center text-sm text-gray-500">
-                Click a ticker to see its signal breakdown
-              </div>
-            )}
-          </div>
-
-          {/* ── Signal breakdown — mobile (below selected row) ── */}
-          {selectedRow && (
-            <div className="lg:hidden">
-              <SignalBreakdown row={selectedRow} />
-            </div>
-          )}
         </div>
       )}
-
-      {/* ── Decision matrix (educational) ── */}
-      <div>
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-          What actually matters — Day vs Swing
-        </div>
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-900/80 border-b border-gray-200 dark:border-gray-800">
-                <th className="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400">Signal</th>
-                <th className="px-4 py-2.5 text-left font-semibold text-blue-600 dark:text-blue-400">Day trade</th>
-                <th className="px-4 py-2.5 text-left font-semibold text-emerald-600 dark:text-emerald-400">Swing trade</th>
-                <th className="px-4 py-2.5 text-left font-semibold text-gray-400 hidden md:table-cell">Why</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MATRIX_ROWS.map(row => (
-                <tr key={row.signal} className="border-b border-gray-100 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-900/30">
-                  <td className="px-4 py-2 text-gray-700 dark:text-gray-300 font-medium">{row.signal}</td>
-                  <td className={`px-4 py-2 ${matrixCellClass(row.day[1])}`}>{row.day[0]}</td>
-                  <td className={`px-4 py-2 ${matrixCellClass(row.swing[1])}`}>{row.swing[0]}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{row.why}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
     </div>
   )

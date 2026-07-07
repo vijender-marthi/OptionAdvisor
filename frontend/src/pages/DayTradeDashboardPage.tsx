@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard, Activity, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
-import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
+import { analyzeCarryTrade, analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
-import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
+import type { CarryTradeScanResult, DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, resampleBars, orMinutesForInterval, type ChartInterval, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import ScalpTradingChart from '../components/ScalpTradingChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
@@ -16,7 +16,7 @@ const SK_ACTIVE_TAB    = 'oa_dashboard_active_tab'
 const AUTO_REFRESH_MS  = 30 * 1000
 const MAX_TICKERS      = 8
 
-type Tab = 'day' | 'swing' | 'table' | 'scalp'
+type Tab = 'day' | 'swing' | 'table' | 'scalp' | 'carry'
 /** Tabs share two data pools — the table tab reads the day pool. */
 
 /** Viewport hook for responsive layout switching. */
@@ -297,6 +297,18 @@ function formatPrice(v: number | null): string {
   return v == null ? '—' : v.toFixed(2)
 }
 
+function decisionPrice(v: unknown): string {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n.toFixed(2) : '—'
+}
+
+function decisionVerdictColor(verdict: string, dt: Record<string, string>) {
+  const v = verdict.toUpperCase()
+  if (v === 'CALL') return dt.green
+  if (v === 'PUT') return dt.red
+  return dt.muted
+}
+
 function latestChartClose(metrics?: Record<string, unknown> | null): number | null {
   const bars = parseChartBars(metrics?.chart_bars)
   if (!bars || bars.length === 0) return null
@@ -512,6 +524,8 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   const { isMobile } = useViewport()
   const [expandedSyms, setExpandedSyms] = useState<Set<string>>(new Set())
   const [chartIntervals, setChartIntervals] = useState<Record<string, ChartInterval>>({})
+  const prevDecisionRef = useRef<Record<string, string>>({})
+  const notificationReadyRef = useRef(false)
   const toggleExpanded = (sym: string) => {
     setExpandedSyms(prev => {
       const next = new Set(prev)
@@ -573,6 +587,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
     const rvol   = num(m.rvol)
     const pts    = result ? buildEntryPoints(result, m) : []
     const timeframeState = (result?.timeframe_state ?? (m.timeframe_state as DayTradeScanResult['timeframe_state'] | undefined) ?? null)
+    const layered = (result?.layered_decision ?? (m.layered_decision as Record<string, any> | undefined) ?? result?.entry_guidance?.layered_decision ?? null) as Record<string, any> | null
     const gatedVerdict = String(timeframeState?.final_decision || result?.final_decision || '').toUpperCase()
     const verdict = gatedVerdict || unified?.verdict || result?.verdict?.replace(' ', '_') || ''
     const chartBars = parseChartBars(m.chart_bars)
@@ -580,8 +595,36 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
     const setup15 = timeframeState?.setup_15m
     const confirm5 = timeframeState?.confirmation_5m
     const exec1 = timeframeState?.execution_1m
-    return { sym, tile, result, unified, m, loading, error, price, pct, chgAmt, up, chgColor, orHigh, orLow, vwap, vwapPos, vwapDistPct, pcr, rvol, pts, timeframeState, gatedVerdict, verdict, chartBars, hasChart, setup15, confirm5, exec1 }
+    const decisionTable = (m.decision_table ?? {}) as Record<string, any>
+    return { sym, tile, result, unified, m, loading, error, price, pct, chgAmt, up, chgColor, orHigh, orLow, vwap, vwapPos, vwapDistPct, pcr, rvol, pts, timeframeState, layered, gatedVerdict, verdict, chartBars, hasChart, setup15, confirm5, exec1, decisionTable }
   })
+
+  useEffect(() => {
+    if (!notificationReadyRef.current) {
+      notificationReadyRef.current = true
+      prevDecisionRef.current = Object.fromEntries(rows.map(r => [r.sym, String(r.decisionTable?.verdict || 'WAIT').toUpperCase()]))
+      try {
+        if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission()
+      } catch { /* ignore */ }
+      return
+    }
+    const next: Record<string, string> = {}
+    for (const row of rows) {
+      const verdictNow = String(row.decisionTable?.verdict || 'WAIT').toUpperCase()
+      const verdictPrev = prevDecisionRef.current[row.sym] || 'WAIT'
+      next[row.sym] = verdictNow
+      if (verdictPrev === 'WAIT' && (verdictNow === 'CALL' || verdictNow === 'PUT')) {
+        const levels = (row.decisionTable?.levels ?? {}) as Record<string, unknown>
+        const body = `${row.sym} ${verdictNow} armed — E ${decisionPrice(levels.entry)} T1 ${decisionPrice(levels.t1)}`
+        try {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('OptionAdvisor Day Trade', { body })
+          }
+        } catch { /* ignore */ }
+      }
+    }
+    prevDecisionRef.current = next
+  }, [rows])
 
   // Mobile: card layout
   if (isMobile) {
@@ -698,41 +741,49 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   // Desktop: table layout
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1680, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1260, tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: 108 }} /><col style={{ width: 116 }} /><col style={{ width: 130 }} /><col style={{ width: 118 }} />
-          <col style={{ width: 170 }} /><col style={{ width: 180 }} /><col style={{ width: 180 }} />
-          <col style={{ width: 78 }} /><col style={{ width: 90 }} />
-          <col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} />
-          <col style={{ width: 120 }} />
+          <col style={{ width: 106 }} /><col style={{ width: 88 }} /><col style={{ width: 130 }} /><col style={{ width: 100 }} />
+          <col style={{ width: 170 }} /><col style={{ width: 96 }} />
+          <col style={{ width: 82 }} /><col style={{ width: 82 }} /><col style={{ width: 82 }} /><col style={{ width: 82 }} />
+          <col style={{ width: 240 }} />
         </colgroup>
         <thead>
           <tr>
             <th style={th}>Ticker</th>
-            <th style={th}>Change</th>
+            <th style={th}>Chg</th>
+            <th style={th}>VWAP/Mid</th>
+            <th style={th}>Struct</th>
+            <th style={th}>Blockers</th>
             <th style={th}>Verdict</th>
-            <th style={th} title="Session VWAP from intraday bars">VWAP</th>
-            <th style={th} title="15m = setup only">15m Setup</th>
-            <th style={th} title="5m = confirmation gate">5m Confirm</th>
-            <th style={th} title="1m = execution only">1m Execute</th>
-            <th style={th} title="Put/Call ratio">P/C</th>
-            <th style={th} title="Volume vs average (RVOL)">Volume</th>
-            <th style={th} title="AI Coach entry gate (confluence zone)">E1</th>
-            <th style={th} title="AI Coach trade at current price">E2</th>
-            <th style={th} title="Opening-range breakout level">E3</th>
-            <th style={th} title="Pullback Reset (live) or VWAP re-test (pending)">E4</th>
-            <th style={th}></th>
+            <th style={th}>E</th>
+            <th style={th}>S</th>
+            <th style={th}>T1</th>
+            <th style={th}>T2</th>
+            <th style={th}>Arm trigger</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ sym, loading, error, price, pct, chgAmt, up, chgColor, orHigh, orLow, vwap, vwapPos, vwapDistPct, pcr, rvol, pts, timeframeState, gatedVerdict, verdict, unified, chartBars, hasChart, setup15, confirm5, exec1 }) => {
+          {rows.map(({ sym, loading, error, price, pct, chgAmt, up, chgColor, orHigh, orLow, pts, timeframeState, chartBars, hasChart, decisionTable }) => {
             const isExpanded = expandedSyms.has(sym)
+            const decision = decisionTable
+            const decisionVerdict = String(decision.verdict || 'WAIT').toUpperCase()
+            const decisionLevels = (decision.levels ?? {}) as Record<string, unknown>
+            const isGo = decisionVerdict === 'CALL' || decisionVerdict === 'PUT'
+            const goColor = decisionVerdict === 'CALL' ? dt.green : decisionVerdict === 'PUT' ? dt.red : dt.muted
+            const rowTint = isGo
+              ? decisionVerdict === 'CALL'
+                ? (isDark ? 'rgba(34,197,94,0.11)' : 'rgba(34,197,94,0.13)')
+                : (isDark ? 'rgba(239,68,68,0.11)' : 'rgba(239,68,68,0.13)')
+              : isExpanded ? `${dt.accent}08` : undefined
+            const blockers = Array.isArray(decision.blockers) ? decision.blockers : []
+            const levelColor = isGo ? dt.text : dt.muted
 
             if (loading) {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.muted }} colSpan={13}>
+                  <td style={{ ...td, color: dt.muted }} colSpan={10}>
                     <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite', verticalAlign: '-2px', marginRight: 6 }} />
                     Scanning…
                   </td>
@@ -743,7 +794,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.red }} colSpan={13}>{tiles[sym]?.error}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={10}>{tiles[sym]?.error}</td>
                 </tr>
               )
             }
@@ -751,9 +802,9 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
             return (
               <Fragment key={sym}>
                 <tr onClick={() => toggleExpanded(sym)}
-                  style={{ cursor: 'pointer', background: isExpanded ? `${dt.accent}08` : undefined }}
-                  onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = `${dt.bg2 || '#ffffff08'}` }}
-                  onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = '' }}>
+                  style={{ cursor: 'pointer', background: rowTint }}
+                  onMouseEnter={e => { if (!isExpanded && !isGo) (e.currentTarget as HTMLElement).style.background = `${dt.bg2 || '#ffffff08'}` }}
+                  onMouseLeave={e => { if (!isExpanded && !isGo) (e.currentTarget as HTMLElement).style.background = '' }}>
                   <td style={td}>
                     <div style={{ ...mono, fontWeight: 800, fontSize: 13, color: dt.text }}>{sym}</div>
                     <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? price.toFixed(2) : '—'}</div>
@@ -766,57 +817,36 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                       </div>
                     )}
                   </td>
-                  <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={gatedVerdict ? undefined : unified?.verdict_presentation?.status_color} /> : '—'}</td>
                   <td style={td}>
-                    <div style={{ ...mono, color: vwapTone(price, vwap, dt) }}>{formatPrice(vwap)}</div>
-                    <div style={{ fontSize: 10, color: vwapTone(price, vwap, dt), textTransform: 'uppercase', fontWeight: 700 }}>
-                      {vwapPos || (price != null && vwap != null ? (price >= vwap ? 'above' : 'below') : '—')}
+                    <div style={{ ...mono, color: decision.vwap_bias === 'bull' ? dt.green : decision.vwap_bias === 'bear' ? dt.red : dt.muted }}>
+                      {decisionPrice(decision.vwap)} / {decisionPrice(decision.mid)}
                     </div>
-                    {vwapDistPct != null && <div style={{ fontSize: 10, color: dt.muted }}>{vwapDistPct >= 0 ? '+' : ''}{vwapDistPct.toFixed(2)}%</div>}
+                    <div style={{ fontSize: 10, color: dt.muted, textTransform: 'uppercase', fontWeight: 800 }}>
+                      {decision.vwap_bias || 'flat'} · {decision.loc || '—'}
+                    </div>
                   </td>
+                  <td style={{ ...td, ...mono, color: decision.structure_5m === 'HH/HL' ? dt.green : decision.structure_5m === 'LH/LL' ? dt.red : dt.muted }}>{decision.structure_5m || 'MIXED'}</td>
                   <td style={td}>
-                    <TimeframeCell
-                      title="15m Setup"
-                      status={setup15?.status}
-                      direction={setup15?.direction}
-                      reason={setup15?.reason}
-                      next={setup15?.next_action}
-                    />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {blockers.length === 0 ? (
+                        <span style={{ border: `1px solid ${dt.green}`, color: dt.green, background: `${dt.green}18`, borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800 }}>clear</span>
+                      ) : blockers.map((b: unknown) => (
+                        <span key={String(b)} style={{ border: `1px solid ${dt.amber}`, color: dt.amber, background: `${dt.amber}18`, borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800 }}>{String(b)}</span>
+                      ))}
+                    </div>
                   </td>
-                  <td style={td}>
-                    <TimeframeCell
-                      title="5m Confirmation"
-                      status={confirm5?.status}
-                      direction={confirm5?.direction}
-                      reason={confirm5?.reason || confirm5?.trigger_requirement}
-                      next={confirm5?.trigger_fired ? 'Trigger fired' : confirm5?.next_action}
-                    />
-                  </td>
-                  <td style={td}>
-                    <TimeframeCell
-                      title="1m Execution"
-                      status={exec1?.status}
-                      reason={exec1?.chase_warning || exec1?.reason}
-                      next={exec1?.next_action}
-                    />
-                  </td>
-                  <td style={{ ...td, ...mono, color: dt.text }}>{pcr != null ? pcr.toFixed(2) : '—'}</td>
-                  <td style={{ ...td, ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</td>
-                  <td style={entryTd}>{entryCell(pts, 0)}</td>
-                  <td style={entryTd}>{entryCell(pts, 1)}</td>
-                  <td style={entryTd}>{entryCell(pts, 2)}</td>
-                  <td style={entryTd}>{entryCell(pts, 3)}</td>
-                  <td style={td} onClick={e => e.stopPropagation()}>
-                    <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
-                      title="Open in Day Trade page (new window)"
-                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 700, width: '100%', whiteSpace: 'nowrap' }}>
-                      Day Trade <ExternalLink size={12} />
-                    </a>
+                  <td style={{ ...td, ...mono, color: decisionVerdictColor(decisionVerdict, dt), fontWeight: 900 }}>{decisionVerdict}</td>
+                  <td style={{ ...td, ...mono, color: levelColor, opacity: isGo ? 1 : 0.48 }}>{decisionPrice(decisionLevels.entry)}</td>
+                  <td style={{ ...td, ...mono, color: levelColor, opacity: isGo ? 1 : 0.48 }}>{decisionPrice(decisionLevels.stop)}</td>
+                  <td style={{ ...td, ...mono, color: levelColor, opacity: isGo ? 1 : 0.48 }}>{decisionPrice(decisionLevels.t1)}</td>
+                  <td style={{ ...td, ...mono, color: levelColor, opacity: isGo ? 1 : 0.48 }}>{decisionPrice(decisionLevels.t2)}</td>
+                  <td style={{ ...td, color: isGo ? goColor : dt.muted, whiteSpace: 'normal', lineHeight: 1.35, fontWeight: 700 }}>
+                    {String(decision.arm_trigger || '—')}
                   </td>
                 </tr>
                 {isExpanded && hasChart && (
                   <tr>
-                    <td colSpan={14} style={{ padding: 0, background: dt.bg2 }}>
+                    <td colSpan={11} style={{ padding: 0, background: dt.bg2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 0' }}>
                         <span style={{ fontSize: 10, color: dt.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Candle</span>
                         {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
@@ -1512,6 +1542,157 @@ function TickerBar({ tickers, onAdd, onRemove, dt, accentColor }: {
   )
 }
 
+function CarryTradingPanel({ tickers, dt }: { tickers: string[]; dt: Record<string, string> }) {
+  const [rows, setRows] = useState<Record<string, { loading: boolean; error?: string | null; result?: CarryTradeScanResult }>>({})
+  const [refreshing, setRefreshing] = useState(false)
+
+  const load = useCallback(async (forceRefresh = false) => {
+    if (!tickers.length) return
+    setRefreshing(true)
+    setRows(prev => {
+      const next = { ...prev }
+      tickers.forEach(t => { next[t] = { ...(next[t] || {}), loading: true, error: null } })
+      return next
+    })
+    const settled = await Promise.allSettled(tickers.map(async ticker => ({ ticker, result: await analyzeCarryTrade(ticker, forceRefresh) })))
+    setRows(prev => {
+      const next = { ...prev }
+      settled.forEach((item, idx) => {
+        const ticker = tickers[idx]
+        if (!ticker) return
+        if (item.status === 'fulfilled') next[ticker] = { loading: false, result: item.value.result, error: null }
+        else next[ticker] = { loading: false, error: item.reason instanceof Error ? item.reason.message : 'Carry scan failed' }
+      })
+      return next
+    })
+    setRefreshing(false)
+  }, [tickers])
+
+  useEffect(() => {
+    void load(false)
+    const id = window.setInterval(() => void load(false), 5 * 60 * 1000)
+    return () => window.clearInterval(id)
+  }, [load])
+
+  const verdictColor = (v: string) => {
+    if (v.includes('High') || v.includes('Acceptable')) return dt.green
+    if (v.includes('Wait') || v.includes('Neutral')) return dt.amber
+    return dt.red
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap', border: `1px solid ${dt.border}`, borderRadius: 14, background: dt.bg, padding: '12px 14px' }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 900, color: dt.green, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Carry Trading</div>
+          <div style={{ marginTop: 4, fontSize: 13, color: dt.muted }}>Final-hour overnight continuation analysis. Independent score, blockers, contract guidance, and next-morning exit plan.</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load(true)}
+          disabled={refreshing || !tickers.length}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${dt.green}55`, background: `${dt.green}14`, color: dt.green, borderRadius: 9, padding: '7px 12px', fontSize: 12, fontWeight: 800, cursor: refreshing ? 'not-allowed' : 'pointer', opacity: refreshing || !tickers.length ? 0.55 : 1 }}
+        >
+          <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} /> Refresh Carry
+        </button>
+      </div>
+
+      {!tickers.length ? (
+        <div style={{ border: `1px dashed ${dt.border}`, borderRadius: 14, padding: 28, textAlign: 'center', color: dt.muted }}>Add day-trade tickers to evaluate final-hour carry opportunities.</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 440px), 1fr))', gap: 14 }}>
+          {tickers.map(ticker => {
+            const row = rows[ticker]
+            const result = row?.result
+            const color = verdictColor(result?.verdict || 'Neutral')
+            const metrics = result?.metrics || {}
+            const optionContract = metrics.option_contract as Record<string, unknown> | undefined
+            return (
+              <div key={ticker} style={{ border: `1px solid ${dt.border}`, borderRadius: 14, background: dt.bg, padding: 14, minHeight: 280 }}>
+                {row?.loading && !result ? (
+                  <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: dt.muted, fontSize: 13 }}>
+                    <RefreshCw size={15} style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} /> Scanning {ticker} carry setup…
+                  </div>
+                ) : row?.error ? (
+                  <div style={{ color: dt.red, fontSize: 12 }}>{ticker}: {row.error}</div>
+                ) : result ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: dt.text }}>{result.ticker}</span>
+                          {result.company_name && <span style={{ fontSize: 11, color: dt.muted }}>{result.company_name}</span>}
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: dt.muted }}>{result.active_window ? (result.frozen ? 'Final analysis frozen near 12:55 PM PT' : 'Active final-hour window') : 'Carry Trade analysis becomes available during the final hour of trading.'}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 26, fontWeight: 950, color }}>{result.carry_score}</div>
+                        <div style={{ fontSize: 10, color: dt.muted, fontWeight: 800 }}>Carry Score</div>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, border: `1px solid ${color}44`, background: `${color}12`, borderRadius: 10, padding: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{result.verdict}</div>
+                      <div style={{ marginTop: 5, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, fontSize: 11 }}>
+                        <div><span style={{ color: dt.muted }}>Bias</span><br /><b style={{ color: dt.text }}>{result.bias}</b></div>
+                        <div><span style={{ color: dt.muted }}>Confidence</span><br /><b style={{ color: dt.text }}>{result.confidence}</b></div>
+                        <div><span style={{ color: dt.muted }}>Entry Window</span><br /><b style={{ color: dt.text }}>{result.entry_window}</b></div>
+                        <div><span style={{ color: dt.muted }}>Exit</span><br /><b style={{ color: dt.text }}>Tomorrow 6:30-7:00 AM PT</b></div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginTop: 10 }}>
+                      {[
+                        ['CLV', metrics.clv],
+                        ['RVOL', metrics.rvol ? `${metrics.rvol}x` : undefined],
+                        ['Struct', metrics.structure],
+                        ['DTE', result.recommended_dte],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} style={{ border: `1px solid ${dt.border}`, borderRadius: 8, padding: '7px 8px', background: dt.bg2 }}>
+                          <div style={{ fontSize: 9, color: dt.muted, fontWeight: 900, textTransform: 'uppercase' }}>{String(label)}</div>
+                          <div style={{ marginTop: 2, fontSize: 12, fontWeight: 850, color: dt.text, fontFamily: label === 'DTE' || label === 'Struct' ? undefined : 'monospace' }}>{String(value ?? '—')}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: dt.green, fontWeight: 900, textTransform: 'uppercase', marginBottom: 5 }}>Why this trade</div>
+                        <ul style={{ margin: 0, paddingLeft: 16, color: dt.muted, fontSize: 11, lineHeight: 1.55 }}>
+                          {result.reasons.slice(0, 5).map(reason => <li key={reason}>{reason}</li>)}
+                        </ul>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: result.blockers.length ? dt.amber : dt.green, fontWeight: 900, textTransform: 'uppercase', marginBottom: 5 }}>Blockers</div>
+                        {result.blockers.length ? (
+                          <ul style={{ margin: 0, paddingLeft: 16, color: dt.muted, fontSize: 11, lineHeight: 1.55 }}>
+                            {result.blockers.slice(0, 5).map(blocker => <li key={blocker}>{blocker}</li>)}
+                          </ul>
+                        ) : <div style={{ fontSize: 11, color: dt.green, fontWeight: 800 }}>No carry blockers</div>}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, borderTop: `1px solid ${dt.border}`, paddingTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 11, color: dt.muted }}>
+                      <div>
+                        <b style={{ color: dt.text }}>Contract</b><br />
+                        {optionContract?.strike ? `${String(optionContract.strike)} strike · ${String(optionContract.expiration || '7-14 DTE')}` : 'Use liquid 0.40-0.70 delta option'}
+                      </div>
+                      <div>
+                        <b style={{ color: dt.text }}>Exit Plan</b><br />
+                        {String(result.exit_plan.gap_with_position || 'Sell first strength / cover first weakness near the open.')}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function DayTradeDashboardPage() {
   const { theme } = useApp()
@@ -1734,8 +1915,8 @@ export default function DayTradeDashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 12 }}>
           <DashboardStatCard dt={dt} label="Intraday Symbols" value={String(dayTickers.length)} sub="Session chart + MTF gates" tone={dt.accent} />
           <DashboardStatCard dt={dt} label="Swing Symbols" value={String(swingTickers.length)} sub="Daily trend workspace" tone={dt.violet} />
-          <DashboardStatCard dt={dt} label="Active Workspace" value={activeTab === 'swing' ? 'Swing' : activeTab === 'table' ? 'Intraday Table' : activeTab === 'scalp' ? 'Scalp' : 'Intraday'} sub={`${tickers.length}/${MAX_TICKERS} symbols`} />
-          <DashboardStatCard dt={dt} label="Chart Engine" value={activeTab === 'scalp' ? 'Scalp' : 'Session'} sub={activeTab === 'scalp' ? 'EMA trend · Momentum · Volume' : 'VWAP · OR · sigma bands'} tone={dt.green} />
+          <DashboardStatCard dt={dt} label="Active Workspace" value={activeTab === 'swing' ? 'Swing' : activeTab === 'carry' ? 'Carry' : activeTab === 'table' ? 'Intraday Table' : activeTab === 'scalp' ? 'Scalp' : 'Intraday'} sub={`${tickers.length}/${MAX_TICKERS} symbols`} />
+          <DashboardStatCard dt={dt} label="Chart Engine" value={activeTab === 'carry' ? 'Overnight' : activeTab === 'scalp' ? 'Scalp' : 'Session'} sub={activeTab === 'carry' ? 'CLV · VWAP · Daily alignment' : activeTab === 'scalp' ? 'EMA trend · Momentum · Volume' : 'VWAP · OR · sigma bands'} tone={dt.green} />
         </div>
 
         {/* Tabs */}
@@ -1744,6 +1925,7 @@ export default function DayTradeDashboardPage() {
             { id: 'table' as Tab, label: 'Intraday Table', icon: <Table2 size={14} />,  accent: dt.accent },
             { id: 'day'   as Tab, label: 'Intraday Charts', icon: <CandlestickChart size={14} />, accent: dt.accent },
             { id: 'scalp' as Tab, label: 'Scalp Trading', icon: <Activity size={14} />, accent: dt.green },
+            { id: 'carry' as Tab, label: 'Carry Trading', icon: <Clock size={14} />, accent: dt.amber },
             { id: 'swing' as Tab, label: 'Swing Trade',     icon: <TrendingUp size={14} />, accent: dt.violet },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
@@ -1770,6 +1952,8 @@ export default function DayTradeDashboardPage() {
           </div>
         ) : activeTab === 'table' ? (
           <DayTickerTable tickers={dayTickers} tiles={tiles} dt={dt} isDark={isDark} />
+        ) : activeTab === 'carry' ? (
+          <CarryTradingPanel tickers={dayTickers} dt={dt} />
         ) : activeTab === 'swing' ? (
           <SwingTickerTable tickers={swingTickers} tiles={tiles} dt={dt} />
         ) : (

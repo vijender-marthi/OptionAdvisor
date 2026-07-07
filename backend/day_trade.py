@@ -195,6 +195,63 @@ def _session_to_5m_candles(session: "pd.DataFrame", n: int = 6) -> list[dict]:
         return []
 
 
+def _session_to_all_5m_candles(session: "pd.DataFrame") -> list[dict]:
+    """Return all completed 5m candles for structure calculations."""
+    try:
+        if session is None or len(session) < 2:
+            return []
+        agg = session.resample("5min").agg(
+            {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+        ).dropna(subset=["Open", "High", "Low", "Close"])
+        if agg.empty:
+            return []
+        out: list[dict] = []
+        for ts, row in agg.iterrows():
+            out.append({
+                "open": float(row["Open"]), "high": float(row["High"]),
+                "low": float(row["Low"]), "close": float(row["Close"]),
+                "volume": float(row.get("Volume", 0) or 0),
+                "time": ts.strftime("%H:%M") if hasattr(ts, "strftime") else str(ts),
+            })
+        return out
+    except Exception:
+        return []
+
+
+def _strict_5m_structure(candles: list[dict]) -> str:
+    """
+    Strict 5m structure rule: require two consecutive pivot comparisons.
+    If the pivots do not prove HH/HL or LH/LL, return MIXED.
+    """
+    if len(candles) < 7:
+        return "MIXED"
+    highs: list[tuple[int, float]] = []
+    lows: list[tuple[int, float]] = []
+    for i in range(1, len(candles) - 1):
+        try:
+            prev_h = float(candles[i - 1]["high"]); h = float(candles[i]["high"]); next_h = float(candles[i + 1]["high"])
+            prev_l = float(candles[i - 1]["low"]);  l = float(candles[i]["low"]);  next_l = float(candles[i + 1]["low"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if h > prev_h and h > next_h:
+            highs.append((i, h))
+        if l < prev_l and l < next_l:
+            lows.append((i, l))
+    if len(highs) < 3 or len(lows) < 3:
+        return "MIXED"
+    h3 = highs[-3:]
+    l3 = lows[-3:]
+    hh2 = h3[-1][1] > h3[-2][1] > h3[-3][1]
+    hl2 = l3[-1][1] > l3[-2][1] > l3[-3][1]
+    lh2 = h3[-1][1] < h3[-2][1] < h3[-3][1]
+    ll2 = l3[-1][1] < l3[-2][1] < l3[-3][1]
+    if hh2 and hl2:
+        return "HH/HL"
+    if lh2 and ll2:
+        return "LH/LL"
+    return "MIXED"
+
+
 def _five_min_candle_checks(
     setup_type: str | None,
     candles: list[dict],
@@ -433,6 +490,403 @@ def build_timeframe_state(
         "blocker": gate["blocker"],
         "final_action": gate["final_action"],
         "required_next_condition": gate["required_next_condition"],
+    }
+
+
+def build_layered_day_trade_decision(
+    *,
+    ticker: str,
+    bias: Optional[str],
+    metrics: dict[str, Any],
+    timeframe_state: dict[str, Any],
+    entry_guidance: dict[str, Any],
+    market_state_engine: dict[str, Any],
+    trigger_setup: Optional[str],
+    trigger_fired: bool,
+    volume_spike: bool,
+    is_chasing: bool,
+    edge_state: str,
+    chase_reason: str,
+) -> dict[str, Any]:
+    """
+    Layered Day Trade Decision Architecture.
+
+    This wraps the existing ORB/VWAP/execution engine with context layers.
+    It is additive and side-effect free: no new hard-coded setup is introduced,
+    and execution is still validated by the existing engine.
+    """
+    direction = "long" if bias == "long" else "short" if bias == "short" else None
+    market_engine_state = str(market_state_engine.get("state") or "").upper()
+    opening_type = str(metrics.get("opening_type") or "UNKNOWN").upper()
+    playbook = str(metrics.get("opening_playbook") or "").upper()
+    or_state = str(metrics.get("or_breakout") or "").lower()
+    or_hist = str(metrics.get("or_historical") or "").lower()
+    vwap_position = str(metrics.get("vwap_position") or "").upper()
+    price_structure = str(metrics.get("price_structure") or "FLAT").upper()
+    momentum_pct = float(metrics.get("momentum_pct") or 0.0)
+    vwap_slope = float(metrics.get("vwap_slope_pct") or 0.0)
+    vwap_macro_slope = float(metrics.get("vwap_macro_slope_pct") or 0.0)
+    rvol = float(metrics.get("rvol") or 0.0)
+    entry_rr = metrics.get("entry_rr_ratio")
+    daily_phase = str(metrics.get("daily_range_phase") or "UNKNOWN").upper()
+
+    # Layer 1 — Market State: understand today's environment only.
+    if direction == "long" and (vwap_slope > 0 or vwap_macro_slope > 0) and or_state == "above":
+        market_label = "Bull Trend"
+    elif direction == "short" and (vwap_slope < 0 or vwap_macro_slope < 0) and or_state == "below":
+        market_label = "Bear Trend"
+    elif market_engine_state in {"WAIT_PULLBACK", "READY", "EXECUTE", "MANAGE"} and direction:
+        market_label = "Bull Trend" if direction == "long" else "Bear Trend"
+    elif abs(vwap_slope) < 0.03 and or_state == "inside":
+        market_label = "Range"
+    elif daily_phase in {"LATE", "EXHAUSTED"}:
+        market_label = "Expansion"
+    elif str(metrics.get("or_width_label") or "").upper() in {"TIGHT", "NARROW"}:
+        market_label = "Compression"
+    elif direction:
+        market_label = "Transition"
+    else:
+        market_label = "Unknown"
+
+    market_score = 45
+    if market_label in {"Bull Trend", "Bear Trend"}:
+        market_score += 25
+    if (direction == "long" and vwap_position.startswith("ABOVE")) or (direction == "short" and vwap_position.startswith("BELOW")):
+        market_score += 12
+    if playbook in {"TREND", "TREND_DAY", "GAP_AND_GO"} or opening_type in {"TREND_DAY", "GAP_DOWN", "GAP_UP"}:
+        market_score += 8
+    if rvol >= 1.3:
+        market_score += 5
+    market_score = int(max(0, min(100, market_score)))
+
+    # Layer 2 — Structure: swing sequence only, no indicators.
+    if price_structure == "HH_HL":
+        sequence = ["HH", "HL", "HH", "HL"]
+        structure_label = "Bull Trend"
+        structure_current = "HL"
+        structure_score = 90 if direction in (None, "long") else 55
+    elif price_structure == "LL_LH":
+        sequence = ["LH", "LL", "LH", "LL"]
+        structure_label = "Bear Trend"
+        structure_current = "LL"
+        structure_score = 90 if direction in (None, "short") else 55
+    elif price_structure == "MIXED":
+        sequence = ["Mixed"]
+        structure_label = "Transition"
+        structure_current = "Mixed"
+        structure_score = 58
+    else:
+        sequence = ["Compression"]
+        structure_label = "Neutral"
+        structure_current = "Flat"
+        structure_score = 48
+
+    # Layer 3 — Opportunity: existing opportunities, no execution.
+    opportunity_reqs: list[str] = []
+    missing: list[str] = []
+    signal_code = str(metrics.get("entry_signal_code") or "")
+    signal_label = str(metrics.get("entry_signal_label") or "")
+    if signal_code == "E2R":
+        opportunity = "Opening Range Re-breakout"
+    elif signal_code == "E2" or (direction == "long" and (or_state == "above" or or_hist == "broke_up")):
+        opportunity = "Opening Range Breakout"
+    elif direction == "short" and (or_state == "below" or or_hist == "broke_down"):
+        opportunity = "Opening Range Breakdown"
+    elif "VWAP" in str(entry_guidance.get("action") or "").upper():
+        opportunity = "VWAP Pullback" if direction == "long" else "VWAP Rejection" if direction == "short" else "VWAP Test"
+    elif market_label in {"Bull Trend", "Bear Trend"}:
+        opportunity = "Trend Continuation"
+    elif market_label == "Range":
+        opportunity = "Range Breakout"
+    else:
+        opportunity = "Developing Setup"
+
+    opportunity_reqs.append(str(metrics.get("trigger_requirement") or "Wait for 5m confirmation candle."))
+    if not trigger_fired:
+        missing.append(str(metrics.get("trigger_requirement") or "Confirmation candle has not fired."))
+    if trigger_fired and not volume_spike:
+        missing.append("Volume confirmation is pending.")
+    opportunity_score = 50
+    if direction:
+        opportunity_score += 10
+    if opportunity not in {"Developing Setup"}:
+        opportunity_score += 12
+    if trigger_fired:
+        opportunity_score += 14
+    if volume_spike:
+        opportunity_score += 8
+    if signal_label:
+        opportunity_reqs.append(signal_label)
+    opportunity_score = int(max(0, min(100, opportunity_score)))
+
+    # Layer 4 — Execution: existing engine validation.
+    exec_layer = timeframe_state.get("execution_1m") or {}
+    conf_layer = timeframe_state.get("confirmation_5m") or {}
+    exec_status = str(exec_layer.get("status") or "").upper()
+    conf_status = str(conf_layer.get("status") or "").upper()
+    should_now = str(entry_guidance.get("should_enter_now") or "").upper()
+    execution_missing = list(entry_guidance.get("pending_confirmations") or [])
+    if conf_status != "CONFIRMED":
+        execution_missing.append(conf_layer.get("next_action") or "5m confirmation is not complete.")
+    if exec_status in {"WAIT_ENTRY", "DISABLED"}:
+        execution_missing.append(exec_layer.get("next_action") or "Execution candle is not ready.")
+    execution_score = 40
+    if conf_status == "CONFIRMED":
+        execution_score += 22
+    elif conf_status == "PENDING":
+        execution_score += 10
+    if exec_status == "READY" or should_now == "YES":
+        execution_score += 28
+    elif exec_status == "WAIT_ENTRY" or should_now == "CONDITIONAL":
+        execution_score += 14
+    if volume_spike:
+        execution_score += 5
+    if is_chasing or exec_status == "DO_NOT_CHASE":
+        execution_score -= 25
+    execution_score = int(max(0, min(100, execution_score)))
+
+    # Layer 5 — Risk: adjust confidence/sizing only.
+    rr_val: Optional[float]
+    try:
+        rr_val = float(entry_rr) if entry_rr is not None else None
+    except (TypeError, ValueError):
+        rr_val = None
+    risk_notes: list[str] = []
+    risk_score = 60
+    if rr_val is not None:
+        if rr_val >= 1.8:
+            risk_score += 20
+            risk_notes.append(f"Reward/risk {rr_val:.2f}R is favorable.")
+        elif rr_val >= 1.2:
+            risk_score += 8
+            risk_notes.append(f"Reward/risk {rr_val:.2f}R is acceptable.")
+        else:
+            risk_score -= 18
+            risk_notes.append(f"Reward/risk {rr_val:.2f}R is thin.")
+    else:
+        risk_score -= 8
+        risk_notes.append("Reward/risk is not fully available yet.")
+    if edge_state in {"LATE", "EXHAUSTED"} or daily_phase in {"LATE", "EXHAUSTED"}:
+        risk_score -= 18
+        risk_notes.append("Move is late or extended; reduce size or wait.")
+    if is_chasing:
+        risk_score -= 25
+        risk_notes.append(chase_reason or "Price is extended; do not chase.")
+    if rvol >= 1.3:
+        risk_score += 5
+    risk_score = int(max(0, min(100, risk_score)))
+
+    total = round(
+        market_score * 0.20
+        + structure_score * 0.20
+        + opportunity_score * 0.20
+        + execution_score * 0.25
+        + risk_score * 0.15
+    )
+
+    if is_chasing or exec_status == "DO_NOT_CHASE":
+        final_action = "DO_NOT_CHASE"
+        quality = "Avoid"
+    elif exec_status == "READY" and conf_status == "CONFIRMED" and total >= 70:
+        final_action = "GO"
+        quality = "Tradable" if total < 80 else "High Quality" if total < 90 else "Excellent"
+    elif total >= 60:
+        final_action = "WATCH"
+        quality = "Watching"
+    else:
+        final_action = "AVOID"
+        quality = "Avoid"
+
+    if final_action == "GO":
+        next_condition = "Enter only with predefined stop and target."
+    elif is_chasing:
+        next_condition = "Wait for pullback/reset before considering entry."
+    elif execution_missing:
+        next_condition = str(execution_missing[0])
+    elif missing:
+        next_condition = str(missing[0])
+    else:
+        next_condition = str(market_state_engine.get("next_action") or "Wait for clearer confirmation.")
+
+    explain = (
+        f"The market is in {market_label} with {structure_label} structure "
+        f"({' -> '.join(sequence)}). {opportunity} is the active opportunity. "
+        f"Execution is {exec_status or 'WAITING'} because {next_condition}"
+    )
+
+    return {
+        "market_state": {
+            "label": market_label,
+            "confidence": market_score,
+            "reason": f"VWAP slope {vwap_slope:+.2f}%, OR state {or_state or 'unknown'}, opening type {opening_type}.",
+        },
+        "market_structure": {
+            "label": structure_label,
+            "confidence": structure_score,
+            "current": structure_current,
+            "sequence": sequence,
+            "reason": "Structure is based on recent swing highs/lows, not candle color.",
+        },
+        "opportunity": {
+            "label": opportunity,
+            "direction": direction,
+            "confidence": opportunity_score,
+            "requirements": opportunity_reqs,
+            "missing_confirmations": missing,
+            "expected_trigger": str(metrics.get("trigger_requirement") or market_state_engine.get("estimated_trigger") or ""),
+        },
+        "execution": {
+            "label": "Ready" if exec_status == "READY" else "Waiting" if final_action != "DO_NOT_CHASE" else "Do Not Chase",
+            "confidence": execution_score,
+            "status": exec_status or "WAIT",
+            "missing_confirmations": execution_missing,
+            "reason": exec_layer.get("reason") or entry_guidance.get("summary") or "",
+        },
+        "risk": {
+            "label": "Good" if risk_score >= 75 else "Medium" if risk_score >= 55 else "Poor",
+            "confidence": risk_score,
+            "reward_risk": rr_val,
+            "notes": risk_notes,
+            "position_size": "Normal" if risk_score >= 75 else "Reduced" if risk_score >= 55 else "Skip",
+        },
+        "score_breakdown": {
+            "market_state": market_score,
+            "market_structure": structure_score,
+            "opportunity": opportunity_score,
+            "execution": execution_score,
+            "risk": risk_score,
+            "total": total,
+        },
+        "final_decision": {
+            "action": final_action,
+            "quality": quality,
+            "confidence": total,
+            "next_condition": next_condition,
+            "explanation": explain,
+        },
+    }
+
+
+def build_day_decision_table_row(
+    *,
+    ticker: str,
+    price: float,
+    change_pct: float,
+    or_high: float,
+    or_low: float,
+    vwap: float,
+    rvol: Optional[float],
+    atr_used_pct: float,
+    spy_session_pct: Optional[float],
+    structure_5m: str,
+) -> dict[str, Any]:
+    rng = max(0.0, float(or_high or 0) - float(or_low or 0))
+    mid = (float(or_high or 0) + float(or_low or 0)) / 2.0 if or_high and or_low else 0.0
+
+    if rng > 0 and vwap > mid + 0.02 * rng:
+        vwap_bias = "bull"
+    elif rng > 0 and vwap < mid - 0.02 * rng:
+        vwap_bias = "bear"
+    else:
+        vwap_bias = "flat"
+
+    if or_high and price > or_high:
+        loc = "above ORH"
+    elif or_low and price < or_low:
+        loc = "below ORL"
+    else:
+        loc = "inside"
+
+    extended = False
+    if rng > 0:
+        if loc == "above ORH" and price > or_high + 1.5 * rng:
+            extended = True
+        elif loc == "below ORL" and price < or_low - 1.5 * rng:
+            extended = True
+
+    spy_bias = "bull" if (spy_session_pct or 0) > 0.05 else "bear" if (spy_session_pct or 0) < -0.05 else "flat"
+
+    blockers: list[str] = []
+    if atr_used_pct > 120:
+        blockers.append("ATR > 120%")
+    if rvol is not None and rvol < 0.7:
+        blockers.append("RVOL < 0.7x")
+    elif rvol is None:
+        blockers.append("RVOL unavailable")
+    if extended:
+        blockers.append("EXTENDED")
+
+    has_blockers = bool(blockers)
+    if not has_blockers and vwap_bias == "bull" and loc == "above ORH" and structure_5m == "HH/HL" and spy_bias == "bull":
+        verdict = "CALL"
+    elif not has_blockers and vwap_bias == "bear" and loc == "below ORL" and structure_5m == "LH/LL" and spy_bias == "bear":
+        verdict = "PUT"
+    else:
+        verdict = "WAIT"
+
+    call_levels = {
+        "entry": round(or_high, 4) if or_high else None,
+        "stop": round(mid, 4) if mid else None,
+        "t1": round(or_high + 0.5 * rng, 4) if or_high and rng else None,
+        "t2": round(or_high + rng, 4) if or_high and rng else None,
+    }
+    put_levels = {
+        "entry": round(or_low, 4) if or_low else None,
+        "stop": round(mid, 4) if mid else None,
+        "t1": round(or_low - 0.5 * rng, 4) if or_low and rng else None,
+        "t2": round(or_low - rng, 4) if or_low and rng else None,
+    }
+    levels = call_levels if verdict in ("CALL", "WAIT") and vwap_bias != "bear" else put_levels
+    if verdict == "PUT":
+        levels = put_levels
+    elif verdict == "CALL":
+        levels = call_levels
+
+    if has_blockers:
+        arm_trigger = "Clear blockers: " + ", ".join(blockers)
+    elif loc == "inside" and vwap_bias == "bull":
+        arm_trigger = f"GO CALL if 5m closes > {_fmt_level(or_high)}"
+        levels = call_levels
+    elif loc == "inside" and vwap_bias == "bear":
+        arm_trigger = f"GO PUT if 5m closes < {_fmt_level(or_low)}"
+        levels = put_levels
+    elif structure_5m == "MIXED":
+        arm_trigger = "need 2 consec 5m HH/HL" if vwap_bias == "bull" else "need 2 consec 5m LH/LL" if vwap_bias == "bear" else "need 2 consec 5m HH/HL or LH/LL"
+    elif (vwap_bias == "bull" and loc != "above ORH") or (vwap_bias == "bear" and loc != "below ORL"):
+        arm_trigger = f"VWAP {vwap_bias} vs price {loc}"
+    elif spy_bias not in {"bull", "bear"} or spy_bias != vwap_bias:
+        arm_trigger = f"SPY {spy_bias} must agree with VWAP {vwap_bias}"
+    elif verdict == "CALL":
+        arm_trigger = f"{ticker} CALL armed — E {_fmt_level(call_levels['entry'])} T1 {_fmt_level(call_levels['t1'])}"
+    elif verdict == "PUT":
+        arm_trigger = f"{ticker} PUT armed — E {_fmt_level(put_levels['entry'])} T1 {_fmt_level(put_levels['t1'])}"
+    else:
+        arm_trigger = f"VWAP {vwap_bias} vs price {loc}"
+
+    return {
+        "ticker": ticker,
+        "price": round(price, 4),
+        "change_pct": round(change_pct, 2),
+        "orh": round(or_high, 4) if or_high else None,
+        "orl": round(or_low, 4) if or_low else None,
+        "mid": round(mid, 4) if mid else None,
+        "range": round(rng, 4) if rng else None,
+        "vwap": round(vwap, 4) if vwap else None,
+        "vwap_bias": vwap_bias,
+        "loc": loc,
+        "structure_5m": structure_5m,
+        "rvol": round(float(rvol), 2) if rvol is not None else None,
+        "atr_used_pct": round(atr_used_pct, 1),
+        "spy_bias": spy_bias,
+        "extended": extended,
+        "blockers": blockers,
+        "blocker_state": "blocked" if blockers else "clear",
+        "verdict": verdict,
+        "levels": levels,
+        "call_levels": call_levels,
+        "put_levels": put_levels,
+        "arm_trigger": arm_trigger,
+        "notification": f"{ticker} {verdict} armed — E {_fmt_level(levels.get('entry'))} T1 {_fmt_level(levels.get('t1'))}" if verdict in ("CALL", "PUT") else "",
     }
 
 
@@ -4567,6 +5021,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     # most relevant setup for the current context and confirm it on 5m candles.
     # When no trigger has fired, resolve_verdict downgrades GO → TRIGGER_PENDING.
     _5m = _session_to_5m_candles(session, n=6)
+    _5m_all = _session_to_all_5m_candles(session)
+    _strict_structure_5m = _strict_5m_structure(_5m_all)
     _trigger_setup = trigger_detector.setup_for_context(bias, or_state, vwap_position)
     _trigger_fired = False
     _trigger_requirement = ""
@@ -4993,6 +5449,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "entry_signal_code": _orh_lifecycle.get("signal"),
         "entry_signal_label": _orh_lifecycle.get("signal_label"),
         "candles_5m_tail": _5m,  # last ~6 5m OHLC candles — for exit monitoring / replay
+        "structure_5m_strict": _strict_structure_5m,
         "last_price": round(last, 4),
         "prev_close": round(prev_close, 4) if prev_close > 0 else None,
         "change_pct": oda_change,
@@ -5138,6 +5595,18 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         or_historical=or_historical,
         momentum_pct=momentum_pct,
     )
+    metrics["decision_table"] = build_day_decision_table_row(
+        ticker=t,
+        price=last,
+        change_pct=session_change_pct,
+        or_high=or_high,
+        or_low=or_low,
+        vwap=vwap_last,
+        rvol=rvol,
+        atr_used_pct=_daily_range_used_pct,
+        spy_session_pct=spy_session_pct,
+        structure_5m=_strict_structure_5m,
+    )
 
     trader_decision = build_trader_decision(
         ticker=t,
@@ -5248,6 +5717,35 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             timeframe_state["required_next_condition"] = market_state_engine["next_action"]
             timeframe_state["blocker"] = "" if state_final in ("OPENING_RANGE", "WAIT_PULLBACK") else state_final
             metrics["timeframe_final_decision"] = state_final
+
+    layered_decision = build_layered_day_trade_decision(
+        ticker=t,
+        bias=bias,
+        metrics=metrics,
+        timeframe_state=timeframe_state,
+        entry_guidance=entry_guidance,
+        market_state_engine=market_state_engine,
+        trigger_setup=_trigger_setup,
+        trigger_fired=_trigger_fired,
+        volume_spike=vol_spike,
+        is_chasing=is_chasing,
+        edge_state=edge_state,
+        chase_reason=chase_reason,
+    )
+    metrics["layered_decision"] = layered_decision
+    entry_guidance["layered_decision"] = layered_decision
+
+    # Layered architecture replaces generic NO_EDGE rejections with an
+    # explainable WATCH when context/opportunity exists but execution is pending.
+    layered_action = str((layered_decision.get("final_decision") or {}).get("action") or "").upper()
+    layered_conf = int((layered_decision.get("final_decision") or {}).get("confidence") or 0)
+    if timeframe_state.get("final_decision") in ("NO_TRADE", "NO_EDGE") and layered_action == "WATCH" and layered_conf >= 60:
+        timeframe_state["final_decision"] = "WATCH"
+        timeframe_state["final_action"] = "WATCH"
+        timeframe_state["blocker"] = ""
+        timeframe_state["required_next_condition"] = (layered_decision.get("final_decision") or {}).get("next_condition")
+        metrics["timeframe_final_decision"] = "WATCH"
+
     if timeframe_state.get("final_decision") in ("NO_TRADE", "DO_NOT_CHASE"):
         _internal_verdict = "AVOID"
         entry_guidance["should_enter_now"] = "NO"
