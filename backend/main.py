@@ -2024,6 +2024,41 @@ def _signal_feed_market_structure(day_metrics: dict[str, Any]) -> dict[str, Any]
     return _classify_market_structure(_detect_confirmed_pivots(highs, lows, left=2, right=2))
 
 
+def _signal_feed_quote_day_metrics(quote: Any | None, *, error_reason: str = "") -> dict[str, Any]:
+    """Minimal day-trade metrics from quote stream when 1m bars are not ready."""
+    if quote is None:
+        return {}
+    try:
+        volume = float(getattr(quote, "volume", 0) or 0)
+        avg_volume = float(getattr(quote, "avg_volume", 0) or 0)
+        rvol = round(volume / avg_volume, 2) if avg_volume > 0 else None
+    except Exception:
+        rvol = None
+    price = float(getattr(quote, "price", 0.0) or 0.0)
+    change_pct = float(getattr(quote, "change_percent", 0.0) or 0.0)
+    return {
+        "live_stream_available": bool(price > 0),
+        "live_stream_source": getattr(quote, "source", "quote_cache"),
+        "live_stream_price": round(price, 4) if price else None,
+        "last_price": round(price, 4) if price else None,
+        "change_pct": round(change_pct, 2),
+        "session_change_pct": round(change_pct, 2),
+        "rvol": rvol,
+        "volume_ratio": rvol,
+        "volume": int(getattr(quote, "volume", 0) or 0),
+        "avg_volume": int(getattr(quote, "avg_volume", 0) or 0),
+        "or_high": None,
+        "or_low": None,
+        "vwap": None,
+        "vwap_position": "unknown",
+        "price_structure": "LIVE_STREAM",
+        "bar_data_stale": True,
+        "bar_data_warning": error_reason or "Intraday 1m bars are not ready yet; scanner is showing live quote stream data.",
+        "scanner_data_mode": "LIVE_QUOTE_ONLY",
+        "chart_bars": [],
+    }
+
+
 def _signal_feed_source_signature(
     source_items: list[dict[str, Any]],
     portfolio_tickers: set[str],
@@ -2421,9 +2456,10 @@ def get_signal_feed(
     _t0 = _time.time()
 
     email = normalize_email(auth_email)
-    with signal_feed_cache_lock:
-        for key in [k for k in signal_feed_cache if k.startswith(f"{email}:")]:
-            signal_feed_cache.pop(key, None)
+    if refresh:
+        with signal_feed_cache_lock:
+            for key in [k for k in signal_feed_cache if k.startswith(f"{email}:")]:
+                signal_feed_cache.pop(key, None)
     state = get_user_state(email)
     if not state.get("my_tickers"):
         _seed_default_my_tickers(email)
@@ -2590,6 +2626,11 @@ def get_signal_feed(
         if _q and not price and _q.price:
             price = _q.price
             change_pct = _q.change_percent
+            day_change = getattr(_q, "change", day_change) or day_change
+        if not day_metrics and _q:
+            day_metrics = _signal_feed_quote_day_metrics(_q, error_reason=day_reason)
+            if day_reason:
+                day_reason = f"Live quote stream active; intraday bars pending. {day_reason}"
         _row_cache_age = round(_q.cache_age_seconds, 1) if _q else 0.0
         _row_quote_source = _q.source if _q else "unavailable"
         regular_payload = _signal_feed_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)

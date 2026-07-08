@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard, Activity, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { analyzeCarryTrade, analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
+import type { SignalFeedRow } from '../types/commandCenter'
 import type { CarryTradeScanResult, DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, resampleBars, orMinutesForInterval, type ChartInterval, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import ScalpTradingChart from '../components/ScalpTradingChart'
@@ -38,6 +39,60 @@ interface TileData {
   loading: boolean
   error: string | null
   requestId?: number
+}
+
+function signalFeedRowToDayResult(row: SignalFeedRow): DayTradeScanResult {
+  const metrics = (row.day.metrics ?? row.metrics ?? {}) as Record<string, unknown>
+  const finalDecision = String(row.day.final_decision || row.day.verdict || row.day_decision || 'WATCH').toUpperCase()
+  const verdict: DayTradeScanResult['verdict'] =
+    finalDecision === 'READY' || finalDecision === 'GO' || finalDecision === 'STRONG_GO' ? 'GO'
+      : finalDecision === 'AVOID' || finalDecision === 'NO_EDGE' ? 'NO-GO'
+        : finalDecision === 'WAIT' ? 'WAIT'
+          : 'WATCH'
+  const biasRaw = String(row.day.market_bias || row.day.bias || metrics.market_bias || '').toLowerCase()
+  const bias = biasRaw.includes('bear') || biasRaw.includes('short') || biasRaw.includes('put')
+    ? 'short'
+    : biasRaw.includes('bull') || biasRaw.includes('long') || biasRaw.includes('call')
+      ? 'long'
+      : null
+  const lastPrice = typeof metrics.last_price === 'number' ? metrics.last_price : row.price
+  return {
+    ticker: row.ticker,
+    company_name: row.company_name || row.ticker,
+    verdict,
+    bias,
+    bull_score: Number(row.metrics?.bull_score ?? 0),
+    bear_score: Number(row.metrics?.bear_score ?? 0),
+    reasons: [row.day.reason || row.day.normalized_reason || row.agreement_reason || row.ai_summary].filter(Boolean),
+    metrics: {
+      ...metrics,
+      last_price: lastPrice,
+      change_pct: typeof metrics.change_pct === 'number' ? metrics.change_pct : row.price_change_pct,
+      session_change_pct: typeof metrics.session_change_pct === 'number' ? metrics.session_change_pct : row.price_change_pct,
+      scanner_backend_source: 'signal-feed',
+    },
+    trader_decision: undefined,
+    market_bias: row.day.market_bias || 'NEUTRAL',
+    setup_quality: row.day.setup_quality || 'WEAK',
+    execution_readiness: row.day.execution_readiness || finalDecision,
+    final_decision: row.day.final_decision || finalDecision,
+    confidence: Number(row.day.confidence || 0),
+    reason: row.day.reason || row.agreement_reason || '',
+    supporting_factors: row.day.supporting_factors || [],
+    missing_confirmations: row.day.missing_confirmations || [],
+    risk_state: row.day.risk_state || 'MEDIUM',
+    signal_quality: row.day.signal_quality,
+    execution_timing: row.day.execution_timing,
+    risk_category: row.day.risk_category,
+    explanation: row.day.explanation,
+    risk_reason: row.day.risk_reason,
+    display_confidence: row.day.display_confidence,
+    execution_fields: row.day.execution_fields,
+    timeframe_state: metrics.timeframe_state as DayTradeScanResult['timeframe_state'],
+    layered_decision: metrics.layered_decision as Record<string, unknown> | undefined,
+    entry_guidance: metrics.entry_guidance as DayTradeScanResult['entry_guidance'],
+    option_risk_context: row.day.option_risk_context,
+  } as DayTradeScanResult
 }
 
 interface ExpandedChart {
@@ -1764,7 +1819,14 @@ export default function DayTradeDashboardPage() {
     const setter = tab === 'day' ? setDayTiles : setSwingTiles
     setter(prev => ({ ...prev, [sym]: { ...(prev[sym] ?? { ticker: sym, result: null, unified: null, error: null }), loading: true, error: null, requestId } }))
     try {
-      const data = tab === 'swing' ? await analyzeSwingTrade(sym) : await analyzeDayTrade(sym, forceRefresh)
+      let data: DayTradeScanResult | SwingTradeScanResult
+      if (tab === 'swing') {
+        data = await analyzeSwingTrade(sym)
+      } else {
+        const feed = await fetchSignalFeed({ search: sym, page: 1, page_size: 20, refresh: forceRefresh })
+        const row = (feed.data?.rows ?? []).find(r => r.ticker.toUpperCase() === sym)
+        data = row ? signalFeedRowToDayResult(row) : await analyzeDayTrade(sym, forceRefresh)
+      }
       setter(prev => {
         if (prev[sym]?.requestId !== requestId) return prev
         return { ...prev, [sym]: { ...prev[sym]!, result: data, loading: false } }
