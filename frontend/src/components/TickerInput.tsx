@@ -26,19 +26,19 @@ interface Props {
 
 const POPULAR = ['AAPL', 'TSLA', 'SPY', 'QQQ', 'NVDA', 'AMZN', 'MSFT']
 
-type HoldingPeriod = 'day' | 'carry' | 'swing' | 'leaps'
+type HoldingPeriod = 'near_term' | 'swing' | 'position' | 'longer_dated'
 
 const HOLDING_PERIODS: { id: HoldingPeriod; label: string; sub: string; weeksOut: number }[] = [
-  { id: 'day', label: 'Day', sub: 'Fast intent', weeksOut: 3 },
-  { id: 'carry', label: 'Carry', sub: 'Overnight', weeksOut: 4 },
-  { id: 'swing', label: 'Swing', sub: '2-6 weeks', weeksOut: 5 },
-  { id: 'leaps', label: 'LEAPS', sub: 'Long-term', weeksOut: 6 },
+  { id: 'near_term', label: 'Near-Term', sub: 'Faster position', weeksOut: 3 },
+  { id: 'swing', label: 'Swing', sub: 'Core setup', weeksOut: 4 },
+  { id: 'position', label: 'Position', sub: 'More time', weeksOut: 5 },
+  { id: 'longer_dated', label: 'Longer-Dated', sub: 'Most time', weeksOut: 6 },
 ]
 
 const periodFromWeeks = (weeks: number): HoldingPeriod => {
-  if (weeks >= 6) return 'leaps'
-  if (weeks === 3) return 'day'
-  if (weeks === 4) return 'carry'
+  if (weeks >= 6) return 'longer_dated'
+  if (weeks === 5) return 'position'
+  if (weeks === 3) return 'near_term'
   return 'swing'
 }
 
