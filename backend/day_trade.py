@@ -61,7 +61,7 @@ def _scan_cache_ttl() -> int:
 Bias = Optional[Literal["long", "short"]]
 
 OR_MINUTES = 15  # opening range = first 15 × 1m bars of RTH
-MIN_BARS = 25
+MIN_BARS = OR_MINUTES  # scanner can evaluate once ORH/ORL are available
 # Need a directional edge vs the other side — slightly relaxed vs original 5 / 3
 # now that RS and market context contribute more asymmetrically.
 GO_THRESHOLD = 4.5

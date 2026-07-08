@@ -1,18 +1,18 @@
 import { useEffect, useState, KeyboardEvent } from 'react'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import type { StrategyMode } from '../types'
-import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 
 const C = {
-  bgPage:    '#0A0C10',
-  bgPanel:   '#111318',
-  bgCard:    '#181C23',
-  border:    '#1E2330',
-  borderSub: '#252C3A',
-  muted:     '#5A6478',
-  accent:    '#4A7CFF',
-  violet:    '#7C5CFC',
-  text:      '#E8EBF0',
+  bgPage:    'var(--surface-canvas)',
+  bgPanel:   'var(--surface-card)',
+  bgCard:    'var(--surface-elevated)',
+  border:    'var(--border-default)',
+  borderSub: 'var(--border-subtle)',
+  muted:     'var(--text-muted)',
+  accent:    'var(--info)',
+  violet:    'var(--accent)',
+  green:     'var(--bullish)',
+  text:      'var(--text-primary)',
 }
 
 interface Props {
@@ -26,19 +26,29 @@ interface Props {
 
 const POPULAR = ['AAPL', 'TSLA', 'SPY', 'QQQ', 'NVDA', 'AMZN', 'MSFT']
 
-const WIDTH_OPTIONS: { label: string; value: number | null }[] = [
-  { label: 'Auto', value: null },
-  { label: '$5',   value: 5 },
-  { label: '$10',  value: 10 },
+type HoldingPeriod = 'day' | 'carry' | 'swing' | 'leaps'
+
+const HOLDING_PERIODS: { id: HoldingPeriod; label: string; sub: string; weeksOut: number }[] = [
+  { id: 'day', label: 'Day', sub: 'Fast intent', weeksOut: 3 },
+  { id: 'carry', label: 'Carry', sub: 'Overnight', weeksOut: 4 },
+  { id: 'swing', label: 'Swing', sub: '2-6 weeks', weeksOut: 5 },
+  { id: 'leaps', label: 'LEAPS', sub: 'Long-term', weeksOut: 6 },
 ]
 
+const periodFromWeeks = (weeks: number): HoldingPeriod => {
+  if (weeks >= 6) return 'leaps'
+  if (weeks === 3) return 'day'
+  if (weeks === 4) return 'carry'
+  return 'swing'
+}
+
 const STRATEGY_MODES: { label: string; sub: string; value: StrategyMode }[] = [
-  { label: 'All Strategies',  sub: 'Engine picks best fit',           value: 'all'               },
-  { label: 'Long Options',    sub: 'Long calls, puts, spreads',       value: 'long_only'         },
-  { label: 'Credit Spreads',  sub: 'Defined-risk spreads only',       value: 'credit_only'       },
-  { label: 'Calendar Spreads',sub: 'Sell near-term / buy longer-term',value: 'calendar_only'     },
-  { label: 'Straddles',       sub: 'Buy vol · ATM call + put',        value: 'straddle_only'     },
-  { label: 'Short / Covered', sub: 'Naked short & covered plays',     value: 'short_or_covered'  },
+  { label: 'Auto',             sub: 'Recommended',                         value: 'all'               },
+  { label: 'Directional',      sub: 'Long calls / long puts',              value: 'long_only'         },
+  { label: 'Income',           sub: 'Credit spreads',                      value: 'credit_only'       },
+  { label: 'Volatility',       sub: 'Straddles / strangles',               value: 'straddle_only'     },
+  { label: 'Time Decay',       sub: 'Calendar / diagonal',                 value: 'calendar_only'     },
+  { label: 'Stock Strategies', sub: 'Covered calls / cash-secured puts',   value: 'short_or_covered'  },
 ]
 
 export default function TickerInput({
@@ -46,25 +56,26 @@ export default function TickerInput({
   loading,
   initialTicker = '',
   initialWeeks = 4,
-  initialSpreadWidth = 5,
+  initialSpreadWidth = null,
   initialStrategyMode = 'all',
 }: Props) {
   const [ticker,       setTicker]       = useState('')
-  const [weeks,        setWeeks]        = useState(4)
-  const [spreadWidth,  setSpreadWidth]  = useState<number | null>(5)
+  const [holdingPeriod, setHoldingPeriod] = useState<HoldingPeriod>('swing')
+  const [spreadWidth,  setSpreadWidth]  = useState<number | null>(null)
   const [strategyMode, setStrategyMode] = useState<StrategyMode>('all')
   const [inputFocused, setInputFocused] = useState(false)
-  const [hoveredWidth, setHoveredWidth] = useState<string | null>(null)
   const [hoveredChip, setHoveredChip] = useState<string | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   useEffect(() => { setTicker(initialTicker) }, [initialTicker])
-  useEffect(() => { setWeeks(initialWeeks) }, [initialWeeks])
+  useEffect(() => { setHoldingPeriod(periodFromWeeks(initialWeeks)) }, [initialWeeks])
   useEffect(() => { setSpreadWidth(initialSpreadWidth) }, [initialSpreadWidth])
   useEffect(() => { setStrategyMode(initialStrategyMode) }, [initialStrategyMode])
 
   const handle = () => {
     const t = ticker.trim().toUpperCase()
-    if (t) onAnalyze(t, weeks, spreadWidth, strategyMode)
+    const period = HOLDING_PERIODS.find(p => p.id === holdingPeriod) ?? HOLDING_PERIODS[2]
+    if (t) onAnalyze(t, period.weeksOut, spreadWidth, strategyMode)
   }
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -76,7 +87,7 @@ export default function TickerInput({
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: '0.08em',
-    color: '#5A6478',
+    color: C.muted,
     marginBottom: '6px',
     display: 'block',
   }
@@ -88,11 +99,11 @@ export default function TickerInput({
       borderRadius: 16,
       padding: '20px 20px 16px',
     }}>
-      {/* Input row */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: 14 }}>
+        <span style={labelStyle}>Ticker</span>
         <input
           style={{
-            flex: 1, minWidth: 160,
+            width: '100%',
             background: C.bgPage,
             border: `1px solid ${inputFocused ? C.accent : C.borderSub}`,
             borderRadius: 8,
@@ -103,7 +114,7 @@ export default function TickerInput({
             fontWeight: 700,
             textTransform: 'uppercase',
             outline: 'none',
-            boxShadow: inputFocused ? `0 0 0 3px rgba(74,124,255,0.15)` : 'none',
+            boxShadow: inputFocused ? `0 0 0 3px var(--info-bg)` : 'none',
             transition: 'border-color 0.15s, box-shadow 0.15s',
           }}
           placeholder="AAPL, TSLA, SPY..."
@@ -113,34 +124,38 @@ export default function TickerInput({
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
         />
-        <div style={{ display: 'flex', gap: 4 }}>
-          {MULTI_WEEK_TARGETS.map(w => {
-            const active = weeks === w
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <span style={labelStyle}>Holding Period</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          {HOLDING_PERIODS.map(period => {
+            const active = holdingPeriod === period.id
             return (
               <button
-                key={w}
+                key={period.id}
                 type="button"
-                onClick={() => setWeeks(w)}
+                onClick={() => setHoldingPeriod(period.id)}
                 style={{
-                  flex: 1,
-                  padding: '8px 6px',
-                  borderRadius: 6,
+                  padding: '9px 10px',
+                  borderRadius: 10,
                   border: `1px solid ${active ? C.accent : C.borderSub}`,
-                  background: active ? 'rgba(74,124,255,0.12)' : C.bgCard,
-                  color: active ? C.accent : C.muted,
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  fontFamily: 'monospace',
+                  background: active ? 'var(--info-bg)' : C.bgCard,
+                  color: active ? C.text : C.muted,
                   cursor: 'pointer',
-                  textAlign: 'center',
+                  textAlign: 'left',
                   transition: 'all 0.12s',
                 }}
               >
-                {w}w
+                <div style={{ fontSize: '0.8rem', fontWeight: 800 }}>{period.label}</div>
+                <div style={{ fontSize: '0.64rem', marginTop: 1, color: active ? C.accent : C.muted }}>{period.sub}</div>
               </button>
             )
           })}
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           type="button"
           onClick={handle}
@@ -156,7 +171,9 @@ export default function TickerInput({
             cursor: loading || !ticker.trim() ? 'default' : 'pointer',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 6,
+            width: '100%',
             whiteSpace: 'nowrap',
             transition: 'background 0.15s',
           }}
@@ -175,67 +192,62 @@ export default function TickerInput({
         </button>
       </div>
 
-      {/* Strategy mode - dropdown */}
-      <div style={{ marginTop: 14 }}>
-        <span style={labelStyle}>Strategy mode:</span>
-        <select
-          value={strategyMode}
-          onChange={e => setStrategyMode(e.target.value as typeof strategyMode)}
+      <div style={{ marginTop: 14, borderTop: `1px solid ${C.borderSub}`, paddingTop: 12 }}>
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(p => !p)}
           style={{
             width: '100%',
-            background: C.bgPage,
-            border: `1px solid ${C.borderSub}`,
-            borderRadius: 8,
-            padding: '10px 12px',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
             color: C.text,
-            fontSize: '0.82rem',
-            outline: 'none',
             cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          {STRATEGY_MODES.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label} — {opt.sub}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Spread width */}
-      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ ...labelStyle, marginBottom: 0 }}>Spread width:</span>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {WIDTH_OPTIONS.map(opt => {
-            const active = spreadWidth === opt.value
-            const hovered = hoveredWidth === String(opt.value)
+          <span style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.muted }}>
+            Strategy Preference
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: strategyMode === 'all' ? C.green : C.accent }}>
+            {STRATEGY_MODES.find(o => o.value === strategyMode)?.label ?? 'Auto'}
+            <ChevronDown size={14} style={{ transform: advancedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+          </span>
+        </button>
+        <div style={{
+          marginTop: 8,
+          display: advancedOpen ? 'grid' : 'none',
+          gridTemplateColumns: '1fr',
+          gap: 6,
+        }}>
+          {STRATEGY_MODES.map(opt => {
+            const active = strategyMode === opt.value
             return (
               <button
-                key={String(opt.value)}
-                onClick={() => setSpreadWidth(opt.value)}
-                onMouseEnter={() => setHoveredWidth(String(opt.value))}
-                onMouseLeave={() => setHoveredWidth(null)}
+                key={opt.value}
+                type="button"
+                onClick={() => setStrategyMode(opt.value)}
                 style={{
-                  padding: '4px 12px',
-                  borderRadius: 6,
-                  border: `1px solid ${active ? C.violet : hovered ? C.accent : C.borderSub}`,
-                  background: active ? 'rgba(124,92,252,0.15)' : C.bgCard,
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: active ? C.violet : C.muted,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${active ? C.accent : C.borderSub}`,
+                  background: active ? 'var(--info-bg)' : C.bgPage,
+                  color: active ? C.text : C.muted,
                   cursor: 'pointer',
-                  transition: 'all 0.15s',
+                  textAlign: 'left',
                 }}
               >
-                {opt.label}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>{opt.label}</span>
+                  {opt.value === 'all' && <span style={{ fontSize: '0.62rem', color: C.green }}>Recommended</span>}
+                </div>
+                <div style={{ fontSize: '0.66rem', marginTop: 1 }}>{opt.sub}</div>
               </button>
             )
           })}
         </div>
-        <span style={{ fontSize: '0.72rem', color: C.muted, opacity: 0.6 }}>
-          {spreadWidth === null
-            ? 'Engine picks width based on OTM distance'
-            : spreadWidth === 5
-            ? 'Lower risk per trade · best for liquid names'
-            : 'Higher absolute credit · fewer commissions'}
-        </span>
       </div>
 
       {/* Quick picks */}
@@ -246,7 +258,11 @@ export default function TickerInput({
           return (
             <button
               key={t}
-              onClick={() => { setTicker(t); onAnalyze(t, weeks, spreadWidth, strategyMode) }}
+              onClick={() => {
+                const period = HOLDING_PERIODS.find(p => p.id === holdingPeriod) ?? HOLDING_PERIODS[2]
+                setTicker(t)
+                onAnalyze(t, period.weeksOut, spreadWidth, strategyMode)
+              }}
               onMouseEnter={() => setHoveredChip(t)}
               onMouseLeave={() => setHoveredChip(null)}
               style={{
