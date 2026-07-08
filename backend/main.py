@@ -54,6 +54,8 @@ from analysis import build_hv_series, compute_iv_rank, generate_signals
 from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade, clear_scan_cache as _clear_day_scan_cache
 from carry_trade import run_carry_trade_scan, carry_analysis_to_dict
 from trade_structure import build_trade_dashboard_story
+from services.market_structure_service import classify_structure as _classify_market_structure
+from services.pivot_detection_service import detect_confirmed_pivots as _detect_confirmed_pivots
 from ai_coach import get_ai_coach
 from swing_trade import run_swing_trade_scan, clear_scan_cache as _clear_swing_scan_cache
 from unified_analysis import serialize_day_trade, serialize_swing_trade, serialize_regular_trade
@@ -1992,6 +1994,36 @@ def _signal_feed_morning_trend_scan(day_metrics: dict[str, Any], fallback_change
     }
 
 
+def _signal_feed_market_structure(day_metrics: dict[str, Any]) -> dict[str, Any]:
+    """
+    Build the scanner's single source of truth for HH/HL/LH/LL.
+
+    The frontend renders this object directly so the structure label, chart,
+    story, and verdict copy cannot drift into contradictory states.
+    """
+    bars = day_metrics.get("chart_bars") or []
+    highs: list[float] = []
+    lows: list[float] = []
+
+    if isinstance(bars, list):
+        for raw in bars:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                high = float(raw.get("h") if raw.get("h") is not None else raw.get("high"))
+                low = float(raw.get("l") if raw.get("l") is not None else raw.get("low"))
+            except Exception:
+                continue
+            if np.isfinite(high) and np.isfinite(low) and high > 0 and low > 0:
+                highs.append(high)
+                lows.append(low)
+
+    if len(highs) < 5 or len(highs) != len(lows):
+        return _classify_market_structure([])
+
+    return _classify_market_structure(_detect_confirmed_pivots(highs, lows, left=2, right=2))
+
+
 def _signal_feed_source_signature(
     source_items: list[dict[str, Any]],
     portfolio_tickers: set[str],
@@ -2667,6 +2699,7 @@ def get_signal_feed(
             else swing_payload.get("confidence") or regular_payload.get("confidence") or 0.0
         )
         morning_scan = _signal_feed_morning_trend_scan(day_metrics, fallback_change_pct=change_pct)
+        market_structure = _signal_feed_market_structure(day_metrics)
         if morning_scan.get("trending") and ticker not in _existing_day_watch and ticker not in _auto_day_watch_additions:
             _auto_day_watch_additions.append(ticker)
         row_metrics = {
@@ -2687,6 +2720,7 @@ def get_signal_feed(
             "or_high": day_metrics.get("or_high"),
             "or_low": day_metrics.get("or_low"),
             "vwap": day_metrics.get("vwap"),
+            "market_structure": market_structure,
         }
 
         chart_points = []

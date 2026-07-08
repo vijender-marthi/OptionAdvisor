@@ -317,6 +317,31 @@ export interface SignalFeedMetrics {
   or_high?: number | null
   or_low?: number | null
   vwap?: number | null
+  market_structure?: {
+    state?: string
+    sequence?: string[]
+    display?: string
+    bias?: string
+    story?: string
+    pivots?: Array<{
+      type?: 'HIGH' | 'LOW' | string
+      kind?: 'H' | 'L' | string
+      label?: string | null
+      price?: number
+      index?: number
+      confirmed?: boolean
+    }>
+    all_pivots?: Array<{
+      type?: 'HIGH' | 'LOW' | string
+      kind?: 'H' | 'L' | string
+      label?: string | null
+      price?: number
+      index?: number
+      confirmed?: boolean
+    }>
+    validation?: Array<Record<string, unknown>>
+    debug?: Record<string, unknown>
+  } | null
 }
 
 export interface SignalFeedMorningScan {

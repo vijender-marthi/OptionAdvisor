@@ -89,6 +89,37 @@ function writeScannerCache(rows: SignalFeedRow[], fetchedAt: string | null) {
   }
 }
 
+type MarketStructurePivot = NonNullable<NonNullable<SignalFeedMetrics['market_structure']>['pivots']>[number]
+type MarketStructurePayload = NonNullable<SignalFeedMetrics['market_structure']>
+
+function marketStructure(row: SignalFeedRow | null): MarketStructurePayload | null {
+  if (!row) return null
+  const fromRow = row.metrics?.market_structure
+  if (fromRow && typeof fromRow === 'object') return fromRow
+  const fromDay = (row.day.metrics as Record<string, unknown> | undefined)?.market_structure
+  if (fromDay && typeof fromDay === 'object') return fromDay as MarketStructurePayload
+  return null
+}
+
+function pivotLabel(pivot: MarketStructurePivot | null | undefined): string {
+  const label = String(pivot?.label || '').trim().toUpperCase()
+  return label || 'Developing Swing'
+}
+
+function pivotPrice(pivot: MarketStructurePivot | null | undefined): number | null {
+  const price = Number(pivot?.price)
+  return Number.isFinite(price) ? price : null
+}
+
+function structureBiasTone(structure: MarketStructurePayload | null): 'green' | 'red' | 'amber' | 'gray' {
+  const bias = String(structure?.bias || '').toLowerCase()
+  const state = String(structure?.state || '').toLowerCase()
+  if (bias.includes('bull') || state.includes('bullish')) return 'green'
+  if (bias.includes('bear') || state.includes('bearish')) return 'red'
+  if (state.includes('broken') || state.includes('compression') || state.includes('transition') || state.includes('reversal')) return 'amber'
+  return 'gray'
+}
+
 // ─── Market Snapshot cards ────────────────────────────────────────────────────
 
 function MarketCard({ label, value, sub, tone }: {
@@ -408,6 +439,7 @@ function EngineTag({ row }: { row: SignalFeedRow }) {
 }
 
 function scannerSignalValues(row: SignalFeedRow) {
+  const structure = marketStructure(row)
   const rvol = metricVal(row.metrics, 'volume_ratio')
   const rsi = metricVal(row.metrics, 'rsi')
   const ivRank = metricVal(row.metrics, 'iv_rank')
@@ -425,7 +457,9 @@ function scannerSignalValues(row: SignalFeedRow) {
   const rvolNum = rvolDay != null ? Number(rvolDay) : null
   const atrNum = atrUsed != null ? Number(atrUsed) : null
   const vwapPos = vwapPosition != null ? String(vwapPosition).toLowerCase() : null
-  const structStr = priceStruct ? String(priceStruct).replace(/_/g, '/') : '—'
+  const structStr = structure?.display && structure.display !== 'No confirmed pivots'
+    ? structure.display.replace(/->/g, '→')
+    : priceStruct ? String(priceStruct).replace(/_/g, '/') : '—'
   const spyBiasStr = spyBias ? String(spyBias) : (marketCtx ? String(marketCtx) : '—')
   const weeklyStr = weeklyPhase ? String(weeklyPhase) : '—'
   const earnNum = earnDays != null ? Number(earnDays) : null
@@ -441,7 +475,7 @@ function scannerSignalValues(row: SignalFeedRow) {
     spyBiasStr,
     spyTone: String(spyBiasStr).toLowerCase().includes('bull') ? 'green' : String(spyBiasStr).toLowerCase().includes('bear') ? 'red' : 'amber',
     structStr,
-    structTone: structStr.toLowerCase().includes('hh') ? 'green' : structStr.toLowerCase().includes('ll') ? 'red' : 'gray',
+    structTone: structure ? structureBiasTone(structure) : structStr.toLowerCase().includes('hh') ? 'green' : structStr.toLowerCase().includes('ll') ? 'red' : 'gray',
     weeklyStr,
     weeklyTone: weeklyStr.toLowerCase().includes('early') ? 'green' : weeklyStr.toLowerCase().includes('extended') || weeklyStr.toLowerCase().includes('late') ? 'amber' : 'gray',
     vixStr: vixNum != null ? vixNum.toFixed(1) : '—',
@@ -485,6 +519,8 @@ function rowTone(row: SignalFeedRow): string {
 }
 
 function structureLabel(row: SignalFeedRow): string {
+  const structure = marketStructure(row)
+  if (structure?.display) return structure.display.replace(/->/g, '→')
   const values = scannerSignalValues(row)
   const s = values.structStr
   if (s === 'HH/HL') return 'HH → HL'
@@ -493,6 +529,8 @@ function structureLabel(row: SignalFeedRow): string {
 }
 
 function structureTransition(row: SignalFeedRow): string {
+  const state = marketStructure(row)?.state
+  if (state) return state
   const s = structureLabel(row)
   if (s === 'HH → HL') return 'Bullish continuation'
   if (s === 'LL → LH') return 'Bearish continuation'
@@ -513,22 +551,91 @@ function scannerBlockers(row: SignalFeedRow): string[] {
 
 function scannerSummary(row: SignalFeedRow): string {
   const values = scannerSignalValues(row)
+  const structure = marketStructure(row)
+  const state = String(structure?.state || '').toLowerCase()
   const day = row.day_decision.toUpperCase()
   const swing = row.swing_decision.toUpperCase()
-  const bullish = values.structStr === 'HH/HL' || values.vwapTone === 'green'
-  const bearish = values.structStr === 'LL/LH' || values.structStr === 'LH/LL' || values.vwapTone === 'red'
+  const bullish = structure?.bias ? structure.bias === 'bullish' : values.structStr === 'HH/HL' || values.vwapTone === 'green'
+  const bearish = structure?.bias ? structure.bias === 'bearish' : values.structStr === 'LL/LH' || values.structStr === 'LH/LL' || values.vwapTone === 'red'
+  if (state.includes('bearish continuation')) return 'Bearish Breakdown'
+  if (state.includes('bullish continuation')) return values.vwapTone === 'red' ? 'Bullish Structure, VWAP Weak' : 'Bullish Continuation'
+  if (state.includes('bull trend broken') || state.includes('bear trend broken')) return 'Trend Transition'
+  if (state.includes('compression') || state.includes('range')) return 'Trend Transition'
   if ((day === 'READY' || day === 'GO' || day === 'STRONG_GO') && (swing === 'READY' || swing === 'GO' || swing === 'STRONG_GO')) {
-    return bullish ? 'Bullish candidate · day and swing align' : bearish ? 'Bearish candidate · day and swing align' : 'Best candidate · engines align'
+    return bullish ? 'Bullish Continuation' : bearish ? 'Bearish Breakdown' : 'Best Candidate'
   }
-  if (day === 'WATCH' && swing.includes('EXTENDED')) return 'Trade today only · swing extended'
-  if (day === 'WATCH') return bullish ? 'Bullish intraday watch' : bearish ? 'Bearish intraday watch' : 'Intraday watch'
-  if (swing === 'WATCH' || swing === 'READY') return 'Swing setup developing'
-  if (normalizeAgreement(row) === 'CONFLICT') return 'Engine conflict · inspect before trading'
-  return 'Avoid until structure improves'
+  if (day === 'WATCH' && (swing.includes('EXTENDED') || values.weeklyStr.toLowerCase().includes('extended'))) return 'Day Trade Only'
+  if (day === 'WATCH') return bullish ? 'Wait for Pullback' : bearish ? 'Wait for Breakdown' : 'Trend Transition'
+  if (swing === 'WATCH' || swing === 'READY') return 'Swing Setup Building'
+  if (normalizeAgreement(row) === 'CONFLICT') return 'Trend Transition'
+  return 'Do Not Trade'
+}
+
+function resolvedScannerNarrative(row: SignalFeedRow): { label: string; reason: string; story: string[]; needed: string[] } {
+  const values = scannerSignalValues(row)
+  const structure = marketStructure(row)
+  const day = row.day_decision.toUpperCase()
+  const swing = row.swing_decision.toUpperCase()
+  const bullish = structure?.bias ? structure.bias === 'bullish' : values.structStr === 'HH/HL'
+  const bearish = structure?.bias ? structure.bias === 'bearish' : values.structStr === 'LL/LH' || values.structStr === 'LH/LL'
+  const extendedSwing = swing.includes('EXTENDED') || values.weeklyStr.toLowerCase().includes('extended')
+  const label = scannerSummary(row)
+  const direction = bullish ? 'bullish' : bearish ? 'bearish' : 'mixed'
+  const structureWhy = structure?.story
+    ? structure.story
+    : bullish
+      ? 'Higher highs and higher lows remain intact.'
+      : bearish
+        ? 'Lower highs and lower lows remain intact.'
+        : 'Confirmed pivots are not aligned yet, so the chart is still in transition.'
+  const vwapWhy = values.vwapTone === 'green'
+    ? 'Price is holding above VWAP, which supports intraday long attempts.'
+    : values.vwapTone === 'red'
+      ? 'Price is staying below VWAP, which supports intraday short attempts.'
+      : 'Price is near VWAP, so neither side has clean control.'
+  let safeStructureWhy = structureWhy
+  if (bearish && /bullish continuation|higher highs|buyers defended/i.test(safeStructureWhy)) {
+    safeStructureWhy = 'Lower-high/lower-low structure is in control. Bullish continuation language is suppressed until pivots confirm a reversal.'
+  }
+  if (values.vwapTone === 'red' && /buyers defended/i.test(safeStructureWhy)) {
+    safeStructureWhy = 'The pivot sequence is constructive, but price is below VWAP, so buyer defense is not confirmed.'
+  }
+  let reason = `${safeStructureWhy} ${vwapWhy}`
+  if (extendedSwing) {
+    reason += ' Swing entries are limited because the daily/weekly phase is late or extended.'
+  } else if (swing === 'READY' || swing === 'WATCH') {
+    reason += ' The swing engine still sees a developing multi-day setup.'
+  } else {
+    reason += ' The swing engine is not confirming a new multi-day entry right now.'
+  }
+  const conflictLine = `Intraday structure is ${direction}, while Swing is ${row.swing_decision}. ${label} is the cleanest interpretation.`
+  const rawNeeded = row.day.missing_confirmations?.length
+    ? row.day.missing_confirmations
+    : row.swing.missing_confirmations?.length
+      ? row.swing.missing_confirmations
+      : values.vwapTone === 'gray'
+        ? ['Hold clearly above or below VWAP', 'Confirm direction with a completed 5m candle']
+        : ['Wait for the next completed 5m confirmation candle']
+  const needed = Array.from(new Set(rawNeeded.map(item => String(item).trim()).filter(Boolean))).slice(0, 3)
+  return {
+    label,
+    reason,
+    story: [reason, conflictLine].filter(Boolean),
+    needed,
+  }
 }
 
 function invalidationText(row: SignalFeedRow): string {
   const values = scannerSignalValues(row)
+  const structure = marketStructure(row)
+  const pivots = structure?.pivots || []
+  const lastHl = [...pivots].reverse().find(p => pivotLabel(p) === 'HL')
+  const lastLh = [...pivots].reverse().find(p => pivotLabel(p) === 'LH')
+  const hlPrice = pivotPrice(lastHl)
+  const lhPrice = pivotPrice(lastLh)
+  if (structure?.bias === 'bullish' && hlPrice != null) return `Break below ${hlPrice.toFixed(2)} invalidates the latest confirmed higher low.`
+  if (structure?.bias === 'bearish' && lhPrice != null) return `Break above ${lhPrice.toFixed(2)} invalidates the latest confirmed lower high.`
+  if (String(structure?.state || '').toLowerCase().includes('broken')) return 'Structure has already broken. Wait for a new confirmed pivot sequence before defining a fresh trade.'
   const orLow = dm(row, 'or_low')
   const orHigh = dm(row, 'or_high')
   const vwap = dm(row, 'vwap')
@@ -544,14 +651,23 @@ function invalidationText(row: SignalFeedRow): string {
 }
 
 function StructureDiagram({ row }: { row: SignalFeedRow }) {
-  const values = scannerSignalValues(row)
-  const bearish = values.structStr === 'LL/LH' || values.structStr === 'LH/LL'
-  const mixed = values.structStr !== 'HH/HL' && !bearish
-  const points = mixed
-    ? [{ label: 'Mixed', x: 14, y: 52 }, { label: 'Current', x: 48, y: 46 }, { label: 'Range', x: 82, y: 54 }]
-    : bearish
-      ? [{ label: 'LH', x: 14, y: 22 }, { label: 'LL', x: 40, y: 72 }, { label: 'LH', x: 64, y: 36 }, { label: 'Current', x: 88, y: 70 }]
-      : [{ label: 'HL', x: 14, y: 70 }, { label: 'HH', x: 40, y: 28 }, { label: 'HL', x: 64, y: 58 }, { label: 'Current', x: 88, y: 24 }]
+  const structure = marketStructure(row)
+  const confirmedPivots = (structure?.pivots || []).filter(p => p.confirmed !== false && pivotPrice(p) != null).slice(-4)
+  const tone = structureBiasTone(structure)
+  const stroke = tone === 'red' ? '#ef4444' : tone === 'green' ? '#10b981' : tone === 'amber' ? '#f59e0b' : '#64748b'
+  const prices = confirmedPivots.map(p => pivotPrice(p)).filter((price): price is number => price != null)
+  const minPrice = prices.length ? Math.min(...prices) : row.price
+  const maxPrice = prices.length ? Math.max(...prices) : row.price
+  const range = Math.max(maxPrice - minPrice, 0.01)
+  const points = confirmedPivots.length
+    ? confirmedPivots.map((pivot, idx) => {
+        const price = pivotPrice(pivot) ?? row.price
+        const x = confirmedPivots.length === 1 ? 50 : 12 + (idx * (76 / (confirmedPivots.length - 1)))
+        const y = 72 - ((price - minPrice) / range) * 48
+        const label = idx === confirmedPivots.length - 1 ? `Current ${pivotLabel(pivot)}` : pivotLabel(pivot)
+        return { label, x, y, price }
+      })
+    : [{ label: 'Developing Swing', x: 50, y: 48, price: row.price }]
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -559,7 +675,7 @@ function StructureDiagram({ row }: { row: SignalFeedRow }) {
           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Market Structure</div>
           <div className="mt-1 text-lg font-black text-gray-900 dark:text-white">{structureLabel(row)}</div>
         </div>
-        <div className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${mixed ? 'border-amber-400/50 text-amber-600 dark:text-amber-300' : bearish ? 'border-red-400/50 text-red-600 dark:text-red-300' : 'border-emerald-400/50 text-emerald-600 dark:text-emerald-300'}`}>
+        <div className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${tone === 'amber' ? 'border-amber-400/50 text-amber-600 dark:text-amber-300' : tone === 'red' ? 'border-red-400/50 text-red-600 dark:text-red-300' : tone === 'green' ? 'border-emerald-400/50 text-emerald-600 dark:text-emerald-300' : 'border-gray-400/50 text-gray-600 dark:text-gray-300'}`}>
           {structureTransition(row)}
         </div>
       </div>
@@ -567,15 +683,16 @@ function StructureDiagram({ row }: { row: SignalFeedRow }) {
         <polyline
           points={points.map(p => `${p.x},${p.y}`).join(' ')}
           fill="none"
-          stroke={mixed ? '#f59e0b' : bearish ? '#ef4444' : '#10b981'}
+          stroke={stroke}
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         {points.map(p => (
           <g key={`${p.label}-${p.x}`}>
-            <circle cx={p.x} cy={p.y} r="3.5" fill={mixed ? '#f59e0b' : bearish ? '#ef4444' : '#10b981'} />
+            <circle cx={p.x} cy={p.y} r="3.5" fill={stroke} />
             <text x={p.x} y={p.y - 7} textAnchor="middle" className="fill-gray-700 text-[6px] font-bold dark:fill-gray-200">{p.label}</text>
+            {typeof p.price === 'number' && <text x={p.x} y={p.y + 11} textAnchor="middle" className="fill-gray-500 text-[5px] font-mono dark:fill-gray-400">{p.price.toFixed(2)}</text>}
           </g>
         ))}
       </svg>
@@ -583,10 +700,24 @@ function StructureDiagram({ row }: { row: SignalFeedRow }) {
         {points.map((p, idx) => (
           <div key={`${p.label}-timeline-${idx}`} className="rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-800 dark:bg-gray-900/70">
             <div className="font-black text-gray-900 dark:text-white">{p.label}</div>
-            <div className="mt-0.5 font-mono text-gray-500">{idx === points.length - 1 ? 'Current' : `Pivot ${idx + 1}`}</div>
+            <div className="mt-0.5 font-mono text-gray-500">{typeof p.price === 'number' ? p.price.toFixed(2) : idx === points.length - 1 ? 'Current' : `Pivot ${idx + 1}`}</div>
           </div>
         ))}
       </div>
+      {import.meta.env.DEV && structure?.debug && (
+        <details className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-[10px] dark:border-gray-800 dark:bg-gray-900/70">
+          <summary className="cursor-pointer font-black uppercase tracking-wide text-gray-500">Structure Debug</summary>
+          <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap font-mono text-gray-600 dark:text-gray-300">
+            {JSON.stringify({
+              detected_pivots: structure.debug.detected_pivots,
+              pivot_classification: structure.debug.pivot_classification,
+              anchors: structure.debug.anchors,
+              validation: structure.validation,
+              structure: structure.debug.structure,
+            }, null, 2)}
+          </pre>
+        </details>
+      )}
     </div>
   )
 }
@@ -599,20 +730,39 @@ function engineField(block: SignalFeedRow['day'], names: string[]): string {
 
 function EngineDecisionCard({ title, block, tone }: { title: string; block: SignalFeedRow['day']; tone: 'blue' | 'emerald' }) {
   const accent = tone === 'blue' ? 'text-blue-600 dark:text-blue-300 border-blue-400/40 bg-blue-50 dark:bg-blue-950/25' : 'text-emerald-600 dark:text-emerald-300 border-emerald-400/40 bg-emerald-50 dark:bg-emerald-950/25'
+  const entry = engineField(block, ['entry'])
+  const stop = engineField(block, ['stop'])
+  const t1 = engineField(block, ['target 1', 't1'])
+  const t2 = engineField(block, ['target 2', 't2', 'holding'])
+  const hasPlan = [entry, stop, t1, t2].some(v => v !== '—')
+  const needs = block.missing_confirmations?.length
+    ? Array.from(new Set(block.missing_confirmations.map(item => String(item).trim()).filter(Boolean))).slice(0, 3)
+    : block.supporting_factors?.length && String(block.final_decision).toUpperCase().includes('READY')
+      ? ['Entry available in the detail page']
+      : ['Completed 5m confirmation candle', 'Volume confirmation', 'Hold the active VWAP side']
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950/50">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">{title}</div>
         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${accent}`}>{block.final_decision || block.verdict || '—'}</span>
       </div>
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <ScannerTableCell label="Confidence" value={`${block.confidence ?? 0}%`} tone={block.confidence >= 70 ? 'green' : block.confidence >= 50 ? 'amber' : 'gray'} />
-        <ScannerTableCell label="Risk" value={block.risk_state || '—'} tone={String(block.risk_state).toUpperCase().includes('HIGH') ? 'red' : 'gray'} />
-        <ScannerTableCell label="Entry" value={engineField(block, ['entry'])} tone="green" />
-        <ScannerTableCell label="Stop" value={engineField(block, ['stop'])} tone="red" />
-        <ScannerTableCell label="Target 1" value={engineField(block, ['target 1', 't1'])} tone="blue" />
-        <ScannerTableCell label="Target 2" value={engineField(block, ['target 2', 't2', 'holding'])} tone="blue" />
-      </div>
+      {hasPlan ? (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <ScannerTableCell label="Confidence" value={`${block.confidence ?? 0}%`} tone={block.confidence >= 70 ? 'green' : block.confidence >= 50 ? 'amber' : 'gray'} />
+          <ScannerTableCell label="Risk" value={block.risk_state || '—'} tone={String(block.risk_state).toUpperCase().includes('HIGH') ? 'red' : 'gray'} />
+          <ScannerTableCell label="Entry" value={entry} tone="green" />
+          <ScannerTableCell label="Stop" value={stop} tone="red" />
+          <ScannerTableCell label="Target 1" value={t1} tone="blue" />
+          <ScannerTableCell label="Target 2" value={t2} tone="blue" />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-800 dark:bg-gray-900/70">
+          <div className="font-black uppercase tracking-wide text-gray-500">{String(block.final_decision).toUpperCase().includes('READY') ? 'Ready' : 'Need'}</div>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-gray-600 dark:text-gray-400">
+            {needs.map(item => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      )}
       <p className="mt-3 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-600 dark:border-gray-800 dark:text-gray-400">
         {block.reason || block.normalized_reason || 'No engine reason available.'}
       </p>
@@ -634,17 +784,12 @@ function ScannerExpandedPanel({ row }: { row: SignalFeedRow }) {
   const { requestAnalysis } = useApp()
   const values = scannerSignalValues(row)
   const blockers = scannerBlockers(row)
-  const overall = scannerSummary(row)
+  const narrative = resolvedScannerNarrative(row)
+  const overall = narrative.label
   const dayRoute = getEngineRoute('day', row.ticker)
   const swingRoute = getEngineRoute('swing', row.ticker)
   const optionsRoute = getEngineRoute('regular', row.ticker)
-  const storyLines = [
-    values.structStr === 'HH/HL' ? 'Intraday trend remains bullish.' : values.structStr === 'LL/LH' || values.structStr === 'LH/LL' ? 'Intraday trend remains bearish.' : 'Intraday structure is mixed.',
-    values.vwapTone === 'green' ? 'Price is above VWAP.' : values.vwapTone === 'red' ? 'Price is below VWAP.' : 'Price is near VWAP.',
-    `${values.structStr} structure is the primary decision driver.`,
-    row.swing_decision.toUpperCase().includes('EXTENDED') || values.weeklyStr.toLowerCase().includes('extended') ? 'Swing engine is avoiding new entries because price is extended.' : `Swing engine is ${row.swing_decision.toLowerCase()}.`,
-    overall,
-  ]
+  const storyLines = narrative.story
   return (
     <div className="space-y-4 border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/80">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -717,7 +862,7 @@ function ScannerExpandedPanel({ row }: { row: SignalFeedRow }) {
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/60">
             <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">Reason</div>
-            <div className="mt-1 text-sm text-gray-700 dark:text-gray-300">{row.ai_summary || row.agreement_reason || row.day.reason || 'Structure and engine verdicts are shown above.'}</div>
+            <div className="mt-1 text-sm text-gray-700 dark:text-gray-300">{narrative.reason}</div>
           </div>
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20">
             <div className="text-[10px] font-black uppercase tracking-wide text-red-500">Invalidation</div>

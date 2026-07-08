@@ -13,6 +13,7 @@ class Pivot:
     index: int
     price: float
     label: str | None = None
+    confirmed: bool = True
 
 
 def detect_confirmed_pivots(
@@ -47,15 +48,25 @@ def detect_confirmed_pivots(
 
 
 def label_pivots(pivots: list[Pivot]) -> list[Pivot]:
-    last_high: float | None = None
-    last_low: float | None = None
+    previous_high: float | None = None
+    previous_low: float | None = None
     labeled: list[Pivot] = []
     for pivot in pivots:
         if pivot.kind == "H":
-            label = "HH" if last_high is not None and pivot.price > last_high else "LH" if last_high is not None else "H"
-            last_high = pivot.price
+            if previous_high is None:
+                label = "H"
+            elif pivot.price > previous_high:
+                label = "HH"
+            else:
+                label = "LH"
+            previous_high = pivot.price
         else:
-            label = "HL" if last_low is not None and pivot.price > last_low else "LL" if last_low is not None else "L"
-            last_low = pivot.price
-        labeled.append(Pivot(kind=pivot.kind, index=pivot.index, price=pivot.price, label=label))
+            if previous_low is None:
+                label = "L"
+            elif pivot.price > previous_low:
+                label = "HL"
+            else:
+                label = "LL"
+            previous_low = pivot.price
+        labeled.append(Pivot(kind=pivot.kind, index=pivot.index, price=pivot.price, label=label, confirmed=pivot.confirmed))
     return labeled

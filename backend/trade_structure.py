@@ -91,8 +91,8 @@ def build_trade_dashboard_story(ticker: str, force_refresh: bool = False) -> dic
         execution = "No entry now. Structure is mixed."
 
     market_story = (
-        f"{phase['phase']} phase. Structure is {structure['display']}. "
-        f"Price is {'above' if vwap and price > vwap else 'below' if vwap and price < vwap else 'near'} VWAP. "
+        f"{structure.get('story') or 'Confirmed pivots do not form a clean directional structure yet.'} "
+        f"Price {'above' if vwap and price > vwap else 'below' if vwap and price < vwap else 'near'} VWAP. "
         f"Momentum is {'positive' if momentum > 0 else 'negative' if momentum < 0 else 'flat'}."
     )
     main_blocker = "None" if quality["score"] >= 65 else "Trade quality below valid setup threshold"
@@ -102,10 +102,7 @@ def build_trade_dashboard_story(ticker: str, force_refresh: bool = False) -> dic
         "company_name": str(info.get("shortName") or info.get("longName") or ""),
         "market_story": market_story,
         "market_phase": phase,
-        "structure_map": {
-            **structure,
-            "pivots": [{"label": p.label, "price": round(p.price, 2), "index": p.index, "kind": p.kind} for p in recent_pivots],
-        },
+        "structure_map": structure,
         "opportunity_verdict": {
             "verdict": quality["verdict"],
             "score": quality["score"],
