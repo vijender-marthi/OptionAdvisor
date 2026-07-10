@@ -2154,11 +2154,100 @@ def _seed_default_my_tickers(email: str) -> list[dict[str, Any]]:
     return defaults
 
 
+def _normalize_my_ticker_trade_type(value: Any) -> str | None:
+    raw = str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
+    if raw in {"DAY", "DAY_TRADE", "DAYTRADE", "SCALP"}:
+        return "day"
+    if raw in {"SWING", "SWING_TRADE", "SWINGTRADE"}:
+        return "swing"
+    if raw in {"REGULAR", "POSITION", "POSITION_TRADE", "POSITION_TRADING", "POSITIONTRADING", "LONG_TERM"}:
+        return "regular"
+    if raw in {"CARRY", "CARRY_TRADE", "CARRY_OVER"}:
+        return "day"
+    normalized = raw.lower()
+    return normalized if normalized in {"day", "swing", "regular"} else None
+
+
+def _normalize_my_ticker_item(item: Any, index: int = 0) -> dict[str, Any] | None:
+    if isinstance(item, str):
+        symbol = item.strip().upper()
+        if not symbol:
+            return None
+        return {
+            "symbol": symbol,
+            "company_name": "",
+            "added_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "trade_types": ["day", "regular", "swing"],
+            "is_active": True,
+        }
+
+    if not isinstance(item, dict):
+        return None
+
+    symbol = str(item.get("symbol") or item.get("ticker") or item.get("sym") or "").strip().upper()
+    if not symbol:
+        return None
+
+    raw_types = (
+        item.get("trade_types")
+        or item.get("categories")
+        or item.get("category")
+        or item.get("trade_type")
+        or item.get("type")
+        or []
+    )
+    if isinstance(raw_types, str):
+        raw_types = [raw_types]
+    if not isinstance(raw_types, list):
+        raw_types = []
+    trade_types = sorted({t for t in (_normalize_my_ticker_trade_type(v) for v in raw_types) if t})
+    if not trade_types:
+        # Legacy saved ticker rows often predate category assignment. Keep them
+        # visible in all trading workspaces instead of silently dropping them.
+        trade_types = ["day", "regular", "swing"]
+
+    normalized = {
+        **item,
+        "symbol": symbol,
+        "company_name": str(item.get("company_name") or item.get("name") or item.get("company") or "").strip(),
+        "added_date": str(item.get("added_date") or item.get("added_at") or datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+        "trade_types": trade_types,
+        "is_active": bool(item.get("is_active", item.get("active", True))),
+    }
+    normalized.setdefault("priority", index)
+    return normalized
+
+
+def _normalize_my_tickers_list(raw_items: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_items, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw_items):
+        row = _normalize_my_ticker_item(item, index=index)
+        if not row:
+            continue
+        symbol = str(row.get("symbol") or "").upper()
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        normalized.append(row)
+    return normalized
+
+
 def _load_my_tickers(email: str) -> list[dict[str, Any]]:
     state = get_user_state(email)
-    tickers = list(state.get("my_tickers") or [])
+    raw_tickers = list(state.get("my_tickers") or [])
+    tickers = _normalize_my_tickers_list(raw_tickers)
     if not tickers:
         tickers = _seed_default_my_tickers(email)
+    elif tickers != raw_tickers:
+        save_user_state(
+            email,
+            state.get("watchlist") or [],
+            state.get("portfolio") or [],
+            my_tickers=tickers,
+        )
     return tickers
 
 

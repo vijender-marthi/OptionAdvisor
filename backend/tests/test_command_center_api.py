@@ -373,6 +373,92 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertEqual(row["day"]["option_risk_context"]["theta_risk"], "HIGH")
         self.assertIn("analyze_url", row["actions"])
 
+    def test_signal_feed_accepts_legacy_my_ticker_shapes(self) -> None:
+        storage.save_user_state(
+            "ccc_user@example.com",
+            [],
+            [],
+            my_tickers=[
+                "AAPL",
+                {"ticker": "MSFT", "categories": ["DAY_TRADE", "POSITION_TRADE"], "name": "Microsoft"},
+                {"symbol": "NVDA", "trade_type": "SWING_TRADE", "company": "NVIDIA"},
+                {"symbol": "ZZZ", "trade_types": ["DAY_TRADE"], "is_active": False},
+            ],
+        )
+
+        def fake_regular(ticker: str, **_kwargs):
+            return SimpleNamespace(
+                company_name=f"{ticker.upper()} Co",
+                reason="Fallback regular analysis.",
+                signals=SimpleNamespace(current_price=123.45, price_change_pct=2.1, price_change=2.5, trend="UPTREND", rsi=61.2, iv_rank=30),
+                recommendations=[SimpleNamespace(strategy="Long Call", bias="Bullish", total_score=75, expected_value=1, edge_ratio=1, dte=14, passes_liquidity_filter=True, passes_rr_filter=True)],
+                price_history=[],
+            )
+
+        def fake_day_scan(ticker: str, **_kwargs):
+            return SimpleNamespace(
+                ticker=ticker.upper(),
+                verdict="WATCH",
+                bias="long",
+                reasons=["Watch"],
+                metrics={"rs_vs_qqq_pct": 0.5},
+                trader_decision={},
+                bull_score=5.0,
+                bear_score=2.0,
+                entry_guidance={},
+                option_risk_context={},
+            )
+
+        def fake_swing_scan(ticker: str, **_kwargs):
+            return SimpleNamespace(
+                ticker=ticker.upper(),
+                verdict="WATCH",
+                bias="long",
+                reasons=["Swing watch"],
+                metrics={},
+                swing_bias="BULLISH",
+                entry_quality="WATCH",
+                risk_level="MEDIUM",
+                final_action="WATCH",
+                trade_quality_score=6.0,
+                decision_message="Watch",
+                confirmation_needed=[],
+                avoid_reason=None,
+                bull_score=6.0,
+                bear_score=2.0,
+            )
+
+        def fake_resolve(_payload: dict):
+            return SimpleNamespace(
+                market_bias="BULLISH",
+                setup_quality="WATCH",
+                verdict="WATCH",
+                confidence=65,
+                reason="Watch state.",
+                supporting_factors=[],
+                missing_confirmations=[],
+                risk_state="MEDIUM",
+            )
+
+        with (
+            patch.object(main_module, "_get_analysis_with_cache", side_effect=fake_regular),
+            patch.object(main_module, "run_day_trade_scan", side_effect=fake_day_scan),
+            patch.object(main_module, "run_swing_trade_scan", side_effect=fake_swing_scan),
+            patch.object(main_module, "resolve_trade_decision", side_effect=fake_resolve),
+        ):
+            all_rows = self.client.get("/api/signal-feed", params={"page_size": 100}).json()["data"]["rows"]
+            day_rows = self.client.get("/api/signal-feed", params={"source": "day", "page_size": 100}).json()["data"]["rows"]
+
+        all_symbols = {row["ticker"] for row in all_rows}
+        day_symbols = {row["ticker"] for row in day_rows}
+        self.assertEqual(all_symbols, {"AAPL", "MSFT", "NVDA"})
+        self.assertEqual(day_symbols, {"AAPL", "MSFT"})
+        self.assertNotIn("ZZZ", all_symbols)
+        by_symbol = {row["ticker"]: row for row in all_rows}
+        self.assertEqual(set(by_symbol["AAPL"]["sources"]), {"day", "regular", "swing"})
+        self.assertEqual(set(by_symbol["MSFT"]["sources"]), {"day", "regular"})
+        self.assertEqual(by_symbol["NVDA"]["sources"], ["swing"])
+
 
 if __name__ == "__main__":
     unittest.main()

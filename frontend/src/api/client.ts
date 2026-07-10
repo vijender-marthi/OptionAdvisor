@@ -656,10 +656,13 @@ function validateDayTradeWorkspaceResponse(value: unknown): asserts value is Day
   requireWorkspaceArray(value, 'chart.candles', missing)
   requireWorkspaceArray(value, 'chart.levels', missing)
   requireWorkspaceArray(value, 'chart.events', missing)
-  requireWorkspaceRecord(value, 'chart.vwapOverlay', missing)
-  requireWorkspaceString(value, 'chart.vwapOverlay.id', missing)
-  requireWorkspaceString(value, 'chart.vwapOverlay.label', missing)
-  requireWorkspaceArray(value, 'chart.vwapOverlay.points', missing)
+  const vwapOverlay = readPath(value, 'chart.vwapOverlay')
+  if (vwapOverlay !== null && vwapOverlay !== undefined) {
+    requireWorkspaceRecord(value, 'chart.vwapOverlay', missing)
+    requireWorkspaceString(value, 'chart.vwapOverlay.id', missing)
+    requireWorkspaceString(value, 'chart.vwapOverlay.label', missing)
+    requireWorkspaceArray(value, 'chart.vwapOverlay.points', missing)
+  }
   requireWorkspaceString(value, 'chart.defaults.interval', missing)
   requireWorkspaceString(value, 'chart.defaults.visibleRange', missing)
   requireWorkspaceString(value, 'chart.defaults.scaleMode', missing)

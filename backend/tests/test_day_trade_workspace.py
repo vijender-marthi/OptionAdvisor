@@ -173,6 +173,22 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual(workspace["decision"]["permission"]["code"], "ready")
         self.assertEqual(workspace["chart"]["defaults"]["interval"], "1m")
 
+    def test_route_returns_page_ready_unavailable_workspace_on_data_failure(self) -> None:
+        import main
+
+        with patch.object(main, "run_day_trade_scan", side_effect=ValueError("Not enough 1-minute data")):
+            workspace = main.day_trade_workspace(symbol="aapl", interval="1m", auth_email="vault@example.com")
+
+        self.assertEqual(workspace["schemaVersion"], "day-trade-workspace.v1")
+        self.assertEqual(workspace["symbol"]["ticker"], "AAPL")
+        self.assertEqual(workspace["decision"]["permission"]["code"], "blocked")
+        self.assertEqual(workspace["decision"]["permission"]["label"], "Data Unavailable")
+        self.assertFalse(workspace["decision"]["primaryAction"]["enabled"])
+        self.assertFalse(workspace["session"]["isExecutionAllowed"])
+        self.assertEqual(workspace["chart"]["candles"], [])
+        self.assertEqual(workspace["chart"]["vwapOverlay"]["id"], "session-vwap")
+        self.assertEqual(workspace["chart"]["vwapOverlay"]["points"], [])
+
     def test_workspace_response_model_accepts_assembler_contract(self) -> None:
         from day_trade_workspace import build_day_trade_workspace_response
         from day_trade_workspace_models import DayTradeWorkspaceResponse

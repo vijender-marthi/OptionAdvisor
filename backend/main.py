@@ -62,11 +62,11 @@ from unified_analysis import serialize_day_trade, serialize_swing_trade, seriali
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
-from day_trade_workspace import build_day_trade_workspace_response
+from day_trade_workspace import build_day_trade_workspace_response, build_day_trade_workspace_unavailable_response
 from day_trade_workspace_models import DayTradeWorkspaceResponse as DayTradeWorkspaceResponseModel
 from auth_routes import auth_router, ensure_same_user, require_access_email
 import exit_monitor
-from command_center_router import command_center_router, api_envelope, _seed_default_my_tickers
+from command_center_router import command_center_router, api_envelope, _normalize_my_tickers_list, _seed_default_my_tickers
 from decision_resolver import resolve_trade_decision
 from calculation_vault import (
     CALCULATION_ROUTER_VERSION,
@@ -1708,9 +1708,11 @@ def _signal_feed_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
         if not item.get("added_at") and added_at:
             item["added_at"] = added_at
 
-    for mt in state.get("my_tickers") or []:
+    for mt in _normalize_my_tickers_list(state.get("my_tickers") or []):
         sym = str(mt.get("symbol", "") or "").strip().upper()
         if not sym:
+            continue
+        if mt.get("is_active") is False:
             continue
         types = mt.get("trade_types") or ["regular"]
         company = str(mt.get("company_name", "") or "")
@@ -3118,15 +3120,28 @@ def day_trade_workspace(
     Trade workspace. It wraps existing Day Trade calculations; it does not add
     strategy rules.
     """
+    session_date_value = sessionDate if isinstance(sessionDate, str) and sessionDate.strip() else None
     try:
         return _build_day_trade_workspace_payload(
             symbol=symbol,
-            session_date=sessionDate,
+            session_date=session_date_value,
             interval=interval,
             force_refresh=force_refresh,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Unable to build Day Trade workspace: {exc}") from exc
+        logging.getLogger(__name__).warning(
+            "DAY_TRADE_WORKSPACE_UNAVAILABLE symbol=%s interval=%s sessionDate=%s error=%s",
+            symbol,
+            interval,
+            session_date_value,
+            exc,
+        )
+        return build_day_trade_workspace_unavailable_response(
+            symbol=symbol,
+            session_date=session_date_value,
+            interval=interval,
+            reason=f"Unable to build Day Trade workspace: {exc}",
+        )
 
 
 def _build_day_trade_workspace_payload(

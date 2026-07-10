@@ -590,3 +590,161 @@ def build_day_trade_workspace_response(
             "sourceIds": ["day_trade.run_day_trade_scan", "decision_resolver.resolve_trade_decision"],
         },
     }
+
+
+def build_day_trade_workspace_unavailable_response(
+    *,
+    symbol: str,
+    reason: str,
+    session_date: str | None = None,
+    interval: str = "1m",
+) -> dict[str, Any]:
+    """Return a safe page-ready workspace when source data is unavailable.
+
+    Bad or missing market data must never become a hidden frontend failure or a
+    trading recommendation. This fallback keeps the backend as the source of
+    truth while making the problem explicit in the production UI.
+    """
+    ticker = str(symbol or "").strip().upper() or "UNKNOWN"
+    clean_reason = str(reason or "").strip() or "Market data is unavailable."
+    session_date_value = session_date or date.today().isoformat()
+    permission = _status("blocked", "Data Unavailable", "danger", clean_reason)
+    trigger_view = {
+        "status": _status("data_unavailable", "Unavailable", "danger", clean_reason),
+        "summary": "Signal generation is paused until backend market data is available.",
+        "requirements": [
+            {
+                "id": "market_data_available",
+                "label": "Backend market data available",
+                "displayValue": "Unavailable",
+                "result": "fail",
+                "tone": "danger",
+            }
+        ],
+    }
+    risk_plan = {
+        "entry": _display_money(None),
+        "stop": _display_money(None),
+        "target1": _display_money(None),
+        "target2": _display_money(None),
+        "positionSize": _display_text("No position"),
+        "riskReward": _display_text("—"),
+    }
+    levels: list[dict[str, Any]] = []
+    events = [
+        {
+            "id": "market_data_unavailable",
+            "timestamp": _now_iso(),
+            "eventType": "data_error",
+            "title": "Market data unavailable",
+            "detail": clean_reason,
+            "tone": "danger",
+            "visibleByDefault": True,
+            "priority": 1,
+        }
+    ]
+    vwap_overlay = {
+        "id": "session-vwap",
+        "label": "VWAP",
+        "sessionDate": session_date_value,
+        "exchangeTimeZone": "America/New_York",
+        "anchorPolicy": "regular_session_open",
+        "includesExtendedHours": False,
+        "latestValue": None,
+        "latestAsOfUtc": None,
+        "visibleByDefault": True,
+        "affectsTradeFocusScale": False,
+        "points": [],
+    }
+    return {
+        "schemaVersion": DAY_TRADE_WORKSPACE_SCHEMA_VERSION,
+        "generatedAt": _now_iso(),
+        "symbol": {
+            "ticker": ticker,
+            "companyName": ticker,
+            "price": _display_money(None),
+            "change": _display_percent(None),
+        },
+        "session": {
+            "mode": "planning",
+            "status": _status("DATA_UNAVAILABLE", "Data Unavailable", "danger", clean_reason),
+            "sessionDate": session_date_value,
+            "displayDate": session_date_value,
+            "marketTimeZone": "America/New_York",
+            "isExecutionAllowed": False,
+            "reviewCopy": None,
+        },
+        "decision": {
+            "context": _status("DATA_UNAVAILABLE", "Data Unavailable", "danger", clean_reason),
+            "permission": permission,
+            "headline": "Market data unavailable",
+            "reason": clean_reason,
+            "nextCondition": "Retry after the backend market-data source recovers or cached intraday data becomes available.",
+            "setupName": "No trade",
+            "primaryAction": {
+                "id": "none",
+                "type": "none",
+                "label": "Unavailable",
+                "enabled": False,
+                "disabledReason": clean_reason,
+                "payload": {"ticker": ticker},
+            },
+            "secondaryActions": [
+                {"id": "save_review", "type": "save_review", "label": "Save Review", "enabled": True, "payload": {"ticker": ticker}},
+            ],
+        },
+        "trigger": trigger_view,
+        "riskPlan": risk_plan,
+        "evidence": [
+            {
+                "id": "data_unavailable",
+                "label": "Market data unavailable",
+                "detail": clean_reason,
+                "result": "fail",
+                "tone": "danger",
+                "order": 1,
+                "ruleId": "day_trade_workspace.data_unavailable",
+                "observedAt": _now_iso(),
+            }
+        ],
+        "selectedContract": None,
+        "chart": {
+            "candles": [],
+            "levels": levels,
+            "events": events,
+            "vwapOverlay": vwap_overlay,
+            "defaults": {
+                "interval": interval if interval in {"1m", "5m", "15m"} else "1m",
+                "visibleRange": "1h",
+                "initialVisibleBars": 100,
+                "initialBarSpacing": 10,
+                "minBarSpacing": 3,
+                "maxBarSpacing": 20,
+                "rightOffsetBars": 6,
+                "scaleMode": "trade_focus",
+                "followLive": False,
+                "visibleOverlayIds": ["session-vwap"],
+            },
+            "tradeFocus": {
+                "scalePaddingPercent": 8,
+                "levelIdsAllowedToAffectScale": [],
+            },
+        },
+        "tabs": _workspace_tabs(
+            symbol=ticker,
+            reason=clean_reason,
+            next_condition="Retry after backend data recovers.",
+            permission=permission,
+            trigger=trigger_view,
+            risk_plan=risk_plan,
+            option_risk={},
+            levels=levels,
+            events=events,
+            mode="planning",
+        ),
+        "provenance": {
+            "ruleSetVersion": "day-trade-workspace-assembler-2026.07",
+            "dataAsOf": None,
+            "sourceIds": ["day_trade_workspace.unavailable_fallback"],
+        },
+    }
