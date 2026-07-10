@@ -271,12 +271,14 @@ class CalculationVaultTests(unittest.TestCase):
 
     def test_supported_calculation_run_types_are_explicit(self) -> None:
         run_types = calculation_vault.list_supported_calculation_run_types()
-        self.assertEqual(len(run_types), 1)
-        self.assertEqual(run_types[0]["runType"], "trade_worksheet")
-        self.assertEqual(run_types[0]["engineVersion"], calculation_vault.TRADE_WORKSHEET_ENGINE_VERSION)
-        self.assertEqual(run_types[0]["formulaPackVersion"], calculation_vault.CURRENT_FORMULA_PACK_VERSION)
-        self.assertTrue(run_types[0]["snapshotSupported"])
-        self.assertEqual(run_types[0]["status"], "active")
+        self.assertEqual(len(run_types), 2)
+        by_type = {row["runType"]: row for row in run_types}
+        self.assertEqual(by_type["trade_worksheet"]["engineVersion"], calculation_vault.TRADE_WORKSHEET_ENGINE_VERSION)
+        self.assertEqual(by_type["day_trade_workspace"]["engineVersion"], calculation_vault.DAY_TRADE_WORKSPACE_ENGINE_VERSION)
+        for row in by_type.values():
+            self.assertEqual(row["formulaPackVersion"], calculation_vault.CURRENT_FORMULA_PACK_VERSION)
+            self.assertTrue(row["snapshotSupported"])
+            self.assertEqual(row["status"], "active")
 
     def test_snapshot_integrity_verification_passes_for_frozen_snapshot(self) -> None:
         snap = calculation_vault.create_calculation_snapshot(

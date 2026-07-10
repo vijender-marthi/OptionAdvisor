@@ -16,13 +16,13 @@ Implemented for:
 - Calculation run creation
 - Immutable calculation snapshot storage
 - Metric definitions for Trade Worksheet output
+- Day Trade Workspace final decision snapshots
 - Owner-scoped read APIs
 - Snapshot hash integrity verification
 - Snapshot audit-log display
 
 Not yet implemented for:
 
-- Day Trade
 - Scalp
 - Swing Trade
 - Position Trading
@@ -149,6 +149,7 @@ Current run types:
 
 | Run Type | Engine Version | Snapshot | Status |
 | --- | --- | --- | --- |
+| `day_trade_workspace` | `day-trade-workspace-engine-2026.07` | Yes | Active |
 | `trade_worksheet` | `trade-worksheet-engine-2026.07` | Yes | Active |
 
 Router version:
@@ -241,8 +242,8 @@ Frontend validation covers:
 Candidate order:
 
 1. Pre-Trade Analysis / Trade Worksheet complete.
-2. Day Trade Workspace V2 page-ready backend model in progress.
-3. Day Trade final decision snapshot.
+2. Day Trade Workspace V2 page-ready backend model complete.
+3. Day Trade final decision snapshot complete.
 4. Swing Trade final decision snapshot.
 5. Position Center exit snapshot.
 6. Signal Feed / Trade Scanner cached decision snapshot.
@@ -266,6 +267,7 @@ Implementation status:
 - Done: ticker selection is URL-backed with `?symbol=...`, while the old `?ticker=...` query is still accepted.
 - Done: Day Trade, Position, Swing, and All ticker lists render in the workspace drawer from persisted My Tickers data.
 - Done: Add Ticker and membership changes reuse the existing backend persistence APIs.
+- Done: `POST /api/v1/calculation-runs` supports `day_trade_workspace` and freezes the backend workspace output.
 - Pending: richer management interactions such as drag reorder and bulk edit should remain in the dedicated Manage My Tickers surface unless promoted later.
 - Pass: tests are split correctly between backend domain behavior, API contract, frontend presentation, chart interaction, and integration behavior.
 - Adjustment: implement as multiple PRs, not one large PR.

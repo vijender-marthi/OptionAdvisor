@@ -72,9 +72,11 @@ from calculation_vault import (
     CALCULATION_ROUTER_VERSION,
     CURRENT_FORMULA_PACK_VERSION,
     CURRENT_METRIC_DEFINITIONS_VERSION,
+    DAY_TRADE_WORKSPACE_ENGINE_VERSION,
     TRADE_WORKSHEET_ENGINE_VERSION,
     create_failed_calculation_run,
     create_calculation_snapshot,
+    day_trade_workspace_metric_definitions,
     list_metric_definitions,
     list_supported_calculation_run_types,
     trade_worksheet_metric_definitions,
@@ -3116,45 +3118,60 @@ def day_trade_workspace(
     Trade workspace. It wraps existing Day Trade calculations; it does not add
     strategy rules.
     """
-    ticker = symbol.strip().upper()
-    session_date_value = sessionDate if isinstance(sessionDate, str) and sessionDate.strip() else None
-    interval_value = interval if isinstance(interval, str) and interval in {"1m", "5m", "15m"} else "1m"
     try:
-        r = run_day_trade_scan(ticker, force_refresh=force_refresh)
-        resolved_obj = resolve_trade_decision(
-            {
-                "engine_type": "day",
-                "ticker": r.ticker,
-                "verdict": r.verdict,
-                "bias": r.bias,
-                "reasons": r.reasons,
-                "metrics": r.metrics,
-                "trader_decision": r.trader_decision,
-            }
-        )
-        timeframe_state = dict((r.metrics or {}).get("timeframe_state") or {})
-        timeframe_final = str(timeframe_state.get("final_decision") or (r.metrics or {}).get("timeframe_final_decision") or "").upper()
-        final_decision = timeframe_final or str(resolved_obj.verdict or "WAIT").upper()
-        resolved = {
-            "verdict": str(resolved_obj.verdict or "WAIT").upper(),
-            "final_decision": final_decision,
-            "market_bias": resolved_obj.market_bias,
-            "headline": final_decision.replace("_", " ").title(),
-            "reason": resolved_obj.reason,
-            "supporting_factors": list(resolved_obj.supporting_factors or []),
-            "missing_confirmations": list(resolved_obj.missing_confirmations or []),
-            "risk_state": resolved_obj.risk_state,
-            "confidence": resolved_obj.confidence,
-            "display_confidence": int(resolved_obj.display_confidence or 0),
-        }
-        return build_day_trade_workspace_response(
-            scan=r,
-            resolved=resolved,
-            session_date=session_date_value,
-            interval=interval_value,
+        return _build_day_trade_workspace_payload(
+            symbol=symbol,
+            session_date=sessionDate,
+            interval=interval,
+            force_refresh=force_refresh,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Unable to build Day Trade workspace: {exc}") from exc
+
+
+def _build_day_trade_workspace_payload(
+    *,
+    symbol: str,
+    session_date: str | None = None,
+    interval: str = "1m",
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    ticker = symbol.strip().upper()
+    session_date_value = session_date if isinstance(session_date, str) and session_date.strip() else None
+    interval_value = interval if isinstance(interval, str) and interval in {"1m", "5m", "15m"} else "1m"
+    r = run_day_trade_scan(ticker, force_refresh=force_refresh)
+    resolved_obj = resolve_trade_decision(
+        {
+            "engine_type": "day",
+            "ticker": r.ticker,
+            "verdict": r.verdict,
+            "bias": r.bias,
+            "reasons": r.reasons,
+            "metrics": r.metrics,
+            "trader_decision": r.trader_decision,
+        }
+    )
+    timeframe_state = dict((r.metrics or {}).get("timeframe_state") or {})
+    timeframe_final = str(timeframe_state.get("final_decision") or (r.metrics or {}).get("timeframe_final_decision") or "").upper()
+    final_decision = timeframe_final or str(resolved_obj.verdict or "WAIT").upper()
+    resolved = {
+        "verdict": str(resolved_obj.verdict or "WAIT").upper(),
+        "final_decision": final_decision,
+        "market_bias": resolved_obj.market_bias,
+        "headline": final_decision.replace("_", " ").title(),
+        "reason": resolved_obj.reason,
+        "supporting_factors": list(resolved_obj.supporting_factors or []),
+        "missing_confirmations": list(resolved_obj.missing_confirmations or []),
+        "risk_state": resolved_obj.risk_state,
+        "confidence": resolved_obj.confidence,
+        "display_confidence": int(resolved_obj.display_confidence or 0),
+    }
+    return build_day_trade_workspace_response(
+        scan=r,
+        resolved=resolved,
+        session_date=session_date_value,
+        interval=interval_value,
+    )
 
 
 class TradeCheckRequest(BaseModel):
@@ -6142,7 +6159,7 @@ def calculation_run_types(auth_email: str = Depends(require_access_email)):
 @app.post("/api/v1/calculation-runs", response_model=CalculationRunCreateResponse)
 def create_calculation_run_v1(request: CalculationRunCreateRequest, auth_email: str = Depends(require_access_email)):
     run_type = request.runType.strip().lower()
-    if run_type != "trade_worksheet":
+    if run_type not in {"trade_worksheet", "day_trade_workspace"}:
         detail = f"Unsupported calculation run type: {request.runType}"
         create_failed_calculation_run(
             run_type=run_type or "unknown",
@@ -6152,6 +6169,87 @@ def create_calculation_run_v1(request: CalculationRunCreateRequest, auth_email: 
             owner_email=auth_email,
         )
         raise HTTPException(status_code=400, detail=detail)
+
+    if run_type == "day_trade_workspace":
+        input_payload = dict(request.input or {})
+        symbol = str(input_payload.get("symbol") or input_payload.get("ticker") or "").strip().upper()
+        interval = str(input_payload.get("interval") or "1m").strip()
+        session_date = input_payload.get("sessionDate") or input_payload.get("session_date")
+        force_refresh = bool(input_payload.get("forceRefresh") or input_payload.get("force_refresh") or False)
+        if not symbol:
+            detail = "Invalid day_trade_workspace input: symbol is required"
+            create_failed_calculation_run(
+                run_type="day_trade_workspace",
+                input_payload=input_payload,
+                error=detail,
+                engine_version=DAY_TRADE_WORKSPACE_ENGINE_VERSION,
+                owner_email=auth_email,
+            )
+            raise HTTPException(status_code=422, detail=detail)
+        if interval not in {"1m", "5m", "15m"}:
+            detail = "Invalid day_trade_workspace input: interval must be 1m, 5m, or 15m"
+            create_failed_calculation_run(
+                run_type="day_trade_workspace",
+                input_payload=input_payload,
+                error=detail,
+                engine_version=DAY_TRADE_WORKSPACE_ENGINE_VERSION,
+                owner_email=auth_email,
+            )
+            raise HTTPException(status_code=422, detail=detail)
+        try:
+            result = _build_day_trade_workspace_payload(
+                symbol=symbol,
+                session_date=str(session_date).strip() if session_date else None,
+                interval=interval,
+                force_refresh=force_refresh,
+            )
+        except Exception as exc:
+            detail = f"Unable to build Day Trade workspace: {exc}"
+            create_failed_calculation_run(
+                run_type="day_trade_workspace",
+                input_payload=input_payload,
+                error=detail,
+                engine_version=DAY_TRADE_WORKSPACE_ENGINE_VERSION,
+                owner_email=auth_email,
+            )
+            raise HTTPException(status_code=502, detail=detail) from exc
+
+        metric_definitions = day_trade_workspace_metric_definitions()
+        snapshot = create_calculation_snapshot(
+            run_type="day_trade_workspace",
+            input_payload={
+                "symbol": symbol,
+                "sessionDate": str(session_date).strip() if session_date else None,
+                "interval": interval,
+                "forceRefresh": force_refresh,
+            },
+            output_payload=result,
+            engine_version=DAY_TRADE_WORKSPACE_ENGINE_VERSION,
+            owner_email=auth_email,
+            formula_pack_version=CURRENT_FORMULA_PACK_VERSION,
+            metric_definitions=metric_definitions,
+        )
+        result = {
+            **result,
+            "calculationSnapshot": {
+                "runId": snapshot["run_id"],
+                "snapshotId": snapshot["snapshot_id"],
+                "engineVersion": snapshot["engine_version"],
+                "formulaPackVersion": snapshot["formula_pack_version"],
+                "metricDefinitionsVersion": snapshot["metric_definitions_version"],
+                "inputHash": snapshot["input_hash"],
+                "outputHash": snapshot["output_hash"],
+                "frozenAtMs": snapshot["frozen_at_ms"],
+            },
+        }
+        run = snapshot
+        from calculation_vault import get_calculation_run, get_calculation_snapshot
+
+        run_row = get_calculation_run(snapshot["run_id"], owner_email=auth_email)
+        snapshot_row = get_calculation_snapshot(snapshot["snapshot_id"], owner_email=auth_email)
+        if run_row is None or snapshot_row is None:
+            raise HTTPException(status_code=500, detail="Calculation snapshot was not created")
+        return {"run": run_row, "snapshot": snapshot_row, "result": result}
 
     try:
         worksheet_request = TradeWorksheetEvaluateRequest(**request.input)

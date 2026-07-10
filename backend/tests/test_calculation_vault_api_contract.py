@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -37,12 +38,15 @@ class CalculationVaultApiContractTests(unittest.TestCase):
 
         result = main.calculation_run_types(auth_email="vault@example.com")
         self.assertEqual(result["routerVersion"], calculation_vault.CALCULATION_ROUTER_VERSION)
-        self.assertEqual(result["count"], 1)
-        first = result["runTypes"][0]
-        self.assertEqual(first["runType"], "trade_worksheet")
-        self.assertEqual(first["engineVersion"], calculation_vault.TRADE_WORKSHEET_ENGINE_VERSION)
-        self.assertEqual(first["metricDefinitionsVersion"], calculation_vault.CURRENT_METRIC_DEFINITIONS_VERSION)
-        self.assertTrue(first["snapshotSupported"])
+        self.assertEqual(result["count"], 2)
+        by_type = {row["runType"]: row for row in result["runTypes"]}
+        self.assertIn("trade_worksheet", by_type)
+        self.assertIn("day_trade_workspace", by_type)
+        self.assertEqual(by_type["trade_worksheet"]["engineVersion"], calculation_vault.TRADE_WORKSHEET_ENGINE_VERSION)
+        self.assertEqual(by_type["day_trade_workspace"]["engineVersion"], calculation_vault.DAY_TRADE_WORKSPACE_ENGINE_VERSION)
+        self.assertEqual(by_type["trade_worksheet"]["metricDefinitionsVersion"], calculation_vault.CURRENT_METRIC_DEFINITIONS_VERSION)
+        self.assertTrue(by_type["trade_worksheet"]["snapshotSupported"])
+        self.assertTrue(by_type["day_trade_workspace"]["snapshotSupported"])
 
     def test_vault_endpoints_are_exposed_in_openapi_contract(self) -> None:
         import main
@@ -231,6 +235,87 @@ class CalculationVaultApiContractTests(unittest.TestCase):
         self.assertEqual(result["snapshot"]["owner_email"], "vault@example.com")
         self.assertEqual(result["result"]["summary"]["ticker"], "AAPL")
         self.assertEqual(result["result"]["calculationSnapshot"]["runId"], result["run"]["run_id"])
+
+    def test_create_calculation_run_delegates_day_trade_workspace_snapshot(self) -> None:
+        import main
+
+        scan = SimpleNamespace(
+            ticker="AAPL",
+            company_name="Apple Inc.",
+            verdict="READY",
+            bias="long",
+            reasons=["Backend confirmed VWAP-supported setup."],
+            metrics={
+                "session_date": "2026-07-09",
+                "market_state": "REGULAR",
+                "session_phase": "Morning",
+                "market_bias": "bullish",
+                "last_price": 312.25,
+                "change_pct": 1.2,
+                "trigger_setup": "ORH Breakout",
+                "trigger_fired": True,
+                "trigger_requirement": "5m close above 312.00",
+                "or_high": 312.0,
+                "or_low": 308.0,
+                "vwap": 310.5,
+                "data_quality_status": "OK",
+                "chart_bars": [
+                    {"t": "2026-07-09T09:30:00-04:00", "o": 309.0, "h": 310.0, "l": 308.5, "c": 309.5, "v": 1000, "vwap": 309.3333},
+                    {"t": "2026-07-09T09:31:00-04:00", "o": 309.5, "h": 312.5, "l": 309.2, "c": 312.25, "v": 1500, "vwap": 310.4167},
+                ],
+                "timeframe_state": {"final_decision": "READY"},
+            },
+            trader_decision={"decision_message": "Backend says setup is ready."},
+            entry_guidance={
+                "entry_price": 312.0,
+                "risk_below": 309.5,
+                "scalp_target": 314.0,
+                "target_2": 316.0,
+                "rr_ratio": "1.6:1",
+            },
+            option_risk_context={"recommended_contracts": "1 contract"},
+        )
+        resolved = SimpleNamespace(
+            verdict="READY",
+            market_bias="BULLISH",
+            reason="Backend confirmed trigger.",
+            supporting_factors=[],
+            missing_confirmations=[],
+            risk_state="LOW",
+            confidence=88,
+            display_confidence=88,
+        )
+        request = main.CalculationRunCreateRequest(
+            runType="day_trade_workspace",
+            input={"symbol": "aapl", "sessionDate": "2026-07-09", "interval": "5m"},
+        )
+        with patch.object(main, "run_day_trade_scan", return_value=scan) as scan_mock:
+            with patch.object(main, "resolve_trade_decision", return_value=resolved):
+                result = main.create_calculation_run_v1(request, auth_email="vault@example.com")
+
+        scan_mock.assert_called_once()
+        self.assertEqual(result["run"]["run_type"], "day_trade_workspace")
+        self.assertEqual(result["run"]["engine_version"], calculation_vault.DAY_TRADE_WORKSPACE_ENGINE_VERSION)
+        self.assertEqual(result["snapshot"]["run_type"], "day_trade_workspace")
+        self.assertEqual(result["snapshot"]["owner_email"], "vault@example.com")
+        self.assertEqual(result["result"]["symbol"]["ticker"], "AAPL")
+        self.assertEqual(result["result"]["chart"]["defaults"]["interval"], "5m")
+        self.assertEqual(result["result"]["calculationSnapshot"]["runId"], result["run"]["run_id"])
+        self.assertEqual(result["snapshot"]["output"]["symbol"]["ticker"], "AAPL")
+        self.assertEqual(result["snapshot"]["input"]["symbol"], "AAPL")
+
+    def test_create_calculation_run_records_failed_day_trade_workspace_input(self) -> None:
+        import main
+
+        request = main.CalculationRunCreateRequest(runType="day_trade_workspace", input={"interval": "1m"})
+        with self.assertRaises(HTTPException) as ctx:
+            main.create_calculation_run_v1(request, auth_email="vault@example.com")
+        self.assertEqual(ctx.exception.status_code, 422)
+        failed = calculation_vault.list_calculation_runs(owner_email="vault@example.com", status="FAILED")
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["run_type"], "day_trade_workspace")
+        self.assertEqual(failed[0]["engine_version"], calculation_vault.DAY_TRADE_WORKSPACE_ENGINE_VERSION)
+        self.assertIn("symbol is required", failed[0]["error"])
 
     def test_create_calculation_run_rejects_unsupported_type(self) -> None:
         import main

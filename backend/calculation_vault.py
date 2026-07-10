@@ -19,6 +19,7 @@ CURRENT_FORMULA_PACK_VERSION = "formula-pack-2026.07"
 CURRENT_METRIC_DEFINITIONS_VERSION = "metric-definitions-2026.07.1"
 CALCULATION_ROUTER_VERSION = "calculation-router-2026.07"
 TRADE_WORKSHEET_ENGINE_VERSION = "trade-worksheet-engine-2026.07"
+DAY_TRADE_WORKSPACE_ENGINE_VERSION = "day-trade-workspace-engine-2026.07"
 
 
 SUPPORTED_CALCULATION_RUN_TYPES: dict[str, dict[str, Any]] = {
@@ -27,6 +28,16 @@ SUPPORTED_CALCULATION_RUN_TYPES: dict[str, dict[str, Any]] = {
         "label": "Trade Worksheet",
         "description": "Pre-trade options worksheet calculation with frozen risk, payoff, probability, and strategy-comparison output.",
         "engineVersion": TRADE_WORKSHEET_ENGINE_VERSION,
+        "formulaPackVersion": CURRENT_FORMULA_PACK_VERSION,
+        "metricDefinitionsVersion": CURRENT_METRIC_DEFINITIONS_VERSION,
+        "snapshotSupported": True,
+        "status": "active",
+    },
+    "day_trade_workspace": {
+        "runType": "day_trade_workspace",
+        "label": "Day Trade Workspace",
+        "description": "Page-ready Day Trade decision workspace with frozen permission, trigger, risk plan, evidence, chart levels, and VWAP overlay.",
+        "engineVersion": DAY_TRADE_WORKSPACE_ENGINE_VERSION,
         "formulaPackVersion": CURRENT_FORMULA_PACK_VERSION,
         "metricDefinitionsVersion": CURRENT_METRIC_DEFINITIONS_VERSION,
         "snapshotSupported": True,
@@ -264,6 +275,12 @@ TRADE_WORKSHEET_METRIC_IDS = [
 ]
 
 
+DAY_TRADE_WORKSPACE_METRIC_IDS = [
+    "trade_quality_score",
+    "risk_level",
+]
+
+
 def canonical_json(value: Any) -> str:
     """Stable JSON representation used for hashing snapshot inputs/outputs."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -434,6 +451,11 @@ def resolve_metric_definitions(metric_ids: list[str] | tuple[str, ...] | set[str
 def trade_worksheet_metric_definitions() -> list[dict[str, Any]]:
     """Metric definitions used by the Trade Worksheet response contract."""
     return resolve_metric_definitions(TRADE_WORKSHEET_METRIC_IDS)
+
+
+def day_trade_workspace_metric_definitions() -> list[dict[str, Any]]:
+    """Metric definitions used by the Day Trade Workspace snapshot contract."""
+    return resolve_metric_definitions(DAY_TRADE_WORKSPACE_METRIC_IDS)
 
 
 def list_supported_calculation_run_types() -> list[dict[str, Any]]:

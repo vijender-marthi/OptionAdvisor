@@ -267,7 +267,7 @@ export async function fetchSignalFeed(params: {
   /** Pass true only when user explicitly clicks Refresh — not on normal page load */
   refresh?: boolean
 }): Promise<ApiEnvelope<SignalFeedPayload>> {
-  const { data } = await api.get<ApiEnvelope<SignalFeedPayload>>('/signal-feed', {
+  const { data } = await api.get<unknown>('/signal-feed', {
     params: {
       search: params.search || undefined,
       source: params.source || undefined,
@@ -278,7 +278,7 @@ export async function fetchSignalFeed(params: {
       refresh: params.refresh ? true : undefined,
     },
   })
-  return data
+  return normalizeCommandCenterEnvelope(data) as unknown as ApiEnvelope<SignalFeedPayload>
 }
 
 /** Explicit cache-refresh — only called when user clicks Refresh button */
@@ -287,8 +287,12 @@ export async function refreshSignalFeed(): Promise<ApiEnvelope<{
   refreshed_tickers: string[]
   cache: { cache_hits: number; cache_misses: number; elapsed_ms: number }
 }>> {
-  const { data } = await api.post('/signal-feed/refresh')
-  return data
+  const { data } = await api.post<unknown>('/signal-feed/refresh')
+  return normalizeCommandCenterEnvelope(data) as unknown as ApiEnvelope<{
+    ok: boolean
+    refreshed_tickers: string[]
+    cache: { cache_hits: number; cache_misses: number; elapsed_ms: number }
+  }>
 }
 
 export async function createSignalFeedAlert(payload: {
