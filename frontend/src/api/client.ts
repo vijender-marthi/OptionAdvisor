@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AlertEmailItem, AlertEntry, AnalyzeResponse, DayTradeAlertEvent, PortfolioPosition, StrategyMode, UserDataState, WatchlistItem } from '../types'
+import { API_OPERATION_BY_ID, type ApiOperationId } from './generated/openapi-types'
 
 export const api = axios.create({ baseURL: '/api' })
 
@@ -41,6 +42,33 @@ api.interceptors.response.use(
     return Promise.reject(err)
   },
 )
+
+function generatedApiPath(
+  operationId: ApiOperationId,
+  pathParams: Record<string, string | number> = {},
+): string {
+  const operation = API_OPERATION_BY_ID[operationId]
+  let path: string = operation.path
+  if (!path.startsWith('/api/')) {
+    throw new Error(`Generated operation ${operationId} is outside the /api client base path`)
+  }
+  path = path.slice('/api'.length)
+  for (const [key, rawValue] of Object.entries(pathParams)) {
+    path = path.replace(`{${key}}`, encodeURIComponent(String(rawValue)))
+  }
+  return path
+}
+
+const VAULT_OPERATION_IDS = {
+  metricDefinitions: 'metric_definitions_api_v1_metric_definitions_get',
+  calculationRunTypes: 'calculation_run_types_api_v1_calculation_run_types_get',
+  createCalculationRun: 'create_calculation_run_v1_api_v1_calculation_runs_post',
+  calculationRuns: 'calculation_runs_api_v1_calculation_runs_get',
+  calculationRun: 'calculation_run_api_v1_calculation_runs__run_id__get',
+  calculationSnapshot: 'calculation_snapshot_api_v1_calculation_snapshots__snapshot_id__get',
+  calculationSnapshotIntegrity: 'calculation_snapshot_integrity_api_v1_calculation_snapshots__snapshot_id__integrity_get',
+  calculationSnapshotAuditLog: 'calculation_snapshot_audit_log_api_v1_calculation_snapshots__snapshot_id__audit_log_get',
+} as const satisfies Record<string, ApiOperationId>
 
 export interface AuthLoginResponse {
   access_token: string
@@ -941,19 +969,26 @@ export interface TradeWorksheetEvaluation {
 }
 
 export const fetchMetricDefinitions = async (): Promise<MetricDefinitionsResponse> => {
-  const { data } = await api.get<MetricDefinitionsResponse>('/v1/metric-definitions')
+  const { data } = await api.get<MetricDefinitionsResponse>(
+    generatedApiPath(VAULT_OPERATION_IDS.metricDefinitions),
+  )
   return data
 }
 
 export const fetchCalculationRunTypes = async (): Promise<CalculationRunTypesResponse> => {
-  const { data } = await api.get<CalculationRunTypesResponse>('/v1/calculation-run-types')
+  const { data } = await api.get<CalculationRunTypesResponse>(
+    generatedApiPath(VAULT_OPERATION_IDS.calculationRunTypes),
+  )
   return data
 }
 
 export const createCalculationRun = async <T = Record<string, unknown>>(
   payload: CalculationRunCreateRequest,
 ): Promise<CalculationRunCreateResponse<T>> => {
-  const { data } = await api.post<CalculationRunCreateResponse<T>>('/v1/calculation-runs', payload)
+  const { data } = await api.post<CalculationRunCreateResponse<T>>(
+    generatedApiPath(VAULT_OPERATION_IDS.createCalculationRun),
+    payload,
+  )
   return data
 }
 
@@ -962,37 +997,51 @@ export const fetchCalculationRuns = async (params?: {
   run_type?: string
   limit?: number
 }): Promise<CalculationRunsListResponse> => {
-  const { data } = await api.get<CalculationRunsListResponse>('/v1/calculation-runs', { params })
+  const { data } = await api.get<CalculationRunsListResponse>(
+    generatedApiPath(VAULT_OPERATION_IDS.calculationRuns),
+    { params },
+  )
   return data
 }
 
 export const fetchCalculationRun = async (runId: string): Promise<CalculationRun> => {
-  const { data } = await api.get<CalculationRun>(`/v1/calculation-runs/${encodeURIComponent(runId)}`)
+  const { data } = await api.get<CalculationRun>(
+    generatedApiPath(VAULT_OPERATION_IDS.calculationRun, { run_id: runId }),
+  )
   return data
 }
 
 export const fetchCalculationSnapshot = async (snapshotId: string): Promise<CalculationSnapshot> => {
-  const { data } = await api.get<CalculationSnapshot>(`/v1/calculation-snapshots/${encodeURIComponent(snapshotId)}`)
+  const { data } = await api.get<CalculationSnapshot>(
+    generatedApiPath(VAULT_OPERATION_IDS.calculationSnapshot, { snapshot_id: snapshotId }),
+  )
   return data
 }
 
 export const fetchCalculationSnapshotIntegrity = async (snapshotId: string): Promise<CalculationSnapshotIntegrity> => {
-  const { data } = await api.get<CalculationSnapshotIntegrity>(`/v1/calculation-snapshots/${encodeURIComponent(snapshotId)}/integrity`)
+  const { data } = await api.get<CalculationSnapshotIntegrity>(
+    generatedApiPath(VAULT_OPERATION_IDS.calculationSnapshotIntegrity, { snapshot_id: snapshotId }),
+  )
   return data
 }
 
 export const fetchCalculationSnapshotAuditLog = async (snapshotId: string): Promise<CalculationSnapshotAuditLog> => {
-  const { data } = await api.get<CalculationSnapshotAuditLog>(`/v1/calculation-snapshots/${encodeURIComponent(snapshotId)}/audit-log`)
+  const { data } = await api.get<CalculationSnapshotAuditLog>(
+    generatedApiPath(VAULT_OPERATION_IDS.calculationSnapshotAuditLog, { snapshot_id: snapshotId }),
+  )
   return data
 }
 
 export const evaluateTradeWorksheet = async (
   payload: TradeWorksheetEvaluateRequest,
 ): Promise<TradeWorksheetEvaluation> => {
-  const { data } = await api.post<CalculationRunCreateResponse<TradeWorksheetEvaluation>>('/v1/calculation-runs', {
-    runType: 'trade_worksheet',
-    input: { ...payload },
-  })
+  const { data } = await api.post<CalculationRunCreateResponse<TradeWorksheetEvaluation>>(
+    generatedApiPath(VAULT_OPERATION_IDS.createCalculationRun),
+    {
+      runType: 'trade_worksheet',
+      input: { ...payload },
+    },
+  )
   return data.result
 }
 

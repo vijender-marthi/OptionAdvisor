@@ -9,8 +9,10 @@
     "test": "npm run test:backend && tsc --noEmit",
     "build": "npm run test:backend && tsc && vite build",
     "preview": "vite preview",
+    "generate:openapi": "python3 ../backend/scripts/export_openapi.py && node scripts/generate-openapi-types.mjs",
+    "check:openapi": "npm run generate:openapi && git diff --exit-code -- src/api/generated/openapi.json src/api/generated/openapi-types.ts",
     "validate:engine": "cd ../backend && python3 tests/run_engine_regression.py",
-    "validate:ui": "node scripts/check-business-logic-boundary.mjs && tsc --noEmit",
+    "validate:ui": "npm run check:openapi && node scripts/check-business-logic-boundary.mjs && tsc --noEmit",
     "validate": "npm run validate:engine && npm run validate:ui",
     "validate:full": "npm run validate:engine && npm run test:backend && tsc --noEmit && vite build"
   },

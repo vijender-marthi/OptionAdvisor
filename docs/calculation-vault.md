@@ -302,6 +302,13 @@ Examples:
 
 Generate frontend types from FastAPI OpenAPI instead of maintaining hand-written TypeScript interfaces.
 
+Implementation status:
+
+- Started: FastAPI OpenAPI is exported to `frontend/src/api/generated/openapi.json`.
+- Started: frontend operation/path metadata is generated in `frontend/src/api/generated/openapi-types.ts`.
+- Started: `npm --prefix frontend run validate:ui` now checks that generated OpenAPI artifacts are current before running the business-logic boundary guard and TypeScript.
+- Pending: replace hand-written endpoint response types in `frontend/src/api/client.ts` and `frontend/src/api/commandCenter.ts` incrementally with generated schema-backed types.
+
 ### Phase 5: Design Vault
 
 Create shared frontend primitives:
