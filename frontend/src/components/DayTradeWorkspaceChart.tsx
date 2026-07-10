@@ -30,6 +30,7 @@ const PRICE_TOP = 20
 const PRICE_BOTTOM = 388
 const VOLUME_TOP = 412
 const VOLUME_BOTTOM = 500
+const VWAP_STROKE = '#facc15'
 
 function toneStroke(tone: DayTradeSemanticTone): string {
   if (tone === 'positive') return 'var(--semantic-bullish)'
@@ -374,8 +375,8 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
               key={`vwap-${index}`}
               d={path}
               fill="none"
-              stroke="var(--semantic-info)"
-              strokeWidth="2"
+              stroke={VWAP_STROKE}
+              strokeWidth="2.4"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -409,9 +410,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         })}
         {vwapVisible && latestVwap != null && clampedLatestVwapY != null && (
           <g>
-            <line x1={WIDTH - 120} x2={WIDTH} y1={clampedLatestVwapY} y2={clampedLatestVwapY} stroke="var(--semantic-info)" strokeWidth="2" />
-            <rect x={WIDTH - 116} y={clampedLatestVwapY - 12} width="112" height="24" rx="6" className="fill-white/95 dark:fill-slate-950/95" />
-            <text x={WIDTH - 60} y={clampedLatestVwapY + 4} textAnchor="middle" className="fill-slate-700 text-[11px] font-bold dark:fill-slate-200">
+            <line x1={WIDTH - 120} x2={WIDTH} y1={clampedLatestVwapY} y2={clampedLatestVwapY} stroke={VWAP_STROKE} strokeWidth="2.4" />
+            <rect x={WIDTH - 116} y={clampedLatestVwapY - 12} width="112" height="24" rx="6" className="fill-amber-50 stroke-amber-300 dark:fill-slate-950/95 dark:stroke-amber-300/80" />
+            <text x={WIDTH - 60} y={clampedLatestVwapY + 4} textAnchor="middle" className="fill-amber-700 text-[11px] font-bold dark:fill-amber-200">
               VWAP {formatUsd(latestVwap)}{latestVwapOffscreen ? (latestVwapY! < PRICE_TOP ? ' ↑' : ' ↓') : ''}
             </text>
           </g>
