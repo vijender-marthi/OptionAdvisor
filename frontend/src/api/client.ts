@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { AlertEmailItem, AlertEntry, AnalyzeResponse, DayTradeAlertEvent, PortfolioPosition, StrategyMode, UserDataState, WatchlistItem } from '../types'
-import { API_OPERATION_BY_ID, type ApiOperationId } from './generated/openapi-types'
+import { API_OPERATION_BY_ID, type ApiOperationId, type ApiSchemas } from './generated/openapi-types'
 
 export const api = axios.create({ baseURL: '/api' })
 
@@ -741,54 +741,18 @@ export const fetchOptionChainLiquidity = async (
   return data
 }
 
-export interface TradeWorksheetEvaluateRequest {
-  ticker: string
-  direction: string
-  strategy: string
-  strike: number
-  shortStrike: number
-  longStrike: number
-  shortPutStrike: number
-  longPutStrike: number
-  shortCallStrike: number
-  longCallStrike: number
-  expiration: string
-  sellExpiration: string
-  buyExpiration: string
-  premium: number
-  contracts: number
-  stockPrice: number
-  targetPrice: number
-  expectedHoldDays: number
-  buyingPower: number
-  ivRank: number
-  ivPercentile: number
-  historicalVolatility: number
-  selectedRow?: OptionChainRow | null
-  selectedLegRows?: Record<string, OptionChainRow | null> | null
-  priceMove: number
-  ivMove: number
-  daysPassed: number
-}
-
-export interface MetricDefinition {
-  metricId: string
-  label: string
-  category: string
-  unit: string
-  formulaId: string
-  formulaVersion: string
-  shortDescription: string
-  longDescription: string
+export type TradeWorksheetSelectedRow = ApiSchemas['TradeWorksheetSelectedRow']
+export type TradeWorksheetEvaluateRequest =
+  Omit<ApiSchemas['TradeWorksheetEvaluateRequest'], 'selectedRow' | 'selectedLegRows'> & {
+    selectedRow?: OptionChainRow | null
+    selectedLegRows?: Record<string, OptionChainRow | null> | null
+  }
+export type MetricDefinition = ApiSchemas['MetricDefinitionOut'] & {
   inputsUsed: string[]
   displayRules: Record<string, unknown>
 }
-
-export interface MetricDefinitionsResponse {
-  formulaPackVersion: string
-  metricDefinitionsVersion: string
-  metrics: MetricDefinition[]
-}
+export type MetricDefinitionsResponse =
+  Omit<ApiSchemas['MetricDefinitionsResponse'], 'metrics'> & { metrics: MetricDefinition[] }
 
 export interface CalculationSnapshotMetadata {
   runId: string
@@ -801,100 +765,39 @@ export interface CalculationSnapshotMetadata {
   frozenAtMs: number
 }
 
-export interface CalculationRun {
-  run_id: string
-  run_type: string
-  status: string
-  engine_version: string
-  formula_pack_version: string
-  owner_email: string
-  input_hash: string
-  output_hash: string
-  snapshot_id: string | null
-  input: Record<string, unknown>
-  error: string
-  created_at_ms: number
-  completed_at_ms: number | null
-}
+export type CalculationRun = ApiSchemas['CalculationRunResponse']
+export type CalculationSnapshot =
+  Omit<ApiSchemas['CalculationSnapshotResponse'], 'input' | 'metric_definitions' | 'output'> & {
+    input: Record<string, unknown>
+    metric_definitions: MetricDefinition[]
+    output: Record<string, unknown>
+  }
+export type CalculationSnapshotIntegrity =
+  Omit<ApiSchemas['CalculationSnapshotIntegrityResponse'], 'mismatches'> & { mismatches: string[] }
+export type CalculationSnapshotAuditEvent =
+  ApiSchemas['CalculationSnapshotAuditEventResponse'] & { event: Record<string, unknown> }
+export type CalculationSnapshotAuditLog =
+  Omit<ApiSchemas['CalculationSnapshotAuditLogResponse'], 'count' | 'events'> & {
+    events: CalculationSnapshotAuditEvent[]
+    count: number
+  }
+export type CalculationRunCreateRequest = ApiSchemas['CalculationRunCreateRequest']
 
-export interface CalculationSnapshot {
-  snapshot_id: string
-  run_id: string
-  run_type: string
-  engine_version: string
-  formula_pack_version: string
-  metric_definitions_version: string
-  owner_email: string
-  input_hash: string
-  output_hash: string
-  input: Record<string, unknown>
-  output: Record<string, unknown>
-  metric_definitions: MetricDefinition[]
-  created_at_ms: number
-  frozen_at_ms: number
-}
+type GeneratedCalculationRunCreateResponse = ApiSchemas['CalculationRunCreateResponse']
+export type CalculationRunCreateResponse<T = Record<string, unknown>> =
+  Omit<GeneratedCalculationRunCreateResponse, 'result'> & { result: T }
 
-export interface CalculationSnapshotIntegrity {
-  snapshot_id: string
-  run_id: string
-  verified: boolean
-  input_hash_matches: boolean
-  output_hash_matches: boolean
-  run_hash_matches: boolean
-  stored_input_hash: string
-  computed_input_hash: string
-  stored_output_hash: string
-  computed_output_hash: string
-  mismatches: string[]
-  verified_at_ms: number
-}
-
-export interface CalculationSnapshotAuditEvent {
-  audit_id: string
-  snapshot_id: string
-  event_type: string
-  event: Record<string, unknown>
-  created_at_ms: number
-}
-
-export interface CalculationSnapshotAuditLog {
-  snapshot_id: string
-  events: CalculationSnapshotAuditEvent[]
-  count: number
-}
-
-export interface CalculationRunCreateRequest {
-  runType: 'trade_worksheet' | string
-  input: Record<string, unknown>
-}
-
-export interface CalculationRunCreateResponse<T = Record<string, unknown>> {
-  run: CalculationRun
-  snapshot: CalculationSnapshot
-  result: T
-}
-
-export interface CalculationRunsListResponse {
-  runs: CalculationRun[]
-  count: number
-}
-
-export interface CalculationRunType {
-  runType: string
-  label: string
-  description: string
-  engineVersion: string
-  formulaPackVersion: string
-  metricDefinitionsVersion: string
-  snapshotSupported: boolean
-  status: string
-}
-
-export interface CalculationRunTypesResponse {
-  routerVersion: string
-  runTypes: CalculationRunType[]
-  count: number
-}
+export type CalculationRunsListResponse =
+  Omit<ApiSchemas['CalculationRunsListResponse'], 'count' | 'runs'> & {
+    runs: CalculationRun[]
+    count: number
+  }
+export type CalculationRunType = ApiSchemas['CalculationRunTypeResponse']
+export type CalculationRunTypesResponse =
+  Omit<ApiSchemas['CalculationRunTypesResponse'], 'count' | 'runTypes'> & {
+    runTypes: CalculationRunType[]
+    count: number
+  }
 
 export interface TradeWorksheetEvaluation {
   summary: {

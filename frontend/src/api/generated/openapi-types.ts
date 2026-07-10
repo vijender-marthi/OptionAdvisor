@@ -14,6 +14,955 @@ export type ApiPath = "/" | "/api/admin/db-check" | "/api/admin/flush-cache" | "
 
 export type ApiOperationId = "acknowledge_exit_signal_api_exit_signals_acknowledge_post" | "active_trade_decision_one_api_trades__trade_id__decision_get" | "active_trade_enter_api_trades_enter_post" | "active_trade_exit_api_api_trades__trade_id__exit_post" | "active_trades_list_api_trades_active_get" | "add_to_watchlist_api_desk_watchlist_post" | "admin_db_check_api_admin_db_check_get" | "admin_flush_cache_api_admin_flush_cache_post" | "admin_set_role_api_admin_set_role_post" | "alert_count_api_desk_alerts_count_get" | "alert_history_api_desk_alerts_history_get" | "analyze_api_analyze_post" | "api_get_dashboard_tickers_api_dashboard_tickers_get" | "api_save_dashboard_tickers_api_dashboard_tickers_post" | "auth_activate_api_auth_activate_get" | "auth_forgot_password_api_auth_forgot_password_post" | "auth_google_api_auth_google_post" | "auth_login_api_auth_login_post" | "auth_register_api_auth_register_post" | "auth_reset_password_api_auth_reset_password_post" | "backtest_strategy_api_backtest_post" | "backtest_strategy_proxy_alias_backtest_post" | "calculation_run_api_v1_calculation_runs__run_id__get" | "calculation_run_types_api_v1_calculation_run_types_get" | "calculation_runs_api_v1_calculation_runs_get" | "calculation_snapshot_api_v1_calculation_snapshots__snapshot_id__get" | "calculation_snapshot_audit_log_api_v1_calculation_snapshots__snapshot_id__audit_log_get" | "calculation_snapshot_integrity_api_v1_calculation_snapshots__snapshot_id__integrity_get" | "carry_trade_scan_api_carry_trade_post" | "clear_all_caches_api_cache_clear_post" | "create_alert_api_desk_alerts_post" | "create_calculation_run_v1_api_v1_calculation_runs_post" | "create_signal_feed_alert_api_signal_feed_alerts_post" | "create_trade_api_desk_trades_post" | "create_trade_idea_api_trade_ideas__email__post" | "day_trade_check_api_day_trade_check_post" | "day_trade_scan_api_day_trade_post" | "day_trade_workspace_api_day_trade_workspace_get" | "delete_alert_api_desk_alerts__alert_id__delete" | "delete_my_ticker_api_my_tickers__symbol__delete" | "delete_my_ticker_type_api_my_tickers__symbol__type__trade_type__delete" | "delete_trade_api_desk_trades__trade_id__delete" | "delete_trade_idea_endpoint_api_trade_ideas__email___idea_id__delete" | "email_status_api_email_status_get" | "eod_journal_dates_api_eod_journal__email__dates_get" | "eod_journal_get_snapshot_api_eod_journal__email__snapshot__mode___date_key___ticker__get" | "eod_journal_save_snapshot_api_eod_journal__email__snapshot_post" | "exit_signals_api_exit_signals_get" | "fire_alert_api_desk_alerts__alert_id__fire_patch" | "get_analysis_api_desk_analysis__ticker__get" | "get_cycle_tracker_api_cycle_tracker_get" | "get_early_entry_trigger_api_early_entry_trigger_get" | "get_history_bars_api_history_bars_get" | "get_market_position_api_market_position_get" | "get_my_tickers_api_my_tickers_get" | "get_positions_center_api_positions_center_get" | "get_premarket_bias_api_premarket_bias_get" | "get_signal_feed_api_signal_feed_get" | "get_stock_targets_api_stock_targets_get" | "get_track_mode_api_track_mode_get" | "get_trade_command_center_api_trade_command_center_get" | "get_trade_stats_api_desk_trades_stats_get" | "get_user_accent_api_user_accent_get" | "get_user_data_api_user_data__email__get" | "get_watchlist_api_desk_watchlist_get" | "health_check_api_health_get" | "investment_thesis_starter_api_investment_thesis_starter__ticker__get" | "journal_close_api_journal__email___entry_id__close_patch" | "journal_delete_api_journal__email___entry_id__delete" | "journal_list_api_journal__email__get" | "journal_notes_api_journal__email___entry_id__notes_patch" | "journal_refresh_api_journal_refresh__email__post" | "journal_save_api_journal_save_post" | "journal_update_api_journal__email___entry_id__update_patch" | "list_alerts_api_desk_alerts_get" | "list_alerts_center_api_alerts_get" | "list_alerts_summary_api_alerts_summary_get" | "list_day_trade_alerts_api_api_day_trade_alerts__email__get" | "list_open_trades_api_desk_trades_open_get" | "list_trade_ideas_api_trade_ideas__email__get" | "list_trades_api_desk_trades_get" | "metric_definitions_api_v1_metric_definitions_get" | "option_chain_liquidity_api_option_chain__ticker__get" | "patch_my_ticker_api_my_tickers__symbol__patch" | "patch_trade_idea_api_trade_ideas__email___idea_id__patch" | "post_alert_acknowledge_api_alerts__alert_id__acknowledge_post" | "post_alert_note_api_alerts__alert_id__note_post" | "post_alert_resolve_api_alerts__alert_id__resolve_post" | "post_alerts_clear_api_alerts_clear_post" | "post_my_ticker_api_my_tickers_post" | "post_overnight_runner_api_day_trade_overnight_runner_post" | "post_portfolio_add_api_portfolio_add_post" | "post_portfolio_close_api_portfolio_close_post" | "post_portfolio_remove_api_portfolio_remove_post" | "post_portfolio_update_api_portfolio_update_post" | "post_portfolio_update_note_api_portfolio_update_note_post" | "post_track_mode_add_api_track_mode_add_post" | "post_track_mode_remove_api_track_mode_remove_post" | "post_watchlist_add_api_watchlist_add_post" | "post_watchlist_remove_api_watchlist_remove_post" | "put_my_tickers_reorder_api_my_tickers_reorder_put" | "refresh_signal_feed_api_signal_feed_refresh_post" | "remove_from_watchlist_api_desk_watchlist__ticker__delete" | "root__get" | "save_user_data_api_user_data__email__put" | "scan_alerts_center_api_alerts_scan_post" | "search_tickers_api_search_tickers_get" | "send_alert_api_send_alert_post" | "send_test_email_api_test_email_post" | "set_user_accent_api_user_accent_put" | "swing_trade_scan_api_swing_trade_post" | "trade_dashboard_story_api_trade_dashboard_story_post" | "trade_worksheet_evaluate_api_trade_worksheet_evaluate_post" | "trading_cancel_api_trading_cancel_post" | "trading_close_position_api_trading_close_post" | "trading_execute_api_trading_execute_post" | "trading_orders_api_trading_orders_get" | "trading_positions_api_trading_positions_get" | "trading_status_api_trading_status_get" | "unified_analyze_api_v2_analyze__ticker__get" | "unified_analyze_public_api_v2_analyze__ticker__public_get" | "update_alert_api_desk_alerts__alert_id__patch" | "update_trade_api_desk_trades__trade_id__patch"
 
+export type ApiSchemaName = "ActiveTradeEnterRequest" | "ActiveTradeEnterResponse" | "ActiveTradeListResponse" | "ActiveTradeOut" | "AlertCreate" | "AlertEmailRequest" | "AlertItem" | "AlertNoteBody" | "AnalyzeRequest" | "AnalyzeResponse" | "BacktestRequest" | "CalculationRunCreateRequest" | "CalculationRunCreateResponse" | "CalculationRunResponse" | "CalculationRunTypeResponse" | "CalculationRunTypesResponse" | "CalculationRunsListResponse" | "CalculationSnapshotAuditEventResponse" | "CalculationSnapshotAuditLogResponse" | "CalculationSnapshotIntegrityResponse" | "CalculationSnapshotResponse" | "CarryTradeRequest" | "CarryTradeResponse" | "DayTradeChartCandleView" | "DayTradeChartDefaultsView" | "DayTradeChartEventView" | "DayTradeChartLevelView" | "DayTradeChartTradeFocusView" | "DayTradeChartView" | "DayTradeDecisionView" | "DayTradeDisplayStatus" | "DayTradeDisplayValue" | "DayTradeEvidenceItemView" | "DayTradeRequest" | "DayTradeResponse" | "DayTradeRiskPlanView" | "DayTradeSelectedContractView" | "DayTradeSessionView" | "DayTradeSymbolView" | "DayTradeTriggerRequirementView" | "DayTradeTriggerView" | "DayTradeVwapOverlayView" | "DayTradeVwapPointView" | "DayTradeWorkspaceAction" | "DayTradeWorkspaceResponse" | "EodJournalSnapshotRequest" | "ExitSignalAckBody" | "ForgotPasswordRequest" | "GoogleAuthRequest" | "HTTPValidationError" | "JournalCloseRequest" | "JournalNotesRequest" | "JournalSaveRequest" | "JournalUpdateRequest" | "LoginRequest" | "MetricDefinitionOut" | "MetricDefinitionsResponse" | "MyTickerBody" | "MyTickerUpdateBody" | "MyTickersReorderBody" | "OptionLegOut" | "OptionRowOut" | "OvernightRunnerRequest" | "OvernightRunnerResponse" | "PortfolioAddBody" | "PortfolioCloseBody" | "PortfolioNoteBody" | "PortfolioRemoveBody" | "PortfolioUpdateBody" | "PricePoint" | "QuoteQualitySummary" | "RecommendationOut" | "RegisterRequest" | "ResetPasswordRequest" | "ScoreBreakdown" | "SignalFeedAlertCreateBody" | "SignalsOut" | "SwingTradeRequest" | "SwingTradeResponse" | "TestEmailRequest" | "TrackModeAddBody" | "TrackModeRemoveBody" | "TradeCheckRequest" | "TradeDashboardStoryRequest" | "TradeIdeaCreateRequest" | "TradeIdeaUpdateRequest" | "TradeLogCreate" | "TradeLogUpdate" | "TradeWorksheetEvaluateRequest" | "TradeWorksheetSelectedRow" | "TradingCancelRequest" | "TradingCloseRequest" | "TradingExecuteRequest" | "UserDataRequest" | "UserDataResponse" | "ValidationError" | "WatchlistAddRequest" | "WatchlistTickerBody"
+
+export type ApiSchemas = {
+  readonly "ActiveTradeEnterRequest": {
+    readonly "contracts"?: number | null
+    readonly "entry_price": number
+    readonly "entry_underlying_px"?: number | null
+    readonly "expiry"?: string | null
+    readonly "notes"?: string | null
+    readonly "side": string
+    readonly "strike"?: number | null
+    readonly "ticker": string
+    readonly "trade_type"?: string
+  }
+  readonly "ActiveTradeEnterResponse": {
+    readonly "contracts"?: number | null
+    readonly "entry_price": number
+    readonly "entry_underlying_px"?: number | null
+    readonly "expiry"?: string | null
+    readonly "id": string
+    readonly "notes"?: string
+    readonly "opened_at_ms": number
+    readonly "side": string
+    readonly "strike"?: number | null
+    readonly "ticker": string
+  }
+  readonly "ActiveTradeListResponse": {
+    readonly "included_opened_before_today"?: boolean
+    readonly "trades": Array<ApiSchemas["ActiveTradeOut"]>
+  }
+  readonly "ActiveTradeOut": {
+    readonly "contracts"?: number | null
+    readonly "decision"?: Record<string, unknown>
+    readonly "entry_price": number
+    readonly "entry_underlying_px"?: number | null
+    readonly "exited_at_ms"?: number | null
+    readonly "expiry"?: string | null
+    readonly "id": string
+    readonly "intraday_error"?: string | null
+    readonly "metrics"?: Record<string, unknown>
+    readonly "notes"?: string
+    readonly "opened_at_ms": number
+    readonly "side": string
+    readonly "strike"?: number | null
+    readonly "ticker": string
+    readonly "trade_type"?: string
+  }
+  readonly "AlertCreate": {
+    readonly "alert_type": string
+    readonly "expires"?: string
+    readonly "notify_method"?: string
+    readonly "target_signal"?: string
+    readonly "threshold_value"?: number | null
+    readonly "ticker": string
+    readonly "trade_type"?: string
+  }
+  readonly "AlertEmailRequest": {
+    readonly "alerts": Array<ApiSchemas["AlertItem"]>
+    readonly "email": string
+    readonly "user_name"?: string | null
+  }
+  readonly "AlertItem": {
+    readonly "bias": string
+    readonly "company_name": string
+    readonly "dte": number
+    readonly "ev": number
+    readonly "expiry": string
+    readonly "max_loss": number
+    readonly "max_profit": number
+    readonly "net_credit": number
+    readonly "pop": number
+    readonly "score": number
+    readonly "strategy": string
+    readonly "ticker": string
+    readonly "time_window": string
+    readonly "weeks_out": number
+  }
+  readonly "AlertNoteBody": {
+    readonly "text": string
+  }
+  readonly "AnalyzeRequest": {
+    readonly "chain_expiry"?: string | null
+    readonly "spread_width"?: number | null
+    readonly "strategy_mode"?: string
+    readonly "ticker": string
+    readonly "weeks_out"?: number
+  }
+  readonly "AnalyzeResponse": {
+    readonly "calls_chain": Array<ApiSchemas["OptionRowOut"]>
+    readonly "company_name": string
+    readonly "confidence"?: number
+    readonly "display_confidence"?: number
+    readonly "execution_fields"?: Array<Record<string, unknown>>
+    readonly "explanation"?: Record<string, unknown>
+    readonly "filters_applied": Record<string, unknown>
+    readonly "market_bias"?: string
+    readonly "market_cap": string
+    readonly "missing_confirmations"?: Array<string>
+    readonly "price_history": Array<ApiSchemas["PricePoint"]>
+    readonly "puts_chain": Array<ApiSchemas["OptionRowOut"]>
+    readonly "quote_quality_summary"?: ApiSchemas["QuoteQualitySummary"]
+    readonly "reason"?: string
+    readonly "recommendations": Array<ApiSchemas["RecommendationOut"]>
+    readonly "risk_reason"?: string
+    readonly "risk_state"?: string
+    readonly "sector": string
+    readonly "setup_quality"?: string
+    readonly "signals": ApiSchemas["SignalsOut"]
+    readonly "supporting_factors"?: Array<string>
+    readonly "ticker": string
+    readonly "verdict"?: string
+  }
+  readonly "BacktestRequest": {
+    readonly "end_date": string
+    readonly "spread_width"?: number | null
+    readonly "start_date": string
+    readonly "strategy_mode"?: string
+    readonly "ticker": string
+    readonly "weeks_out"?: number
+  }
+  readonly "CalculationRunCreateRequest": {
+    readonly "input"?: Record<string, unknown>
+    readonly "runType": string
+  }
+  readonly "CalculationRunCreateResponse": {
+    readonly "result"?: Record<string, unknown>
+    readonly "run": ApiSchemas["CalculationRunResponse"]
+    readonly "snapshot": ApiSchemas["CalculationSnapshotResponse"]
+  }
+  readonly "CalculationRunResponse": {
+    readonly "completed_at_ms"?: number | null
+    readonly "created_at_ms": number
+    readonly "engine_version": string
+    readonly "error"?: string
+    readonly "formula_pack_version": string
+    readonly "input"?: Record<string, unknown>
+    readonly "input_hash": string
+    readonly "output_hash": string
+    readonly "owner_email"?: string
+    readonly "run_id": string
+    readonly "run_type": string
+    readonly "snapshot_id"?: string | null
+    readonly "status": string
+  }
+  readonly "CalculationRunTypeResponse": {
+    readonly "description": string
+    readonly "engineVersion": string
+    readonly "formulaPackVersion": string
+    readonly "label": string
+    readonly "metricDefinitionsVersion": string
+    readonly "runType": string
+    readonly "snapshotSupported": boolean
+    readonly "status": string
+  }
+  readonly "CalculationRunTypesResponse": {
+    readonly "count"?: number
+    readonly "routerVersion": string
+    readonly "runTypes"?: Array<ApiSchemas["CalculationRunTypeResponse"]>
+  }
+  readonly "CalculationRunsListResponse": {
+    readonly "count"?: number
+    readonly "runs"?: Array<ApiSchemas["CalculationRunResponse"]>
+  }
+  readonly "CalculationSnapshotAuditEventResponse": {
+    readonly "audit_id": string
+    readonly "created_at_ms": number
+    readonly "event"?: Record<string, unknown>
+    readonly "event_type": string
+    readonly "snapshot_id": string
+  }
+  readonly "CalculationSnapshotAuditLogResponse": {
+    readonly "count"?: number
+    readonly "events"?: Array<ApiSchemas["CalculationSnapshotAuditEventResponse"]>
+    readonly "snapshot_id": string
+  }
+  readonly "CalculationSnapshotIntegrityResponse": {
+    readonly "computed_input_hash": string
+    readonly "computed_output_hash": string
+    readonly "input_hash_matches": boolean
+    readonly "mismatches"?: Array<string>
+    readonly "output_hash_matches": boolean
+    readonly "run_hash_matches": boolean
+    readonly "run_id": string
+    readonly "snapshot_id": string
+    readonly "stored_input_hash": string
+    readonly "stored_output_hash": string
+    readonly "verified": boolean
+    readonly "verified_at_ms": number
+  }
+  readonly "CalculationSnapshotResponse": {
+    readonly "created_at_ms": number
+    readonly "engine_version": string
+    readonly "formula_pack_version": string
+    readonly "frozen_at_ms": number
+    readonly "input"?: Record<string, unknown>
+    readonly "input_hash": string
+    readonly "metric_definitions"?: Array<Record<string, unknown>>
+    readonly "metric_definitions_version": string
+    readonly "output"?: Record<string, unknown>
+    readonly "output_hash": string
+    readonly "owner_email"?: string
+    readonly "run_id": string
+    readonly "run_type": string
+    readonly "snapshot_id": string
+  }
+  readonly "CarryTradeRequest": {
+    readonly "force_refresh"?: boolean
+    readonly "ticker": string
+  }
+  readonly "CarryTradeResponse": {
+    readonly "active_window"?: boolean
+    readonly "bias"?: string
+    readonly "blockers"?: Array<string>
+    readonly "carry_score"?: number
+    readonly "company_name"?: string
+    readonly "confidence"?: string
+    readonly "entry_window"?: string
+    readonly "execution_plan"?: Record<string, unknown>
+    readonly "exit_plan"?: Record<string, unknown>
+    readonly "expected_hold"?: string
+    readonly "frozen"?: boolean
+    readonly "metrics"?: Record<string, unknown>
+    readonly "reasons"?: Array<string>
+    readonly "recommended_dte"?: string
+    readonly "risk"?: string
+    readonly "score_breakdown"?: Record<string, unknown>
+    readonly "ticker": string
+    readonly "verdict"?: string
+  }
+  readonly "DayTradeChartCandleView": {
+    readonly "close": number
+    readonly "high": number
+    readonly "low": number
+    readonly "open": number
+    readonly "time": string
+    readonly "volume": number
+  }
+  readonly "DayTradeChartDefaultsView": {
+    readonly "followLive": boolean
+    readonly "initialBarSpacing": number
+    readonly "initialVisibleBars": number
+    readonly "interval": string
+    readonly "maxBarSpacing": number
+    readonly "minBarSpacing": number
+    readonly "rightOffsetBars": number
+    readonly "scaleMode": string
+    readonly "visibleOverlayIds"?: Array<string>
+    readonly "visibleRange": string
+  }
+  readonly "DayTradeChartEventView": {
+    readonly "detail"?: string | null
+    readonly "eventType": string
+    readonly "id": string
+    readonly "price"?: number | null
+    readonly "priority": number
+    readonly "timestamp": string
+    readonly "title": string
+    readonly "tone": string
+    readonly "visibleByDefault": boolean
+  }
+  readonly "DayTradeChartLevelView": {
+    readonly "active": boolean
+    readonly "affectsTradeFocusScale": boolean
+    readonly "id": string
+    readonly "kind": string
+    readonly "label": string
+    readonly "lineStyleToken": string
+    readonly "offscreenLabel"?: string | null
+    readonly "price": number
+    readonly "priority": number
+    readonly "tone": string
+    readonly "visibleByDefault": boolean
+  }
+  readonly "DayTradeChartTradeFocusView": {
+    readonly "levelIdsAllowedToAffectScale"?: Array<string>
+    readonly "scalePaddingPercent": number
+  }
+  readonly "DayTradeChartView": {
+    readonly "candles"?: Array<ApiSchemas["DayTradeChartCandleView"]>
+    readonly "defaults": ApiSchemas["DayTradeChartDefaultsView"]
+    readonly "events"?: Array<ApiSchemas["DayTradeChartEventView"]>
+    readonly "levels"?: Array<ApiSchemas["DayTradeChartLevelView"]>
+    readonly "tradeFocus"?: ApiSchemas["DayTradeChartTradeFocusView"] | null
+    readonly "vwapOverlay"?: ApiSchemas["DayTradeVwapOverlayView"] | null
+  }
+  readonly "DayTradeDecisionView": {
+    readonly "context": ApiSchemas["DayTradeDisplayStatus"]
+    readonly "headline": string
+    readonly "nextCondition"?: string | null
+    readonly "permission": ApiSchemas["DayTradeDisplayStatus"]
+    readonly "primaryAction": ApiSchemas["DayTradeWorkspaceAction"]
+    readonly "reason": string
+    readonly "secondaryActions"?: Array<ApiSchemas["DayTradeWorkspaceAction"]>
+    readonly "setupName"?: string | null
+  }
+  readonly "DayTradeDisplayStatus": {
+    readonly "code": string
+    readonly "description"?: string | null
+    readonly "iconKey"?: string | null
+    readonly "label": string
+    readonly "tone": string
+  }
+  readonly "DayTradeDisplayValue": {
+    readonly "display": string
+    readonly "helpText"?: string | null
+    readonly "raw"?: number | string | null
+    readonly "tone"?: string | null
+  }
+  readonly "DayTradeEvidenceItemView": {
+    readonly "detail"?: string | null
+    readonly "id": string
+    readonly "label": string
+    readonly "observedAt"?: string | null
+    readonly "order": number
+    readonly "result": string
+    readonly "ruleId"?: string | null
+    readonly "tone": string
+  }
+  readonly "DayTradeRequest": {
+    readonly "force_refresh"?: boolean
+    readonly "ticker": string
+  }
+  readonly "DayTradeResponse": {
+    readonly "ai_coach"?: Record<string, unknown>
+    readonly "bear_score": number
+    readonly "bias"?: string | null
+    readonly "bull_score": number
+    readonly "company_name"?: string
+    readonly "confidence"?: number
+    readonly "display_confidence"?: number
+    readonly "entry_guidance"?: Record<string, unknown>
+    readonly "execution_fields"?: Array<Record<string, unknown>>
+    readonly "explanation"?: Record<string, unknown>
+    readonly "final_decision"?: string
+    readonly "layered_decision"?: Record<string, unknown>
+    readonly "market_bias"?: string
+    readonly "metrics": Record<string, unknown>
+    readonly "missing_confirmations"?: Array<string>
+    readonly "option_risk_context"?: Record<string, unknown>
+    readonly "reason"?: string
+    readonly "reasons": Array<string>
+    readonly "risk_reason"?: string
+    readonly "risk_state"?: string
+    readonly "setup_quality"?: string
+    readonly "supporting_factors"?: Array<string>
+    readonly "ticker": string
+    readonly "timeframe_state"?: Record<string, unknown>
+    readonly "trader_decision"?: Record<string, unknown>
+    readonly "verdict": string
+  }
+  readonly "DayTradeRiskPlanView": {
+    readonly "entry": ApiSchemas["DayTradeDisplayValue"]
+    readonly "positionSize": ApiSchemas["DayTradeDisplayValue"]
+    readonly "riskReward": ApiSchemas["DayTradeDisplayValue"]
+    readonly "stop": ApiSchemas["DayTradeDisplayValue"]
+    readonly "target1": ApiSchemas["DayTradeDisplayValue"]
+    readonly "target2": ApiSchemas["DayTradeDisplayValue"]
+  }
+  readonly "DayTradeSelectedContractView": {
+    readonly "ask": ApiSchemas["DayTradeDisplayValue"]
+    readonly "bid": ApiSchemas["DayTradeDisplayValue"]
+    readonly "dte": ApiSchemas["DayTradeDisplayValue"]
+    readonly "expiration": ApiSchemas["DayTradeDisplayValue"]
+    readonly "liquidity": ApiSchemas["DayTradeDisplayStatus"]
+    readonly "midpoint": ApiSchemas["DayTradeDisplayValue"]
+    readonly "optionType": ApiSchemas["DayTradeDisplayValue"]
+    readonly "roundTrip": ApiSchemas["DayTradeDisplayValue"]
+    readonly "spread": ApiSchemas["DayTradeDisplayValue"]
+    readonly "spreadPercent": ApiSchemas["DayTradeDisplayValue"]
+    readonly "strike": ApiSchemas["DayTradeDisplayValue"]
+  }
+  readonly "DayTradeSessionView": {
+    readonly "displayDate": string
+    readonly "isExecutionAllowed": boolean
+    readonly "marketTimeZone": string
+    readonly "mode": string
+    readonly "reviewCopy"?: string | null
+    readonly "sessionDate": string
+    readonly "status": ApiSchemas["DayTradeDisplayStatus"]
+  }
+  readonly "DayTradeSymbolView": {
+    readonly "change": ApiSchemas["DayTradeDisplayValue"]
+    readonly "companyName"?: string | null
+    readonly "price": ApiSchemas["DayTradeDisplayValue"]
+    readonly "ticker": string
+  }
+  readonly "DayTradeTriggerRequirementView": {
+    readonly "displayValue"?: string | null
+    readonly "id": string
+    readonly "label": string
+    readonly "result": string
+    readonly "tone": string
+  }
+  readonly "DayTradeTriggerView": {
+    readonly "requirements"?: Array<ApiSchemas["DayTradeTriggerRequirementView"]>
+    readonly "status": ApiSchemas["DayTradeDisplayStatus"]
+    readonly "summary": string
+  }
+  readonly "DayTradeVwapOverlayView": {
+    readonly "affectsTradeFocusScale": boolean
+    readonly "anchorPolicy": string
+    readonly "exchangeTimeZone": string
+    readonly "id": string
+    readonly "includesExtendedHours": boolean
+    readonly "label": string
+    readonly "latestAsOfUtc"?: string | null
+    readonly "latestValue"?: number | null
+    readonly "points"?: Array<ApiSchemas["DayTradeVwapPointView"]>
+    readonly "sessionDate": string
+    readonly "visibleByDefault": boolean
+  }
+  readonly "DayTradeVwapPointView": {
+    readonly "barStartUtc": string
+    readonly "quality": string
+    readonly "sourceTimestampUtc": string
+    readonly "state": string
+    readonly "value"?: number | null
+  }
+  readonly "DayTradeWorkspaceAction": {
+    readonly "disabledReason"?: string | null
+    readonly "enabled": boolean
+    readonly "id": string
+    readonly "label": string
+    readonly "payload"?: Record<string, string | number | boolean | null> | null
+    readonly "type": string
+  }
+  readonly "DayTradeWorkspaceResponse": {
+    readonly "chart": ApiSchemas["DayTradeChartView"]
+    readonly "decision": ApiSchemas["DayTradeDecisionView"]
+    readonly "evidence"?: Array<ApiSchemas["DayTradeEvidenceItemView"]>
+    readonly "generatedAt": string
+    readonly "provenance"?: Record<string, unknown> | null
+    readonly "riskPlan": ApiSchemas["DayTradeRiskPlanView"]
+    readonly "schemaVersion": string
+    readonly "selectedContract"?: ApiSchemas["DayTradeSelectedContractView"] | null
+    readonly "session": ApiSchemas["DayTradeSessionView"]
+    readonly "symbol": ApiSchemas["DayTradeSymbolView"]
+    readonly "tabs"?: Record<string, unknown>
+    readonly "trigger": ApiSchemas["DayTradeTriggerView"]
+  }
+  readonly "EodJournalSnapshotRequest": {
+    readonly "checks"?: Record<string, unknown>
+    readonly "date": string
+    readonly "mode"?: string
+    readonly "notes"?: Record<string, unknown>
+    readonly "snapshot"?: Record<string, unknown>
+    readonly "ticker": string
+  }
+  readonly "ExitSignalAckBody": {
+    readonly "code": string
+    readonly "ticker": string
+  }
+  readonly "ForgotPasswordRequest": {
+    readonly "email": string
+  }
+  readonly "GoogleAuthRequest": {
+    readonly "credential": string
+  }
+  readonly "HTTPValidationError": {
+    readonly "detail"?: Array<ApiSchemas["ValidationError"]>
+  }
+  readonly "JournalCloseRequest": {
+    readonly "exit_reason"?: string
+    readonly "notes"?: string
+  }
+  readonly "JournalNotesRequest": {
+    readonly "notes": string
+  }
+  readonly "JournalSaveRequest": {
+    readonly "bias"?: string
+    readonly "company_name"?: string
+    readonly "dte_at_entry"?: number
+    readonly "engine_signal"?: string
+    readonly "engine_state"?: number
+    readonly "entry_date": string
+    readonly "expected_value"?: number
+    readonly "expiry": string
+    readonly "legs"?: Array<Record<string, unknown>>
+    readonly "max_loss"?: number
+    readonly "max_profit"?: number
+    readonly "net_credit"?: number
+    readonly "notes"?: string
+    readonly "prob_of_profit"?: number
+    readonly "strategy": string
+    readonly "ticker": string
+    readonly "total_score"?: number
+    readonly "trade_type"?: string
+    readonly "underlying_entry"?: number
+  }
+  readonly "JournalUpdateRequest": {
+    readonly "bias"?: string | null
+    readonly "company_name"?: string | null
+    readonly "engine_signal"?: string | null
+    readonly "engine_state"?: number | null
+    readonly "entry_date"?: string | null
+    readonly "expected_value"?: number | null
+    readonly "expiry"?: string | null
+    readonly "legs"?: Array<Record<string, unknown>> | null
+    readonly "max_loss"?: number | null
+    readonly "max_profit"?: number | null
+    readonly "net_credit"?: number | null
+    readonly "notes"?: string | null
+    readonly "prob_of_profit"?: number | null
+    readonly "strategy"?: string | null
+    readonly "total_score"?: number | null
+    readonly "trade_type"?: string | null
+    readonly "underlying_entry"?: number | null
+  }
+  readonly "LoginRequest": {
+    readonly "email": string
+    readonly "password": string
+  }
+  readonly "MetricDefinitionOut": {
+    readonly "category": string
+    readonly "displayRules"?: Record<string, unknown>
+    readonly "formulaId": string
+    readonly "formulaVersion": string
+    readonly "inputsUsed"?: Array<string>
+    readonly "label": string
+    readonly "longDescription": string
+    readonly "metricId": string
+    readonly "shortDescription": string
+    readonly "unit": string
+  }
+  readonly "MetricDefinitionsResponse": {
+    readonly "formulaPackVersion": string
+    readonly "metricDefinitionsVersion": string
+    readonly "metrics"?: Array<ApiSchemas["MetricDefinitionOut"]>
+  }
+  readonly "MyTickerBody": {
+    readonly "company_name"?: string
+    readonly "symbol": string
+    readonly "trade_types"?: Array<string>
+  }
+  readonly "MyTickerUpdateBody": {
+    readonly "trade_types"?: Array<string>
+  }
+  readonly "MyTickersReorderBody": {
+    readonly "symbols": Array<string>
+  }
+  readonly "OptionLegOut": {
+    readonly "action": string
+    readonly "ask": number
+    readonly "bid": number
+    readonly "bid_ask_spread_pct": number
+    readonly "data_quality"?: string
+    readonly "data_quality_reason"?: string
+    readonly "delta": number
+    readonly "expiry": string
+    readonly "iv": number
+    readonly "mid_price": number
+    readonly "oi": number
+    readonly "option_type": string
+    readonly "strike": number
+    readonly "volume": number
+  }
+  readonly "OptionRowOut": {
+    readonly "ask": number
+    readonly "bid": number
+    readonly "data_quality"?: string
+    readonly "data_quality_reason"?: string
+    readonly "delta"?: number | null
+    readonly "implied_volatility": string
+    readonly "last_price": number
+    readonly "open_interest": number
+    readonly "strike": number
+    readonly "volume": number
+  }
+  readonly "OvernightRunnerRequest": {
+    readonly "avg_volume_20d"?: number
+    readonly "current_price": number
+    readonly "intraday_highs"?: Array<number>
+    readonly "market_regime"?: string
+    readonly "orh": number
+    readonly "orl": number
+    readonly "qqq_trend_score"?: number
+    readonly "spy_trend_score"?: number
+    readonly "t1_hit"?: boolean
+    readonly "t2_hit"?: boolean
+    readonly "ticker": string
+    readonly "ticker_trend_score"?: number
+    readonly "volume_today"?: number
+    readonly "vwap": number
+  }
+  readonly "OvernightRunnerResponse": {
+    readonly "conditions": Record<string, unknown>
+    readonly "confidence": string
+    readonly "recommended_size_pct"?: number | null
+    readonly "recommended_stop"?: number | null
+    readonly "runner_score": number
+    readonly "verdict": string
+  }
+  readonly "PortfolioAddBody": {
+    readonly "position": Record<string, unknown>
+  }
+  readonly "PortfolioCloseBody": {
+    readonly "close_date"?: string | null
+    readonly "close_notes"?: string | null
+    readonly "contractsToClose"?: number | null
+    readonly "exit_debit_credit"?: number | null
+    readonly "exit_price"?: number | null
+    readonly "exit_reason"?: string | null
+    readonly "id": string
+    readonly "mistake_tag"?: string | null
+    readonly "pnl_overridden"?: boolean | null
+    readonly "pnl_override_reason"?: string | null
+    readonly "pnl_pct"?: number | null
+    readonly "realized_pnl"?: number | null
+    readonly "realized_pnl_percent"?: number | null
+  }
+  readonly "PortfolioNoteBody": {
+    readonly "id": string
+    readonly "note": string
+  }
+  readonly "PortfolioRemoveBody": {
+    readonly "id": string
+  }
+  readonly "PortfolioUpdateBody": {
+    readonly "data": Record<string, unknown>
+    readonly "id": string
+  }
+  readonly "PricePoint": {
+    readonly "close": number
+    readonly "date": string
+    readonly "high": number
+    readonly "low": number
+    readonly "ma20": number
+    readonly "ma200": number
+    readonly "ma50": number
+    readonly "open": number
+  }
+  readonly "QuoteQualitySummary": {
+    readonly "banner_lines"?: Array<string>
+    readonly "banner_show"?: boolean
+    readonly "chain_rows_total"?: number
+    readonly "model_rows"?: number
+    readonly "ok_rows"?: number
+    readonly "pct_non_ok"?: number
+    readonly "stale_rows"?: number
+    readonly "underlying_quote_source"?: string
+    readonly "unreliable_rows"?: number
+  }
+  readonly "RecommendationOut": {
+    readonly "bias": string
+    readonly "breakeven_lower": number
+    readonly "breakeven_upper": number
+    readonly "credit_pct_of_width": number
+    readonly "dte": number
+    readonly "edge_ratio"?: number
+    readonly "exit_plan": string
+    readonly "expected_value": number
+    readonly "expiry": string
+    readonly "half_kelly_fraction"?: number
+    readonly "kelly_fraction"?: number
+    readonly "legs": Array<ApiSchemas["OptionLegOut"]>
+    readonly "max_loss": number
+    readonly "max_profit": number
+    readonly "net_credit": number
+    readonly "passes_credit_filter": boolean
+    readonly "passes_liquidity_filter": boolean
+    readonly "passes_rr_filter": boolean
+    readonly "prob_of_max_loss": number
+    readonly "prob_of_profit": number
+    readonly "rank": number
+    readonly "rationale": string
+    readonly "risk_reward_ratio": number
+    readonly "scores": ApiSchemas["ScoreBreakdown"]
+    readonly "short_leg_delta": number
+    readonly "spread_width": number
+    readonly "status"?: string
+    readonly "strategy": string
+    readonly "warnings": Array<string>
+  }
+  readonly "RegisterRequest": {
+    readonly "email": string
+    readonly "name"?: string
+    readonly "password": string
+  }
+  readonly "ResetPasswordRequest": {
+    readonly "password": string
+    readonly "token": string
+  }
+  readonly "ScoreBreakdown": {
+    readonly "iv_fit_score": number
+    readonly "liquidity_score": number
+    readonly "signal_score": number
+    readonly "structure_score": number
+    readonly "total_score": number
+  }
+  readonly "SignalFeedAlertCreateBody": {
+    readonly "agreement_state"?: string
+    readonly "message"?: string
+    readonly "recommended_action"?: string
+    readonly "ticker": string
+  }
+  readonly "SignalsOut": {
+    readonly "above_ma20": boolean
+    readonly "above_ma200": boolean
+    readonly "above_ma50": boolean
+    readonly "bias_confidence": number
+    readonly "current_iv": number
+    readonly "current_price": number
+    readonly "directional_bias": string
+    readonly "ext_market_change"?: number
+    readonly "ext_market_change_pct"?: number
+    readonly "ext_market_price"?: number
+    readonly "ext_market_type"?: string
+    readonly "hv_20": number
+    readonly "hv_60": number
+    readonly "iv_environment": string
+    readonly "iv_percentile": number
+    readonly "iv_rank": number
+    readonly "iv_skew": number
+    readonly "iv_vs_hv": number
+    readonly "ma20": number
+    readonly "ma200": number
+    readonly "ma200_slope": number
+    readonly "ma50": number
+    readonly "ma50_slope": number
+    readonly "macd": number
+    readonly "macd_crossover": string
+    readonly "macd_histogram": number
+    readonly "macd_signal_line": number
+    readonly "pcr_signal": string
+    readonly "prev_close": number
+    readonly "price_change": number
+    readonly "price_change_pct": number
+    readonly "put_call_ratio": number
+    readonly "rsi": number
+    readonly "rsi_signal": string
+    readonly "skew_signal": string
+    readonly "trend": string
+    readonly "trend_strength": string
+    readonly "volatility_regime": string
+  }
+  readonly "SwingTradeRequest": {
+    readonly "ticker": string
+  }
+  readonly "SwingTradeResponse": {
+    readonly "avoid_reason"?: string | null
+    readonly "bear_score": number
+    readonly "bias"?: string | null
+    readonly "bull_score": number
+    readonly "company_name"?: string
+    readonly "confidence"?: number
+    readonly "confirmation_needed"?: Array<string>
+    readonly "decision_label"?: string
+    readonly "decision_message"?: string
+    readonly "display_confidence"?: number
+    readonly "entry_guidance"?: Record<string, unknown>
+    readonly "entry_quality"?: string
+    readonly "execution_fields"?: Array<Record<string, unknown>>
+    readonly "expected_holding_period"?: string
+    readonly "explanation"?: Record<string, unknown>
+    readonly "final_action"?: string
+    readonly "market_bias"?: string
+    readonly "metrics": Record<string, unknown>
+    readonly "missing_confirmations"?: Array<string>
+    readonly "playbook_hint"?: string
+    readonly "reason"?: string
+    readonly "reasons": Array<string>
+    readonly "recommended_contract_duration"?: string
+    readonly "risk_flags"?: Array<string>
+    readonly "risk_level"?: string
+    readonly "risk_reason"?: string
+    readonly "risk_state"?: string
+    readonly "setup_quality"?: string
+    readonly "suggested_expiry_window"?: string
+    readonly "suggested_strategy"?: string
+    readonly "supporting_factors"?: Array<string>
+    readonly "swing_bias"?: string
+    readonly "ticker": string
+    readonly "trade_quality_score"?: number
+    readonly "verdict": string
+  }
+  readonly "TestEmailRequest": {
+    readonly "email": string
+    readonly "user_name"?: string | null
+  }
+  readonly "TrackModeAddBody": {
+    readonly "notes"?: string
+    readonly "ticker": string
+  }
+  readonly "TrackModeRemoveBody": {
+    readonly "ticker": string
+  }
+  readonly "TradeCheckRequest": {
+    readonly "message": string
+    readonly "ticker"?: string | null
+  }
+  readonly "TradeDashboardStoryRequest": {
+    readonly "force_refresh"?: boolean
+    readonly "ticker": string
+  }
+  readonly "TradeIdeaCreateRequest": {
+    readonly "direction"?: string
+    readonly "engine"?: string
+    readonly "engine_signal"?: string
+    readonly "engine_state"?: number
+    readonly "entry_price"?: number
+    readonly "notes"?: string
+    readonly "reason"?: string
+    readonly "status"?: string
+    readonly "stop_price"?: number
+    readonly "structure"?: string
+    readonly "target_price"?: number
+    readonly "ticker": string
+  }
+  readonly "TradeIdeaUpdateRequest": {
+    readonly "direction"?: string | null
+    readonly "engine"?: string | null
+    readonly "engine_signal"?: string | null
+    readonly "engine_state"?: number | null
+    readonly "entry_price"?: number | null
+    readonly "notes"?: string | null
+    readonly "reason"?: string | null
+    readonly "status"?: string | null
+    readonly "stop_price"?: number | null
+    readonly "structure"?: string | null
+    readonly "target_price"?: number | null
+  }
+  readonly "TradeLogCreate": {
+    readonly "actual_entry"?: number | null
+    readonly "confidence_score"?: number
+    readonly "contracts"?: number
+    readonly "entry_time"?: string | null
+    readonly "notes"?: string
+    readonly "planned_entry"?: number | null
+    readonly "planned_stop"?: number | null
+    readonly "planned_t1"?: number | null
+    readonly "planned_t2"?: number | null
+    readonly "signal_given"?: string
+    readonly "structure"?: string
+    readonly "ticker": string
+    readonly "trade_type"?: string
+  }
+  readonly "TradeLogUpdate": {
+    readonly "actual_entry"?: number | null
+    readonly "contracts"?: number | null
+    readonly "entry_time"?: string | null
+    readonly "exit_price"?: number | null
+    readonly "exit_reason"?: string | null
+    readonly "exit_time"?: string | null
+    readonly "followed_plan"?: string | null
+    readonly "notes"?: string | null
+    readonly "outcome"?: string | null
+    readonly "planned_entry"?: number | null
+    readonly "planned_stop"?: number | null
+    readonly "planned_t1"?: number | null
+    readonly "planned_t2"?: number | null
+    readonly "pnl_estimate"?: number | null
+    readonly "structure"?: string | null
+  }
+  readonly "TradeWorksheetEvaluateRequest": {
+    readonly "buyExpiration"?: string
+    readonly "buyingPower"?: number
+    readonly "contracts"?: number
+    readonly "daysPassed"?: number
+    readonly "direction"?: string
+    readonly "expectedHoldDays"?: number
+    readonly "expiration"?: string
+    readonly "historicalVolatility"?: number
+    readonly "ivMove"?: number
+    readonly "ivPercentile"?: number
+    readonly "ivRank"?: number
+    readonly "longCallStrike"?: number
+    readonly "longPutStrike"?: number
+    readonly "longStrike"?: number
+    readonly "premium"?: number
+    readonly "priceMove"?: number
+    readonly "selectedLegRows"?: Record<string, ApiSchemas["TradeWorksheetSelectedRow"]> | null
+    readonly "selectedRow"?: ApiSchemas["TradeWorksheetSelectedRow"] | null
+    readonly "sellExpiration"?: string
+    readonly "shortCallStrike"?: number
+    readonly "shortPutStrike"?: number
+    readonly "shortStrike"?: number
+    readonly "stockPrice"?: number
+    readonly "strategy"?: string
+    readonly "strike"?: number
+    readonly "targetPrice"?: number
+    readonly "ticker"?: string
+  }
+  readonly "TradeWorksheetSelectedRow": {
+    readonly "ask"?: number | null
+    readonly "bid"?: number | null
+    readonly "in_the_money"?: boolean | null
+    readonly "is_atm"?: boolean | null
+    readonly "iv"?: number | null
+    readonly "mid"?: number | null
+    readonly "open_interest"?: number | null
+    readonly "spread"?: number | null
+    readonly "spread_pct"?: number | null
+    readonly "strike"?: number | null
+    readonly "volume"?: number | null
+  }
+  readonly "TradingCancelRequest": {
+    readonly "email": string
+    readonly "order_id": string
+  }
+  readonly "TradingCloseRequest": {
+    readonly "email": string
+    readonly "symbol": string
+  }
+  readonly "TradingExecuteRequest": {
+    readonly "contracts"?: number
+    readonly "email": string
+    readonly "legs": Array<Record<string, unknown>>
+    readonly "strategy": string
+    readonly "ticker": string
+  }
+  readonly "UserDataRequest": {
+    readonly "advisory_accepted_at"?: string | null
+    readonly "advisory_terms_version"?: string | null
+    readonly "alert_email_enabled"?: boolean | null
+    readonly "day_trade_watchlist"?: Array<string> | null
+    readonly "portfolio": Array<Record<string, unknown>>
+    readonly "swing_trade_watchlist"?: Array<string> | null
+    readonly "watchlist": Array<Record<string, unknown>>
+  }
+  readonly "UserDataResponse": {
+    readonly "advisory_accepted_at"?: string | null
+    readonly "advisory_terms_version"?: string | null
+    readonly "alert_email_enabled"?: boolean
+    readonly "day_trade_watchlist"?: Array<string>
+    readonly "email": string
+    readonly "portfolio": Array<Record<string, unknown>>
+    readonly "role"?: string
+    readonly "swing_trade_watchlist"?: Array<string>
+    readonly "watchlist": Array<Record<string, unknown>>
+    readonly "watchlist_max"?: number
+  }
+  readonly "ValidationError": {
+    readonly "loc": Array<string | number>
+    readonly "msg": string
+    readonly "type": string
+  }
+  readonly "WatchlistAddRequest": {
+    readonly "ticker": string
+    readonly "trade_type"?: string
+  }
+  readonly "WatchlistTickerBody": {
+    readonly "desired_entry"?: number | null
+    readonly "notes"?: string | null
+    readonly "source"?: string | null
+    readonly "ticker": string
+    readonly "watch_reason"?: string | null
+  }
+}
+
 export type ApiOperation = {
   readonly method: ApiHttpMethod
   readonly path: ApiPath
