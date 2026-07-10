@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from enum import Enum
 import math
 import threading
 import time
@@ -26,9 +27,25 @@ from trader_decision import build_trader_decision
 from verdict import Verdict
 from verdict_resolver import resolve_verdict
 from rule_enforcer import direction_state_from_bias, gate_trade_action, option_side_from_strategy
+from scalp_trade import build_scalp_context
 import trigger_detector
 
 ET = ZoneInfo("America/New_York")
+
+
+class TradeLifecycle(str, Enum):
+    WATCHING = "WATCHING"
+    SETUP_READY = "SETUP_READY"
+    ARMED = "ARMED"
+    TRIGGERED = "TRIGGERED"
+    ACTIVE = "ACTIVE"
+    PARTIAL_EXIT = "PARTIAL_EXIT"
+    EXITED = "EXITED"
+
+
+def _trade_lifecycle_label(side: Optional[str], lifecycle: TradeLifecycle) -> str:
+    prefix = f"{side} " if side in {"CALL", "PUT"} and lifecycle in {TradeLifecycle.ARMED, TradeLifecycle.TRIGGERED, TradeLifecycle.ACTIVE} else ""
+    return f"{prefix}{lifecycle.value.replace('_', ' ')}"
 
 # ---------------------------------------------------------------------------
 # Per-ticker scan result cache (bar_cache handles bar-level caching)
@@ -145,7 +162,18 @@ def _ensure_et_index(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     idx = out.index
     if idx.tz is None:
-        out.index = idx.tz_localize("UTC").tz_convert(ET)
+        # yfinance intraday history is normally tz-aware, but live/merged
+        # feeds can arrive naive. If naive timestamps already look like
+        # exchange-local RTH bars, localize to ET. Otherwise treat them as UTC.
+        hours = pd.Index(idx).hour
+        min_hour = int(np.min(hours)) if len(hours) else 0
+        max_hour = int(np.max(hours)) if len(hours) else 0
+        if min_hour >= 12 and max_hour >= 18:
+            out.index = idx.tz_localize("UTC").tz_convert(ET)
+        elif bool(np.any((hours >= 9) & (hours <= 11))):
+            out.index = idx.tz_localize(ET)
+        else:
+            out.index = idx.tz_localize("UTC").tz_convert(ET)
     else:
         out.index = idx.tz_convert(ET)
     return out
@@ -165,6 +193,215 @@ def _last_session_rth(df_et: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     session = rth.loc[day_mask]
     session_date = str(last_day.date())
     return session, session_date
+
+
+def _safe_iso(ts: Any) -> str | None:
+    try:
+        if ts is None:
+            return None
+        if not isinstance(ts, pd.Timestamp):
+            ts = pd.Timestamp(ts)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(ET)
+        return ts.isoformat()
+    except Exception:
+        return None
+
+
+def _candle_payload(row: pd.Series | None, ts: Any = None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    try:
+        return {
+            "time": _safe_iso(ts),
+            "open": float(row.get("Open")),
+            "high": float(row.get("High")),
+            "low": float(row.get("Low")),
+            "close": float(row.get("Close")),
+            "volume": float(row.get("Volume", 0.0)),
+        }
+    except Exception:
+        return None
+
+
+def _opening_range_window(
+    session: pd.DataFrame,
+    minutes: int = OR_MINUTES,
+) -> tuple[pd.DataFrame, pd.Timestamp | None, pd.Timestamp | None, bool, int]:
+    """Return the exact first wall-clock opening-range window, not first N rows."""
+    if session is None or session.empty:
+        return session, None, None, False, minutes
+    idx = session.index
+    first_day = idx[0].date()
+    start = pd.Timestamp(
+        year=first_day.year,
+        month=first_day.month,
+        day=first_day.day,
+        hour=9,
+        minute=30,
+        tz=ET,
+    )
+    end = start + pd.Timedelta(minutes=minutes)
+    mask = (idx >= start) & (idx < end)
+    or_seg = session.loc[mask]
+    locked = bool(len(session) > 0 and idx[-1] >= end)
+    expected = pd.date_range(start, periods=minutes, freq="1min", tz=ET)
+    missing = int(len(expected.difference(or_seg.index)))
+    return or_seg, start, end, locked, missing
+
+
+def _validate_session_candles(
+    session: pd.DataFrame,
+    *,
+    now_et: pd.Timestamp | None = None,
+    require_fresh: bool = False,
+) -> tuple[bool, str | None, dict[str, Any]]:
+    """Runtime data-quality gate before any trading recommendation is generated."""
+    details: dict[str, Any] = {
+        "input_count": int(len(session)) if session is not None else 0,
+        "output_count": int(len(session)) if session is not None else 0,
+        "dropped_records": [],
+        "validation_errors": [],
+    }
+    if session is None or session.empty:
+        return False, "No regular-session candles available.", details
+    if not isinstance(session.index, pd.DatetimeIndex):
+        return False, "Candle index is not a DatetimeIndex.", details
+    if session.index.tz is None:
+        return False, "Candle timestamps are timezone-naive after normalization.", details
+    details["first_timestamp"] = _safe_iso(session.index[0])
+    details["last_timestamp"] = _safe_iso(session.index[-1])
+    details["timezone"] = str(session.index.tz)
+
+    if not session.index.is_monotonic_increasing:
+        return False, "Candles are not sorted ascending.", details
+    dupes = int(session.index.duplicated().sum())
+    details["duplicate_timestamps"] = dupes
+    if dupes:
+        return False, f"Duplicate candle timestamps detected ({dupes}).", details
+
+    required_cols = ("Open", "High", "Low", "Close", "Volume")
+    missing_cols = [c for c in required_cols if c not in session.columns]
+    if missing_cols:
+        return False, f"Missing required OHLCV columns: {', '.join(missing_cols)}.", details
+
+    o = session["Open"].astype(float)
+    h = session["High"].astype(float)
+    l = session["Low"].astype(float)
+    c = session["Close"].astype(float)
+    v = session["Volume"].astype(float)
+    details["first_ohlcv"] = _candle_payload(session.iloc[0], session.index[0])
+    details["last_ohlcv"] = _candle_payload(session.iloc[-1], session.index[-1])
+    details["total_volume"] = float(v.clip(lower=0).sum())
+
+    if bool((v < 0).any()):
+        return False, "Negative candle volume detected.", details
+    bad_high = bool((h < pd.concat([o, c], axis=1).max(axis=1)).any())
+    if bad_high:
+        return False, "Invalid OHLC: high is below open or close.", details
+    bad_low = bool((l > pd.concat([o, c], axis=1).min(axis=1)).any())
+    if bad_low:
+        return False, "Invalid OHLC: low is above open or close.", details
+
+    times = session.index.time
+    premarket_leak = int(sum((t < pd.Timestamp("09:30").time()) for t in times))
+    postmarket_leak = int(sum((t > pd.Timestamp("16:00").time()) for t in times))
+    details["premarket_records"] = premarket_leak
+    details["postmarket_records"] = postmarket_leak
+    if premarket_leak or postmarket_leak:
+        return False, "Non-regular-session candles leaked into RTH session.", details
+
+    or_seg, or_start, or_end, or_locked, missing_or = _opening_range_window(session)
+    details["opening_range_start"] = _safe_iso(or_start)
+    details["opening_range_end"] = _safe_iso(or_end)
+    details["opening_range_locked"] = or_locked
+    details["opening_range_candles"] = int(len(or_seg))
+    details["opening_range_missing_minutes"] = missing_or
+    if or_locked and or_seg.empty:
+        return False, "Opening range is locked but no 9:30-9:45 ET candles exist.", details
+
+    if require_fresh and now_et is not None:
+        last_ts = session.index[-1]
+        age_min = max(0, int((now_et - last_ts).total_seconds() / 60))
+        details["last_candle_age_minutes"] = age_min
+        if age_min > 5:
+            return False, f"1-minute candles are stale ({age_min} minutes old).", details
+
+    return True, None, details
+
+
+def _merge_historical_live_candles(
+    historical: pd.DataFrame,
+    live: pd.DataFrame,
+    *,
+    now_et: pd.Timestamp | None = None,
+) -> tuple[pd.DataFrame, pd.Series | None]:
+    """Normalize, sort, and de-duplicate historical/live candles by timestamp.
+
+    The current forming live candle is returned separately so closed-candle
+    signal logic does not overwrite the last completed historical candle.
+    """
+    parts = []
+    if historical is not None and not historical.empty:
+        parts.append(_ensure_et_index(historical))
+    if live is not None and not live.empty:
+        parts.append(_ensure_et_index(live))
+    if not parts:
+        return pd.DataFrame(), None
+    merged = pd.concat(parts).sort_index()
+    merged = merged[~merged.index.duplicated(keep="last")]
+    forming: pd.Series | None = None
+    if now_et is not None and not merged.empty:
+        if now_et.tzinfo is None:
+            now_et = now_et.tz_localize(ET)
+        current_minute = now_et.floor("min")
+        if merged.index[-1] >= current_minute:
+            forming = merged.iloc[-1]
+            merged = merged.iloc[:-1]
+    return merged, forming
+
+
+def _data_error_scan(
+    *,
+    ticker: str,
+    company: str,
+    reason: str,
+    debug_snapshot: dict[str, Any],
+) -> DayTradeScan:
+    metrics = {
+        "data_quality_status": "DATA_ERROR",
+        "data_quality_error": reason,
+        "data_debug_snapshot": debug_snapshot,
+        "final_verdict": "DATA ERROR",
+        "timeframe_final_decision": "DATA ERROR",
+        "chart_bars": [],
+    }
+    trader_decision = {
+        "action": "DATA ERROR",
+        "final_action": "DATA ERROR",
+        "reason": reason,
+    }
+    entry_guidance = {
+        "should_enter_now": "NO",
+        "final_action": "DATA ERROR",
+        "required_next_condition": "Fix/refresh market data before evaluating trade signals.",
+        "blocker": reason,
+    }
+    return DayTradeScan(
+        ticker=ticker,
+        company_name=company,
+        verdict="DATA ERROR",
+        bias=None,
+        bull_score=0.0,
+        bear_score=0.0,
+        raw_score=0.0,
+        reasons=[reason],
+        metrics=metrics,
+        trader_decision=trader_decision,
+        entry_guidance=entry_guidance,
+        option_risk_context={},
+        entry_window=None,
+    )
 
 
 def _session_to_5m_candles(session: "pd.DataFrame", n: int = 6) -> list[dict]:
@@ -842,26 +1079,70 @@ def build_day_decision_table_row(
     elif verdict == "CALL":
         levels = call_levels
 
+    lifecycle = TradeLifecycle.WATCHING
+    lifecycle_side: Optional[str] = None
+    trigger_text = ""
+    current_text = _fmt_level(price)
+    needs: list[str] = []
+
     if has_blockers:
         arm_trigger = "Clear blockers: " + ", ".join(blockers)
+        needs = [f"Clear {b}" for b in blockers]
     elif loc == "inside" and vwap_bias == "bull":
-        arm_trigger = f"GO CALL if 5m closes > {_fmt_level(or_high)}"
+        lifecycle = TradeLifecycle.ARMED if structure_5m == "HH/HL" and spy_bias == "bull" else TradeLifecycle.SETUP_READY
+        lifecycle_side = "CALL"
+        trigger_text = f"Close above {_fmt_level(or_high)}"
+        needs = [f"One 5m close above Entry {_fmt_level(or_high)}"]
+        arm_trigger = f"CALL {lifecycle.value.replace('_', ' ')}\nNeed:\n5m close above {_fmt_level(or_high)}"
         levels = call_levels
     elif loc == "inside" and vwap_bias == "bear":
-        arm_trigger = f"GO PUT if 5m closes < {_fmt_level(or_low)}"
+        lifecycle = TradeLifecycle.ARMED if structure_5m == "LH/LL" and spy_bias == "bear" else TradeLifecycle.SETUP_READY
+        lifecycle_side = "PUT"
+        trigger_text = f"Close below {_fmt_level(or_low)}"
+        needs = [f"One 5m close below Entry {_fmt_level(or_low)}"]
+        arm_trigger = f"PUT {lifecycle.value.replace('_', ' ')}\nNeed:\n5m close below {_fmt_level(or_low)}"
         levels = put_levels
     elif structure_5m == "MIXED":
+        lifecycle = TradeLifecycle.WATCHING
         arm_trigger = "need 2 consec 5m HH/HL" if vwap_bias == "bull" else "need 2 consec 5m LH/LL" if vwap_bias == "bear" else "need 2 consec 5m HH/HL or LH/LL"
+        needs = [arm_trigger]
     elif (vwap_bias == "bull" and loc != "above ORH") or (vwap_bias == "bear" and loc != "below ORL"):
+        lifecycle = TradeLifecycle.WATCHING
         arm_trigger = f"VWAP {vwap_bias} vs price {loc}"
+        needs = [arm_trigger]
     elif spy_bias not in {"bull", "bear"} or spy_bias != vwap_bias:
+        lifecycle = TradeLifecycle.SETUP_READY
         arm_trigger = f"SPY {spy_bias} must agree with VWAP {vwap_bias}"
+        needs = [arm_trigger]
     elif verdict == "CALL":
-        arm_trigger = f"{ticker} CALL armed — E {_fmt_level(call_levels['entry'])} T1 {_fmt_level(call_levels['t1'])}"
+        lifecycle = TradeLifecycle.TRIGGERED
+        lifecycle_side = "CALL"
+        trigger_text = f"Entry fired at {_fmt_level(call_levels['entry'])}"
+        arm_trigger = f"CALL TRIGGERED\nEntry fired at {_fmt_level(call_levels['entry'])}\nCurrent {_fmt_level(price)}"
     elif verdict == "PUT":
-        arm_trigger = f"{ticker} PUT armed — E {_fmt_level(put_levels['entry'])} T1 {_fmt_level(put_levels['t1'])}"
+        lifecycle = TradeLifecycle.TRIGGERED
+        lifecycle_side = "PUT"
+        trigger_text = f"Entry fired at {_fmt_level(put_levels['entry'])}"
+        arm_trigger = f"PUT TRIGGERED\nEntry fired at {_fmt_level(put_levels['entry'])}\nCurrent {_fmt_level(price)}"
     else:
+        lifecycle = TradeLifecycle.WATCHING
         arm_trigger = f"VWAP {vwap_bias} vs price {loc}"
+        needs = [arm_trigger]
+
+    lifecycle_label = _trade_lifecycle_label(lifecycle_side, lifecycle)
+    lifecycle_payload = {
+        "state": lifecycle.value,
+        "side": lifecycle_side,
+        "label": lifecycle_label,
+        "trigger": trigger_text,
+        "current": current_text,
+        "needs": needs,
+        "entry_price": levels.get("entry"),
+        "current_price": round(price, 4),
+        "stop": levels.get("stop"),
+        "t1": levels.get("t1"),
+        "t2": levels.get("t2"),
+    }
 
     return {
         "ticker": ticker,
@@ -885,8 +1166,11 @@ def build_day_decision_table_row(
         "levels": levels,
         "call_levels": call_levels,
         "put_levels": put_levels,
+        "trade_lifecycle": lifecycle_payload,
+        "lifecycle": lifecycle.value,
+        "lifecycle_label": lifecycle_label,
         "arm_trigger": arm_trigger,
-        "notification": f"{ticker} {verdict} armed — E {_fmt_level(levels.get('entry'))} T1 {_fmt_level(levels.get('t1'))}" if verdict in ("CALL", "PUT") else "",
+        "notification": f"{ticker} {lifecycle_label} — Entry {_fmt_level(levels.get('entry'))} T1 {_fmt_level(levels.get('t1'))}" if lifecycle == TradeLifecycle.TRIGGERED and verdict in ("CALL", "PUT") else "",
     }
 
 
@@ -4063,6 +4347,65 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             "(market may be closed or symbol illiquid)."
         )
 
+    _now_et = pd.Timestamp.now(tz=ET)
+    _in_rth = (
+            (_now_et.hour > 9 or (_now_et.hour == 9 and _now_et.minute >= 30))
+            and _now_et.hour < 16
+            and _now_et.weekday() < 5
+    )
+    _or_seg_pre, _or_start_pre, _or_end_pre, _or_locked_pre, _or_missing_pre = _opening_range_window(session)
+    _data_debug: dict[str, Any] = {
+        "ticker": t,
+        "sessionDate": session_date,
+        "timezone": "America/New_York",
+        "dataSource": "bar_cache:yahoo_history_1m",
+        "historicalCandlesCount": int(len(raw)) if raw is not None else 0,
+        "liveCandlesCount": 0,
+        "mergedCandlesCount": int(len(session)),
+        "firstCandleTime": _safe_iso(session.index[0]) if not session.empty else None,
+        "lastCandleTime": _safe_iso(session.index[-1]) if not session.empty else None,
+        "openingRangeStart": _safe_iso(_or_start_pre),
+        "openingRangeEnd": _safe_iso(_or_end_pre),
+        "openingRangeLocked": _or_locked_pre,
+        "openingRangeMissingMinutes": _or_missing_pre,
+        "ORH": float(_or_seg_pre["High"].max()) if not _or_seg_pre.empty else None,
+        "ORL": float(_or_seg_pre["Low"].min()) if not _or_seg_pre.empty else None,
+        "ORMID": (
+            float((_or_seg_pre["High"].max() + _or_seg_pre["Low"].min()) / 2.0)
+            if not _or_seg_pre.empty else None
+        ),
+        "VWAP": None,
+        "lastPrice": float(session["Close"].iloc[-1]) if "Close" in session.columns else None,
+        "lastCandle": _candle_payload(session.iloc[-1], session.index[-1]) if not session.empty else None,
+        "lastClosedCandle": _candle_payload(session.iloc[-1], session.index[-1]) if not session.empty else None,
+        "currentFormingCandle": None,
+        "totalVolume": float(session["Volume"].clip(lower=0).sum()) if "Volume" in session.columns else None,
+        "rvol": None,
+        "vwapState": None,
+        "signalState": None,
+        "checklistStatus": None,
+        "finalVerdict": None,
+        "blockedReason": None,
+        "droppedRecords": [],
+        "validationErrors": [],
+    }
+    _valid, _validation_reason, _validation_details = _validate_session_candles(
+        session,
+        now_et=_now_et,
+        require_fresh=_in_rth,
+    )
+    _data_debug.update(_validation_details)
+    if not _valid:
+        _data_debug["blockedReason"] = _validation_reason
+        _data_debug["finalVerdict"] = "DATA ERROR"
+        log.warning("Day-trade data validation failed for %s: %s", t, _validation_reason)
+        return _data_error_scan(
+            ticker=t,
+            company=company,
+            reason=_validation_reason or "Invalid market data.",
+            debug_snapshot=_data_debug,
+        )
+
     last = float(session["Close"].iloc[-1])
     vol_ser = session["Volume"].astype(float)
 
@@ -4073,7 +4416,6 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     # are stale during market hours, override `last` with regularMarketPrice
     # from the info dict (which is a quote snapshot, not a bar) so the price
     # shown is current even if OHLCV analysis is based on lagged bars.
-    _now_et = pd.Timestamp.now(tz=ET)
     _last_bar_ts: pd.Timestamp | None = None
     _bar_age_minutes: int = 0
     _bar_data_stale: bool = False
@@ -4087,22 +4429,13 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         _bar_age_minutes = 0
 
     # Stale = last bar > 5 min old AND we are inside regular market hours.
-    _in_rth = (
-            (_now_et.hour > 9 or (_now_et.hour == 9 and _now_et.minute >= 30))
-            and _now_et.hour < 16
-            and _now_et.weekday() < 5
-    )
     if _in_rth and _bar_age_minutes > 5:
         _bar_data_stale = True
-        # Try to use regularMarketPrice as a fresher last price.
-        _rmp = info.get("regularMarketPrice")
-        if _rmp and float(_rmp) > 0:
-            last = float(_rmp)
         _stale_msg = (
             f"1-minute bar data for {t} is {_bar_age_minutes} min old "
             f"(last bar: {_last_bar_ts.strftime('%H:%M') if _last_bar_ts else 'unknown'} ET). "
-            "Yahoo Finance is delayed for this ticker — price updated from quote feed; "
-            "VWAP, OR, and momentum are based on lagged bars."
+            "Yahoo Finance is delayed for this ticker. Signal generation is blocked "
+            "because quote price cannot be mixed with stale candle VWAP/OR/momentum."
         )
 
     # Yahoo throttle / fetch error — bar_cache served stale data from a prior successful fetch.
@@ -4111,6 +4444,18 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         _stale_msg = (
             f"Yahoo Finance returned no data for {t} — showing last known values. "
             "This usually means a temporary rate-limit or network error. Data will refresh automatically."
+        )
+    if _bar_data_stale:
+        _data_debug["blockedReason"] = _stale_msg
+        _data_debug["finalVerdict"] = "DATA ERROR"
+        _data_debug["barDataAgeMinutes"] = _bar_age_minutes
+        _data_debug["regularMarketPrice"] = info.get("regularMarketPrice")
+        log.warning("Day-trade stale data blocked for %s: %s", t, _stale_msg)
+        return _data_error_scan(
+            ticker=t,
+            company=company,
+            reason=_stale_msg or "Stale market data.",
+            debug_snapshot=_data_debug,
         )
 
     vwap_ser, vwap_upper1_ser, vwap_lower1_ser, vwap_upper2_ser, vwap_lower2_ser = _compute_vwap_bands(session)
@@ -4122,6 +4467,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     vwap_last = _finite_price(vwap_candidate, last)
     # Track whether VWAP fell back to last (meaning real VWAP was not computable).
     _vwap_is_real = math.isfinite(vwap_candidate) and vwap_candidate > 0
+    if _data_debug is not None:
+        _data_debug["VWAP"] = round(vwap_last, 4)
 
     # VWAP band levels at current bar
     vwap_upper1 = _finite_price(float(vwap_upper1_ser.iloc[-1]), last)
@@ -4146,10 +4493,30 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     # Deferred until bias is known; placeholder set here, overwritten after bias resolved.
     _vwap_hold_state_raw: str = "NOT_TESTED"
 
-    n_or = min(OR_MINUTES, len(session))
-    or_seg = session.iloc[:n_or]
+    or_seg, _or_start, _or_end, _or_locked, _or_missing = _opening_range_window(session)
+    if or_seg.empty:
+        reason = "Opening range cannot be computed from the 9:30-9:45 ET window."
+        _data_debug["blockedReason"] = reason
+        _data_debug["finalVerdict"] = "DATA ERROR"
+        return _data_error_scan(ticker=t, company=company, reason=reason, debug_snapshot=_data_debug)
+    n_or = len(or_seg)
     or_high = float(or_seg["High"].max())
     or_low  = float(or_seg["Low"].min())
+    _data_debug["ORH"] = round(or_high, 4)
+    _data_debug["ORL"] = round(or_low, 4)
+    _data_debug["ORMID"] = round((or_high + or_low) / 2.0, 4)
+    _data_debug["openingRangeLocked"] = _or_locked
+    _data_debug["openingRangeMissingMinutes"] = _or_missing
+    if or_high < or_low:
+        reason = f"Invalid opening range: ORH {or_high:.4f} is below ORL {or_low:.4f}."
+        _data_debug["blockedReason"] = reason
+        _data_debug["finalVerdict"] = "DATA ERROR"
+        return _data_error_scan(ticker=t, company=company, reason=reason, debug_snapshot=_data_debug)
+    if not math.isfinite(vwap_last) or vwap_last <= 0:
+        reason = "VWAP is not finite after session calculation."
+        _data_debug["blockedReason"] = reason
+        _data_debug["finalVerdict"] = "DATA ERROR"
+        return _data_error_scan(ticker=t, company=company, reason=reason, debug_snapshot=_data_debug)
 
     # Range extremes — used for range-span math later; kept separate from OR break logic.
     session_high = float(session["High"].max())
@@ -4244,11 +4611,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     # Volume spike baseline: use median (more robust than mean against mid-session bursts).
     # Computed BEFORE rvol so the synthetic fallback can use avg_vol.
-    or_vol = vol_ser.iloc[:OR_MINUTES]
-    steady_vol = vol_ser.iloc[OR_MINUTES:-1]
+    or_vol = or_seg["Volume"].astype(float)
+    _post_or_session = session.loc[session.index >= _or_end] if _or_end is not None else session.iloc[n_or:]
+    steady_vol = _post_or_session["Volume"].astype(float).iloc[:-1]
     tail_mid = (
-        vol_ser.iloc[max(OR_MINUTES, len(vol_ser) // 3) :-1]
-        if len(vol_ser) > OR_MINUTES + VOL_SPIKE_MIN_STEADY + 2
+        vol_ser.iloc[max(n_or, len(vol_ser) // 3) :-1]
+        if len(vol_ser) > n_or + VOL_SPIKE_MIN_STEADY + 2
         else steady_vol
     )
     if len(steady_vol) >= VOL_SPIKE_MIN_STEADY:
@@ -4264,7 +4632,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     # AND prints a volume spike on that same bar.  A wick or low-volume poke does not
     # qualify: the flag stays False until real participation confirms the move.
     # Fallback to price-only when avg_vol is unavailable (zero-volume edge case).
-    _post_or = session.iloc[n_or:]
+    _post_or = _post_or_session
     if avg_vol > 0 and len(_post_or) > 0:
         _close     = _post_or["Close"].astype(float)
         _vol       = _post_or["Volume"].astype(float)
@@ -5207,213 +5575,21 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     reasons = prefix + body
 
-    close_ser = session["Close"].astype(float)
-    high_ser = session["High"].astype(float)
-    low_ser = session["Low"].astype(float)
-    ema20_ser = close_ser.ewm(span=20, adjust=False).mean()
-    ema50_ser = close_ser.ewm(span=50, adjust=False).mean()
-    ema150_ser = close_ser.ewm(span=150, adjust=False).mean()
-    stoch_low5 = low_ser.rolling(5, min_periods=1).min()
-    stoch_high5 = high_ser.rolling(5, min_periods=1).max()
-    stoch_range5 = (stoch_high5 - stoch_low5).replace(0, math.nan)
-    stoch5_ser = ((close_ser - stoch_low5) / stoch_range5 * 100.0).fillna(50.0).clip(0.0, 100.0)
-    trend_confirm_ser = (ema50_ser > ema150_ser).astype(float) * 100.0
-
-    chart_bars: list[dict[str, Any]] = []
-    for i in range(len(session)):
-        row = session.iloc[i]
-        ts = session.index[i]
-        t_iso = pd.Timestamp(ts).isoformat()
-        vw_i = float(vwap_ser.iloc[i])
-        chart_bars.append(
-            {
-                "t": t_iso,
-                "o": round(float(row["Open"]), 4),
-                "h": round(float(row["High"]), 4),
-                "l": round(float(row["Low"]), 4),
-                "c": round(float(row["Close"]), 4),
-                "v": round(float(row["Volume"]), 4),
-                "vwap":        round(vw_i, 4),
-                "vwap_upper1": round(float(vwap_upper1_ser.iloc[i]), 4),
-                "vwap_lower1": round(float(vwap_lower1_ser.iloc[i]), 4),
-                "vwap_upper2": round(float(vwap_upper2_ser.iloc[i]), 4),
-                "vwap_lower2": round(float(vwap_lower2_ser.iloc[i]), 4),
-                "ema50": round(float(ema50_ser.iloc[i]), 4),
-                "ema150": round(float(ema150_ser.iloc[i]), 4),
-                "stoch5": round(float(stoch5_ser.iloc[i]), 2),
-                "trend_confirmation": round(float(trend_confirm_ser.iloc[i]), 2),
-            }
-        )
-
-    avg_vol20_ser = session["Volume"].astype(float).rolling(20, min_periods=1).mean()
-    scalp_bias = "long" if float(ema50_ser.iloc[-1]) >= float(ema150_ser.iloc[-1]) else "short"
-    scalp_entry_idx: Optional[int] = None
-    for i in range(max(1, len(session) - 45), len(session)):
-        prev_stoch = float(stoch5_ser.iloc[i - 1])
-        curr_stoch = float(stoch5_ser.iloc[i])
-        close_i = float(close_ser.iloc[i])
-        ema50_i = float(ema50_ser.iloc[i])
-        ema150_i = float(ema150_ser.iloc[i])
-        vol_i = float(session["Volume"].iloc[i])
-        avg_vol_i = max(1.0, float(avg_vol20_ser.iloc[i]))
-        if scalp_bias == "long":
-            trend_ok = ema50_i > ema150_i and close_i >= ema50_i
-            stoch_trigger = prev_stoch <= 20.0 and curr_stoch > 20.0
-            continuation_trigger = curr_stoch >= 50.0 and close_i > ema50_i and vol_i >= avg_vol_i
-            if trend_ok and (stoch_trigger or continuation_trigger):
-                scalp_entry_idx = i
-        else:
-            trend_ok = ema50_i < ema150_i and close_i <= ema50_i
-            stoch_trigger = prev_stoch >= 80.0 and curr_stoch < 80.0
-            continuation_trigger = curr_stoch <= 50.0 and close_i < ema50_i and vol_i >= avg_vol_i
-            if trend_ok and (stoch_trigger or continuation_trigger):
-                scalp_entry_idx = i
-
-    if scalp_entry_idx is not None:
-        entry_bar = session.iloc[scalp_entry_idx]
-        entry_price = float(entry_bar["Close"])
-        lookback_lo = max(0, scalp_entry_idx - 5)
-        if scalp_bias == "long":
-            stop_level = min(float(session["Low"].iloc[lookback_lo:scalp_entry_idx + 1].min()), float(ema50_ser.iloc[scalp_entry_idx])) * 0.999
-            risk = max(entry_price - stop_level, entry_price * 0.002)
-            target_1 = entry_price + risk * 1.5
-            target_2 = entry_price + risk * 2.5
-            requirement = "EMA50 above EMA150, price holding EMA50, momentum trigger confirmed, volume at/above 20-bar average."
-        else:
-            stop_level = max(float(session["High"].iloc[lookback_lo:scalp_entry_idx + 1].max()), float(ema50_ser.iloc[scalp_entry_idx])) * 1.001
-            risk = max(stop_level - entry_price, entry_price * 0.002)
-            target_1 = entry_price - risk * 1.5
-            target_2 = entry_price - risk * 2.5
-            requirement = "EMA50 below EMA150, price rejecting EMA50, momentum trigger confirmed, volume at/above 20-bar average."
-        scalp_status = "ENTRY_READY" if scalp_entry_idx >= len(session) - 3 else "TRACK_PULLBACK"
-        scalp_next = "Enter on a 1m pullback that holds EMA50; skip if price closes through the stop."
-    else:
-        entry_price = float(close_ser.iloc[-1])
-        if scalp_bias == "long":
-            stop_level = float(ema50_ser.iloc[-1]) * 0.998
-            target_1 = entry_price + max(entry_price - stop_level, entry_price * 0.002) * 1.5
-            target_2 = entry_price + max(entry_price - stop_level, entry_price * 0.002) * 2.5
-            requirement = "Need EMA50 above EMA150, price above EMA50, momentum trigger, and volume confirmation."
-        else:
-            stop_level = float(ema50_ser.iloc[-1]) * 1.002
-            target_1 = entry_price - max(stop_level - entry_price, entry_price * 0.002) * 1.5
-            target_2 = entry_price - max(stop_level - entry_price, entry_price * 0.002) * 2.5
-            requirement = "Need EMA50 below EMA150, price below EMA50, momentum rollover, and volume confirmation."
-        scalp_status = "WAIT_TRIGGER"
-        scalp_next = "Wait for the next clean 1m stochastic trigger with price respecting EMA50."
-
-    scalp_entry_time = None
-    if scalp_entry_idx is not None:
-        scalp_entry_time = pd.Timestamp(session.index[scalp_entry_idx]).isoformat()
-
-    latest_close = float(close_ser.iloc[-1])
-    latest_ema20 = float(ema20_ser.iloc[-1])
-    latest_ema50 = float(ema50_ser.iloc[-1])
-    latest_ema150 = float(ema150_ser.iloc[-1])
-    latest_stoch = float(stoch5_ser.iloc[-1])
-    latest_vol_ratio = float(session["Volume"].iloc[-1]) / max(1.0, float(avg_vol20_ser.iloc[-1]))
-    trend_confirmed = bool(latest_ema50 > latest_ema150 if scalp_bias == "long" else latest_ema50 < latest_ema150)
-    price_respects_ema50 = bool(latest_close >= latest_ema50 if scalp_bias == "long" else latest_close <= latest_ema50)
-    stoch_timing_ok = bool(
-        latest_stoch >= 50.0 if scalp_bias == "long" else latest_stoch <= 50.0
+    scalp_context = build_scalp_context(
+        session=session,
+        vwap_ser=vwap_ser,
+        vwap_upper1_ser=vwap_upper1_ser,
+        vwap_lower1_ser=vwap_lower1_ser,
+        vwap_upper2_ser=vwap_upper2_ser,
+        vwap_lower2_ser=vwap_lower2_ser,
     )
-    volume_confirmed = latest_vol_ratio >= 1.0
-    ema50_dist_pct = abs(latest_close / latest_ema50 - 1.0) * 100.0 if latest_ema50 > 0 else 0.0
-    if ema50_dist_pct >= 1.0:
-        extension_state = "EXTREME"
-    elif ema50_dist_pct >= 0.55:
-        extension_state = "EXTENDED"
-    else:
-        extension_state = "NORMAL"
-
-    risk_per_share = abs(entry_price - stop_level)
-    rr_t1 = abs(target_1 - entry_price) / risk_per_share if risk_per_share > 0 else 0.0
-    blockers: list[dict[str, Any]] = [
-        {"label": "EMA trend aligned", "status": "PASS" if trend_confirmed else "FAIL"},
-        {"label": "Price respects EMA50", "status": "PASS" if price_respects_ema50 else "FAIL"},
-        {"label": "Momentum timing", "status": "PASS" if stoch_timing_ok else "PENDING"},
-        {"label": "Volume confirmed", "status": "PASS" if volume_confirmed else "PENDING"},
-        {"label": f"EMA50 extension {ema50_dist_pct:.2f}%", "status": "PASS" if extension_state == "NORMAL" else "WARN"},
-    ]
-    trade_quality = 0
-    trade_quality += 25 if trend_confirmed else 0
-    trade_quality += 15 if price_respects_ema50 else 0
-    trade_quality += 20 if stoch_timing_ok else 8
-    trade_quality += 20 if volume_confirmed else 8
-    trade_quality += 20 if extension_state == "NORMAL" else 10 if extension_state == "EXTENDED" else 0
-    trade_quality = max(0, min(100, trade_quality))
-    quality_grade = "A+" if trade_quality >= 90 else "A" if trade_quality >= 80 else "B" if trade_quality >= 70 else "C" if trade_quality >= 55 else "SKIP"
-
-    if extension_state == "EXTREME":
-        scalp_action = "DO_NOT_CHASE"
-        scalp_reason = "Price is too far from EMA50 for a professional scalp entry."
-    elif not trend_confirmed or not price_respects_ema50:
-        scalp_action = "NO_TRADE"
-        scalp_reason = "Scalp trend structure is not aligned."
-    elif not volume_confirmed or not stoch_timing_ok:
-        scalp_action = "WAIT"
-        scalp_reason = "Timing or volume confirmation is not complete."
-    elif scalp_status == "ENTRY_READY":
-        scalp_action = "GO"
-        scalp_reason = "Trend, timing, and volume are aligned without extension."
-    else:
-        scalp_action = "TRACK"
-        scalp_reason = "Setup is valid, but current entry is no longer fresh."
-    scalp_gate = gate_trade_action(
-        final_action=scalp_action,
-        direction_state=direction_state_from_bias(scalp_bias),
-        trade_side=option_side_from_strategy(None, scalp_bias),
-        volume_required=True,
-        volume_confirmed=volume_confirmed,
-        extension_state=extension_state,
-    )
-    if scalp_gate["blocked"]:
-        scalp_action = str(scalp_gate["final_action"])
-        scalp_reason = scalp_gate["required_next_condition"]
-    momentum_label = "STRONG" if stoch_timing_ok and volume_confirmed else "BUILDING" if stoch_timing_ok or volume_confirmed else "WEAK"
-    price_label = "CONFIRMED" if price_respects_ema50 else "NOT CONFIRMED"
-    status_label = (
-        "BUY PULLBACKS" if scalp_bias == "long" and scalp_action in ("GO", "TRACK")
-        else "SELL BOUNCES" if scalp_bias == "short" and scalp_action in ("GO", "TRACK")
-        else scalp_action.replace("_", " ")
-    )
-
-    scalp_trading = {
-        "action": scalp_action,
-        "reason": scalp_reason,
-        "bias": scalp_gate["bias"],
-        "blocker": scalp_gate["blocker"],
-        "final_action": scalp_gate["final_action"],
-        "required_next_condition": scalp_gate["required_next_condition"],
-        "momentum_label": momentum_label,
-        "price_label": price_label,
-        "status_label": status_label,
-        "trade_quality": trade_quality,
-        "quality_grade": quality_grade,
-        "status": scalp_status,
-        "direction": scalp_bias,
-        "entry_price": round(entry_price, 4),
-        "entry_time": scalp_entry_time,
-        "stop_level": round(stop_level, 4),
-        "target_1": round(target_1, 4),
-        "target_2": round(target_2, 4),
-        "risk_per_share": round(risk_per_share, 4),
-        "risk_reward_t1": round(rr_t1, 2),
-        "ema50": round(latest_ema50, 4),
-        "ema20": round(latest_ema20, 4),
-        "ema150": round(latest_ema150, 4),
-        "stoch5": round(latest_stoch, 2),
-        "volume_ratio_20": round(latest_vol_ratio, 2),
-        "trend_confirmed": trend_confirmed,
-        "volume_confirmed": volume_confirmed,
-        "extension_state": extension_state,
-        "extension_from_ema50_pct": round(ema50_dist_pct, 2),
-        "recommended_dte": "5-10 DTE",
-        "blockers": blockers,
-        "logic_note": "Scalp logic uses EMA trend, momentum timing, and volume. VWAP, ORH, and ORL are not scalp entry requirements.",
-        "trigger_requirement": requirement,
-        "next_action": scalp_next,
-    }
+    chart_bars = scalp_context["chart_bars"]
+    scalp_trading = scalp_context["scalp_trading"]
+    latest_ema20 = float(scalp_context["latest_ema20"])
+    latest_ema50 = float(scalp_context["latest_ema50"])
+    latest_ema150 = float(scalp_context["latest_ema150"])
+    latest_stoch = float(scalp_context["latest_stoch"])
+    latest_vol_ratio = float(scalp_context["latest_vol_ratio"])
 
     session_change_pct = _intraday_session_return_pct(session)
     post_m_p = _info_opt_float(info, "postMarketPrice")
@@ -5461,6 +5637,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "regular_market_price": reg_m_p,
         "regular_market_change_pct": reg_m_chg,
         "market_state": market_state,
+        "data_quality_status": "OK",
+        "data_debug_snapshot": _data_debug,
         "opening_type": opening_context["opening_type"],
         "opening_playbook": opening_context["playbook"],
         "opening_playbook_reason": opening_context["reason"],
@@ -5485,6 +5663,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "or_breakout": or_state,
         "or_historical": or_historical,
         "or_minutes": OR_MINUTES,
+        "opening_range_start": _safe_iso(_or_start),
+        "opening_range_end": _safe_iso(_or_end),
+        "opening_range_locked": _or_locked,
+        "opening_range_missing_minutes": _or_missing,
         "or_width_pct": or_width_pct,
         "or_width_label": or_width_label,
         "vwap_reliable": _vwap_is_real,
@@ -5894,6 +6076,15 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         stop=entry_guidance.get("risk_below"),
         target=entry_guidance.get("scalp_target"),
     )
+    _data_debug["lastPrice"] = round(last, 4)
+    _data_debug["totalVolume"] = float(cumulative_vol)
+    _data_debug["rvol"] = rvol
+    _data_debug["vwapState"] = vwap_position
+    _data_debug["signalState"] = market_state_engine.get("state")
+    _data_debug["checklistStatus"] = timeframe_state.get("final_decision")
+    _data_debug["finalVerdict"] = _internal_verdict
+    _data_debug["blockedReason"] = timeframe_state.get("blocker") or entry_guidance.get("blocker")
+    metrics["data_debug_snapshot"] = _data_debug
 
     scan = DayTradeScan(
         ticker=t,

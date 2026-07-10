@@ -607,12 +607,12 @@ def build_swing_trade_decision(
 
     # Market context penalties / bonuses
     if is_bullish:
-        if market_context == "MARKET_WEAK":       score -= 2.0
+        if market_context == "MARKET_WEAK":       score -= 1.5
         if market_context == "MARKET_MIXED":      score -= 0.5
         if market_context == "MARKET_SUPPORTIVE": score += 1.0
     else:
-        if market_context == "MARKET_SUPPORTIVE": score -= 1.0  # counter-trend
-        if market_context == "MARKET_WEAK":       score += 0.5  # market supports bears
+        if market_context == "MARKET_SUPPORTIVE": score -= 1.5  # counter-trend
+        if market_context == "MARKET_WEAK":       score += 1.0  # market supports bears
         if market_context == "MARKET_MIXED":      score -= 0.25
 
     # Extension penalties

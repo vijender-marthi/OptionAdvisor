@@ -836,7 +836,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 <thead>
                   <tr className="border-b border-gray-800 bg-gray-800/50">
                     <th className="text-left px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Role</th>
-                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Regular Trade</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Position Trade</th>
                     <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Day Trade</th>
                     <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Swing Trade</th>
                     <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Advanced Tools</th>

@@ -22,7 +22,10 @@ class DayDecisionTableTests(unittest.TestCase):
         self.assertEqual(row["verdict"], "CALL")
         self.assertEqual(row["levels"]["entry"], 110)
         self.assertEqual(row["levels"]["stop"], 105)
-        self.assertIn("CALL armed", row["notification"])
+        self.assertEqual(row["lifecycle"], "TRIGGERED")
+        self.assertEqual(row["trade_lifecycle"]["label"], "CALL TRIGGERED")
+        self.assertIn("CALL TRIGGERED", row["notification"])
+        self.assertNotIn("armed", row["notification"].lower())
 
     def test_put_requires_no_blockers_bear_vwap_below_lhll_spy_bear(self):
         row = build_day_decision_table_row(
@@ -77,7 +80,9 @@ class DayDecisionTableTests(unittest.TestCase):
         )
         self.assertEqual(row["verdict"], "WAIT")
         self.assertEqual(row["loc"], "inside")
-        self.assertIn("GO CALL if 5m closes", row["arm_trigger"])
+        self.assertEqual(row["lifecycle"], "ARMED")
+        self.assertEqual(row["trade_lifecycle"]["label"], "CALL ARMED")
+        self.assertIn("5m close above", row["arm_trigger"])
 
 
 if __name__ == "__main__":

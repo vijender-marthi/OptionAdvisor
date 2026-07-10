@@ -31,7 +31,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { evaluateTradeWorksheet, fetchOptionChainLiquidity, getJournal, saveToJournal, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
+import { evaluateTradeWorksheet, fetchCalculationRuns, fetchCalculationSnapshot, fetchCalculationSnapshotAuditLog, fetchCalculationSnapshotIntegrity, fetchOptionChainLiquidity, getJournal, saveToJournal, type CalculationRun, type CalculationSnapshot, type CalculationSnapshotAuditLog, type CalculationSnapshotIntegrity, type MetricDefinition, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 import { useApp } from '../contexts/AppContext'
 
@@ -278,6 +278,14 @@ export default function TradeWorksheetPage() {
   const [showAdvancedInputs, setShowAdvancedInputs] = useState(false)
   const [journalHistory, setJournalHistory] = useState<JournalEntry[]>([])
   const [journalHistoryLoading, setJournalHistoryLoading] = useState(false)
+  const [calculationHistory, setCalculationHistory] = useState<CalculationRun[]>([])
+  const [calculationHistoryLoading, setCalculationHistoryLoading] = useState(false)
+  const [showCalculationHistory, setShowCalculationHistory] = useState(false)
+  const [selectedSnapshot, setSelectedSnapshot] = useState<CalculationSnapshot | null>(null)
+  const [selectedSnapshotIntegrity, setSelectedSnapshotIntegrity] = useState<CalculationSnapshotIntegrity | null>(null)
+  const [selectedSnapshotAuditLog, setSelectedSnapshotAuditLog] = useState<CalculationSnapshotAuditLog | null>(null)
+  const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false)
+  const [selectedSnapshotError, setSelectedSnapshotError] = useState('')
 
   const loadJournalHistory = useCallback(async (ticker = form.ticker) => {
     if (!user?.email) {
@@ -297,6 +305,49 @@ export default function TradeWorksheetPage() {
       setJournalHistoryLoading(false)
     }
   }, [form.ticker, user?.email])
+
+  const loadCalculationHistory = useCallback(async () => {
+    if (!user?.email) {
+      setCalculationHistory([])
+      setSelectedSnapshot(null)
+      setSelectedSnapshotIntegrity(null)
+      setSelectedSnapshotAuditLog(null)
+      return
+    }
+    setCalculationHistoryLoading(true)
+    try {
+      const data = await fetchCalculationRuns({ run_type: 'trade_worksheet', limit: 8 })
+      setCalculationHistory(data.runs)
+    } catch {
+      setCalculationHistory([])
+    } finally {
+      setCalculationHistoryLoading(false)
+    }
+  }, [user?.email])
+
+  const handleOpenSnapshot = useCallback(async (snapshotId?: string | null) => {
+    if (!snapshotId) return
+    setSelectedSnapshotLoading(true)
+    setSelectedSnapshotError('')
+    try {
+      const [snapshot, integrity, auditLog] = await Promise.all([
+        fetchCalculationSnapshot(snapshotId),
+        fetchCalculationSnapshotIntegrity(snapshotId),
+        fetchCalculationSnapshotAuditLog(snapshotId),
+      ])
+      setSelectedSnapshot(snapshot)
+      setSelectedSnapshotIntegrity(integrity)
+      setSelectedSnapshotAuditLog(auditLog)
+      setShowCalculationHistory(true)
+    } catch {
+      setSelectedSnapshot(null)
+      setSelectedSnapshotIntegrity(null)
+      setSelectedSnapshotAuditLog(null)
+      setSelectedSnapshotError('Unable to load frozen snapshot.')
+    } finally {
+      setSelectedSnapshotLoading(false)
+    }
+  }, [])
 
   const handleSaveToJournal = useCallback(async () => {
     if (!user?.email || !evaluation) return
@@ -361,6 +412,7 @@ export default function TradeWorksheetPage() {
         .then(data => {
           setEvaluation(data)
           setEvaluationError('')
+          void loadCalculationHistory()
         })
         .catch(err => {
           const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -368,7 +420,11 @@ export default function TradeWorksheetPage() {
         })
     }, 200)
     return () => window.clearTimeout(handle)
-  }, [form, selectedRow, selectedLegRows, priceMove, ivMove, daysPassed])
+  }, [form, selectedRow, selectedLegRows, priceMove, ivMove, daysPassed, loadCalculationHistory])
+
+  useEffect(() => {
+    void loadCalculationHistory()
+  }, [loadCalculationHistory])
 
   const greeks = evaluation?.greeks ?? { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, probabilityItm: 0, probabilityOtm: 0 }
   const score = evaluation?.score ?? { total: 0, trend: 0, optionPricing: 0, time: 0, liquidity: 0, probability: 0, riskReward: 0, volatility: 0, market: 0, label: 'WAIT' }
@@ -384,6 +440,11 @@ export default function TradeWorksheetPage() {
   const backDte = evaluation?.summary.backDte ?? 0
   const summaryMaxRisk = evaluation?.summary.maxRisk ?? 0
   const breakevenPrice = evaluation?.summary.breakeven ?? form.stockPrice
+  const metricDefinitions = useMemo(() => {
+    const pairs = (evaluation?.metricDefinitions?.metrics ?? []).map(def => [def.metricId, def] as const)
+    return new Map<string, MetricDefinition>(pairs)
+  }, [evaluation?.metricDefinitions?.metrics])
+  const metricDef = useCallback((metricId: string) => metricDefinitions.get(metricId), [metricDefinitions])
 
   const update = <K extends keyof WorksheetForm>(key: K, value: WorksheetForm[K]) => setForm(prev => ({ ...prev, [key]: value }))
 
@@ -717,13 +778,13 @@ export default function TradeWorksheetPage() {
               <Metric label={evaluation?.summary.netPremiumType === 'credit' ? 'Net Credit / Sh' : 'Net Debit / Sh'} value={fmtUsd(Math.abs(evaluation?.summary.netPremium ?? form.premium))} tone={evaluation?.summary.netPremiumType === 'credit' ? 'good' : undefined} />
               <Metric label={isCalendarLike(form.strategy) ? 'Front / Back DTE' : 'DTE'} value={isCalendarLike(form.strategy) ? `${frontDte} / ${backDte} days` : `${frontDte} days`} tone={frontDte >= 8 ? 'good' : 'caution'} />
               <Metric label="Cost" value={fmtUsd(evaluation?.summary.cost ?? 0)} />
-              <Metric label="Max Risk" value={fmtUsd(summaryMaxRisk)} tone="bad" />
-              <Metric label={isIronCondor(form.strategy) ? 'Breakeven Zone' : 'Breakeven'} value={isIronCondor(form.strategy) ? `${fmtUsd(form.shortPutStrike - form.premium)} - ${fmtUsd(form.shortCallStrike + form.premium)}` : fmtUsd(breakevenPrice)} />
-              <Metric label="Capital Required" value={fmtUsd(evaluation?.summary.capitalRequired ?? 0)} />
-              <Metric label="Theta / Day" value={fmtUsd(greeks.theta * 100 * form.contracts)} tone="bad" />
-              <Metric label="Delta" value={greeks.delta.toFixed(2)} />
-              <Metric label="IV Rank" value={`${form.ivRank.toFixed(0)}%`} tone={form.ivRank <= 45 ? 'good' : form.ivRank <= 65 ? 'caution' : 'bad'} />
-              <Metric label="POP / ITM" value={`${score.probability.toFixed(0)}% / ${greeks.probabilityItm.toFixed(0)}%`} tone={qualityTone(score.probability, 60, 45)} />
+              <Metric label="Max Risk" value={fmtUsd(summaryMaxRisk)} tone="bad" definition={metricDef('max_loss')} />
+              <Metric label={isIronCondor(form.strategy) ? 'Breakeven Zone' : 'Breakeven'} value={isIronCondor(form.strategy) ? `${fmtUsd(form.shortPutStrike - form.premium)} - ${fmtUsd(form.shortCallStrike + form.premium)}` : fmtUsd(breakevenPrice)} definition={metricDef('breakeven')} />
+              <Metric label="Capital Required" value={fmtUsd(evaluation?.summary.capitalRequired ?? 0)} definition={metricDef('capital_required')} />
+              <Metric label="Theta / Day" value={fmtUsd(greeks.theta * 100 * form.contracts)} tone="bad" definition={metricDef('theta_per_day')} />
+              <Metric label="Delta" value={greeks.delta.toFixed(2)} definition={metricDef('delta')} />
+              <Metric label="IV Rank" value={`${form.ivRank.toFixed(0)}%`} tone={form.ivRank <= 45 ? 'good' : form.ivRank <= 65 ? 'caution' : 'bad'} definition={metricDef('iv_rank')} />
+              <Metric label="POP / ITM" value={`${score.probability.toFixed(0)}% / ${greeks.probabilityItm.toFixed(0)}%`} tone={qualityTone(score.probability, 60, 45)} definition={metricDef('probability_of_profit')} />
               <Metric label="Earnings" value={evaluation ? (evaluation.summary.earningsDate ? `${evaluation.summary.earningsDate} (${evaluation.summary.earningsRisk})` : evaluation.summary.earningsRisk ?? '—') : '—'} tone={evaluation?.summary.earningsRisk === 'High' ? 'bad' : evaluation?.summary.earningsRisk === 'Medium' ? 'caution' : evaluation?.summary.earningsRisk === 'Low' ? 'good' : undefined} />
             </div>
             {evaluation?.summary.earningsMessage && (
@@ -782,7 +843,7 @@ export default function TradeWorksheetPage() {
             <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase ${riskLevel === 'Medium' ? 'border-amber-400/30 bg-amber-500/10 text-amber-600 dark:text-amber-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-600 dark:text-rose-300'}`}>{riskLevel}</span>
           </div>
           <p className="text-sm leading-relaxed text-secondary">
-            Risk is based on DTE, spread width, IV rank, probability, and required stock move.
+            {metricDef('risk_level')?.longDescription ?? 'Risk is based on DTE, spread width, IV rank, probability, and required stock move.'}
             {cons.length > 0 ? <> The largest current concern is {cons[0]}.</> : <> No major blocker is currently detected; keep normal options decay and execution discipline in the plan.</>}
           </p>
           <div className="mt-4 grid gap-3">
@@ -847,7 +908,7 @@ export default function TradeWorksheetPage() {
             <Metric label="Est. Option Value" value={fmtUsd(estimatedValue)} />
             <Metric label="Est. Profit" value={fmtUsd(estimatedProfit)} tone={estimatedProfit >= 0 ? 'good' : 'bad'} />
             <Metric label="ROI" value={fmtPct(estimatedRoi)} tone={estimatedRoi >= 0 ? 'good' : 'bad'} />
-            <Metric label="Probability" value={`${score.probability.toFixed(0)}%`} />
+            <Metric label="Probability" value={`${score.probability.toFixed(0)}%`} definition={metricDef('probability_of_profit')} />
           </div>
         </Panel>
       </section>
@@ -911,10 +972,10 @@ export default function TradeWorksheetPage() {
 
       <section className="mb-5 grid gap-4 xl:grid-cols-3">
         <Panel title="Greeks Explained" icon={<Sparkles size={18} />} sub="Translate Greeks into practical risk.">
-          <Greek label="Delta" value={greeks.delta.toFixed(2)} text={`A $1 stock move changes the option by roughly ${fmtUsd(Math.abs(greeks.delta))} per share before gamma effects.`} />
-          <Greek label="Theta" value={fmtUsd(greeks.theta)} text={`Estimated daily decay is ${fmtUsd(Math.abs(greeks.theta * 100 * form.contracts))} for this position.`} />
-          <Greek label="Gamma" value={greeks.gamma.toFixed(4)} text="Gamma shows how quickly delta changes as the stock moves. Short DTE increases gamma risk." />
-          <Greek label="Vega" value={greeks.vega.toFixed(2)} text={`A 1 point IV change changes the option by roughly ${fmtUsd(greeks.vega)} per share.`} />
+          <Greek label="Delta" value={greeks.delta.toFixed(2)} text={metricDef('delta')?.longDescription ?? `A $1 stock move changes the option by roughly ${fmtUsd(Math.abs(greeks.delta))} per share before gamma effects.`} />
+          <Greek label="Theta" value={fmtUsd(greeks.theta)} text={metricDef('theta_per_day')?.longDescription ?? `Estimated daily decay is ${fmtUsd(Math.abs(greeks.theta * 100 * form.contracts))} for this position.`} />
+          <Greek label="Gamma" value={greeks.gamma.toFixed(4)} text={metricDef('gamma')?.longDescription ?? 'Gamma shows how quickly delta changes as the stock moves. Short DTE increases gamma risk.'} />
+          <Greek label="Vega" value={greeks.vega.toFixed(2)} text={metricDef('vega')?.longDescription ?? `A 1 point IV change changes the option by roughly ${fmtUsd(greeks.vega)} per share.`} />
         </Panel>
 
         <Panel title="Checklist Before Buying" icon={<CheckCircle2 size={18} />} sub="Make the emotional decision visible.">
@@ -938,12 +999,12 @@ export default function TradeWorksheetPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Panel title="Probability Analysis" icon={<LineChartIcon size={18} />} sub="Estimates based on current inputs, IV, and simplified distribution math.">
           <div className="grid gap-2 sm:grid-cols-3">
-            <Metric label="Probability Profit" value={`${score.probability.toFixed(0)}%`} />
-            <Metric label="Probability ITM" value={`${greeks.probabilityItm.toFixed(0)}%`} />
-            <Metric label="Probability OTM" value={`${greeks.probabilityOtm.toFixed(0)}%`} />
-            <Metric label="Expected Value" value={fmtUsd(evaluation?.scenario.expectedValue ?? 0)} />
-            <Metric label="Expected Return" value={fmtPct(evaluation?.scenario.expectedReturn ?? 0)} />
-            <Metric label="Expected Drawdown" value={fmtUsd(evaluation?.scenario.expectedDrawdown ?? 0)} tone="bad" />
+            <Metric label="Probability Profit" value={`${score.probability.toFixed(0)}%`} definition={metricDef('probability_of_profit')} />
+            <Metric label="Probability ITM" value={`${greeks.probabilityItm.toFixed(0)}%`} definition={metricDef('probability_itm')} />
+            <Metric label="Probability OTM" value={`${greeks.probabilityOtm.toFixed(0)}%`} definition={metricDef('probability_otm')} />
+            <Metric label="Expected Value" value={fmtUsd(evaluation?.scenario.expectedValue ?? 0)} definition={metricDef('expected_value')} />
+            <Metric label="Expected Return" value={fmtPct(evaluation?.scenario.expectedReturn ?? 0)} definition={metricDef('expected_return')} />
+            <Metric label="Expected Drawdown" value={fmtUsd(evaluation?.scenario.expectedDrawdown ?? 0)} tone="bad" definition={metricDef('expected_drawdown')} />
           </div>
           <div className="mt-4 h-48">
             <ResponsiveContainer width="100%" height="100%">
@@ -1018,6 +1079,52 @@ export default function TradeWorksheetPage() {
                 ))}
               </div>
             </div>
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-950/40">
+              <button
+                type="button"
+                onClick={() => setShowCalculationHistory(prev => !prev)}
+                className="flex w-full items-center justify-between gap-2 text-left"
+              >
+                <span>
+                  <span className="block text-xs font-black uppercase tracking-widest text-heading">Calculation History</span>
+                  <span className="block text-[11px] text-tertiary">Frozen backend Trade Worksheet runs owned by your account.</span>
+                </span>
+                <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-muted">
+                  {calculationHistoryLoading && <Loader2 size={14} className="animate-spin text-violet-500" />}
+                  {calculationHistory.length}
+                  <ChevronDown size={14} className={`transition-transform ${showCalculationHistory ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
+              {showCalculationHistory && (
+                <div className="mt-3 grid gap-2">
+                  {calculationHistory.length === 0 && (
+                    <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-muted dark:border-slate-700">
+                      No frozen calculation runs yet.
+                    </div>
+                  )}
+                  {calculationHistory.map(run => (
+                    <CalculationRunRow
+                      key={run.run_id}
+                      run={run}
+                      selected={selectedSnapshot?.snapshot_id === run.snapshot_id}
+                      onOpenSnapshot={handleOpenSnapshot}
+                    />
+                  ))}
+                  {selectedSnapshotLoading && (
+                    <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-muted dark:border-white/[0.07] dark:bg-slate-900">
+                      <Loader2 size={14} className="animate-spin text-violet-500" />
+                      Loading frozen snapshot...
+                    </div>
+                  )}
+                  {selectedSnapshotError && (
+                    <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200">
+                      {selectedSnapshotError}
+                    </div>
+                  )}
+                  {selectedSnapshot && <CalculationSnapshotDetail snapshot={selectedSnapshot} integrity={selectedSnapshotIntegrity} auditLog={selectedSnapshotAuditLog} />}
+                </div>
+              )}
+            </div>
           </div>
         </Panel>
       </section>
@@ -1030,6 +1137,193 @@ function ScoreLine({ label, value }: { label: string; value: number }) {
     <div>
       <div className="mb-1 flex items-center justify-between text-xs"><span className="text-secondary">{label}</span><span className="font-mono font-bold">{Math.round(value)}</span></div>
       <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-violet-500" style={{ width: `${clamp(value)}%` }} /></div>
+    </div>
+  )
+}
+
+function CalculationRunRow({ run, selected, onOpenSnapshot }: { run: CalculationRun; selected?: boolean; onOpenSnapshot: (snapshotId?: string | null) => void }) {
+  const input = run.input as { ticker?: unknown; strategy?: unknown; direction?: unknown }
+  const ticker = String(input.ticker || '').toUpperCase() || '—'
+  const strategy = String(input.strategy || 'Trade Worksheet')
+  const direction = String(input.direction || '')
+  const date = run.completed_at_ms || run.created_at_ms
+  const statusTone = run.status === 'COMPLETED'
+    ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+    : 'border-rose-400/25 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+  const canOpen = Boolean(run.snapshot_id)
+  return (
+    <button
+      type="button"
+      disabled={!canOpen}
+      onClick={() => onOpenSnapshot(run.snapshot_id)}
+      className={`w-full rounded-md border px-3 py-2 text-left text-xs transition ${
+        selected
+          ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-300 dark:border-violet-400/50 dark:bg-violet-500/10 dark:ring-violet-500/40'
+          : 'border-slate-200 bg-white hover:border-violet-300 dark:border-white/[0.07] dark:bg-slate-900 dark:hover:border-violet-400/40'
+      } ${canOpen ? '' : 'cursor-default opacity-80'}`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono font-black text-heading">{ticker}</span>
+          <span className="font-semibold text-secondary">{strategy}</span>
+          {direction && <span className="text-tertiary">{direction}</span>}
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${statusTone}`}>{run.status}</span>
+        </div>
+        <span className="font-mono text-[11px] text-tertiary">{date ? new Date(date).toLocaleString() : '—'}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-tertiary">
+        <span>Run {run.run_id.slice(0, 8)}</span>
+        {run.snapshot_id && <span>Snapshot {run.snapshot_id.slice(0, 8)}</span>}
+        {run.snapshot_id && <span className="font-semibold text-violet-600 dark:text-violet-300">View frozen output</span>}
+        {run.error && <span className="text-rose-500">{run.error}</span>}
+      </div>
+    </button>
+  )
+}
+
+function CalculationSnapshotDetail({ snapshot, integrity, auditLog }: { snapshot: CalculationSnapshot; integrity: CalculationSnapshotIntegrity | null; auditLog: CalculationSnapshotAuditLog | null }) {
+  const output = snapshot.output as {
+    summary?: { ticker?: unknown; strategy?: unknown; frontExpiration?: unknown; backExpiration?: unknown }
+    score?: { total?: unknown; label?: unknown }
+    calculationSnapshot?: { generatedAt?: unknown }
+  }
+  const summary = output.summary || {}
+  const score = output.score || {}
+  const ticker = String(summary.ticker || '').toUpperCase() || '—'
+  const strategy = String(summary.strategy || snapshot.run_type)
+  const scoreText = typeof score.total === 'number' ? `${score.total.toFixed(0)} / 100` : '—'
+  const scoreLabel = String(score.label || 'Frozen output')
+  const frozenAt = snapshot.frozen_at_ms ? new Date(snapshot.frozen_at_ms).toLocaleString() : '—'
+  const createdAt = snapshot.created_at_ms ? new Date(snapshot.created_at_ms).toLocaleString() : '—'
+  const frontExpiration = String(summary.frontExpiration || '—')
+  const backExpiration = String(summary.backExpiration || '')
+  const verifiedAt = integrity?.verified_at_ms ? new Date(integrity.verified_at_ms).toLocaleString() : '—'
+  const integrityTone = integrity?.verified
+    ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+    : 'border-rose-400/30 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/70 p-3 text-xs dark:border-violet-400/25 dark:bg-violet-500/10">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-violet-700 dark:text-violet-200">Frozen Snapshot</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="font-mono text-base font-black text-heading">{ticker}</span>
+            <span className="font-bold text-secondary">{strategy}</span>
+            <span className="rounded-full border border-violet-300 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:border-violet-400/30 dark:bg-violet-500/10 dark:text-violet-200">
+              {scoreLabel}
+            </span>
+            {integrity && (
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${integrityTone}`}>
+                {integrity.verified ? 'Integrity Verified' : 'Integrity Mismatch'}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 text-[11px] text-tertiary">
+            Frozen at {frozenAt}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Trade Quality</div>
+          <div className="font-mono text-lg font-black text-heading">{scoreText}</div>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <SnapshotField label="Run" value={snapshot.run_id} />
+        <SnapshotField label="Snapshot" value={snapshot.snapshot_id} />
+        <SnapshotField label="Engine" value={snapshot.engine_version} />
+        <SnapshotField label="Formula Pack" value={snapshot.formula_pack_version} />
+        <SnapshotField label="Metric Definitions" value={snapshot.metric_definitions_version} />
+        <SnapshotField label="Created" value={createdAt} />
+        <SnapshotField label="Input Hash" value={snapshot.input_hash} mono />
+        <SnapshotField label="Output Hash" value={snapshot.output_hash} mono />
+        <SnapshotField label="Expiration" value={backExpiration && backExpiration !== frontExpiration ? `${frontExpiration} / ${backExpiration}` : frontExpiration} />
+        <SnapshotField label="Metrics Attached" value={String(snapshot.metric_definitions.length)} />
+      </div>
+      {integrity && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.07] dark:bg-slate-950/40">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Integrity Check</div>
+              <div className="mt-0.5 text-[11px] text-secondary">
+                {integrity.verified
+                  ? 'Stored input/output hashes match the frozen snapshot payload and linked run.'
+                  : `Mismatch detected: ${integrity.mismatches.join(', ') || 'unknown'}.`}
+              </div>
+            </div>
+            <div className="font-mono text-[10px] text-tertiary">{verifiedAt}</div>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <IntegrityFlag label="Input Hash" ok={integrity.input_hash_matches} />
+            <IntegrityFlag label="Output Hash" ok={integrity.output_hash_matches} />
+            <IntegrityFlag label="Run Link" ok={integrity.run_hash_matches} />
+          </div>
+        </div>
+      )}
+      {auditLog && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.07] dark:bg-slate-950/40">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Audit Log</div>
+              <div className="mt-0.5 text-[11px] text-secondary">
+                Immutable provenance events recorded for this snapshot.
+              </div>
+            </div>
+            <div className="font-mono text-[10px] text-tertiary">{auditLog.count} event{auditLog.count === 1 ? '' : 's'}</div>
+          </div>
+          <div className="mt-2 grid gap-2">
+            {auditLog.events.map(event => (
+              <SnapshotAuditEventRow key={event.audit_id} event={event} />
+            ))}
+            {auditLog.events.length === 0 && (
+              <div className="rounded-md border border-dashed border-slate-300 px-2 py-1.5 text-[11px] text-muted dark:border-slate-700">
+                No audit events found for this snapshot.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SnapshotAuditEventRow({ event }: { event: CalculationSnapshotAuditLog['events'][number] }) {
+  const createdAt = event.created_at_ms ? new Date(event.created_at_ms).toLocaleString() : '—'
+  const runId = String(event.event.runId || '')
+  const inputHash = String(event.event.inputHash || '')
+  const outputHash = String(event.event.outputHash || '')
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] dark:border-white/[0.07] dark:bg-slate-900/60">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-black uppercase tracking-wide text-heading">{event.event_type.replace(/_/g, ' ')}</span>
+        <span className="font-mono text-[10px] text-tertiary">{createdAt}</span>
+      </div>
+      <div className="mt-1 grid gap-1 text-[10px] text-tertiary sm:grid-cols-3">
+        <span className="break-all">Run {runId ? runId.slice(0, 8) : '—'}</span>
+        <span className="break-all">Input {inputHash ? inputHash.slice(0, 12) : '—'}</span>
+        <span className="break-all">Output {outputHash ? outputHash.slice(0, 12) : '—'}</span>
+      </div>
+    </div>
+  )
+}
+
+function IntegrityFlag({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div className={`rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
+      ok
+        ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+        : 'border-rose-400/25 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+    }`}>
+      {label}: {ok ? 'OK' : 'Mismatch'}
+    </div>
+  )
+}
+
+function SnapshotField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 dark:border-white/[0.07] dark:bg-slate-950/40">
+      <div className="text-[9px] font-black uppercase tracking-widest text-tertiary">{label}</div>
+      <div className={`mt-0.5 break-all text-[11px] font-semibold text-secondary ${mono ? 'font-mono' : ''}`}>{value || '—'}</div>
     </div>
   )
 }
@@ -1156,7 +1450,7 @@ function OptionLegSelector({
   )
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'caution' | 'bad' }) {
+function Metric({ label, value, tone, definition }: { label: string; value: string; tone?: 'good' | 'caution' | 'bad'; definition?: MetricDefinition }) {
   const cls = tone === 'good'
     ? 'text-emerald-600 dark:text-emerald-400'
     : tone === 'caution'
@@ -1171,7 +1465,13 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
       : tone === 'bad'
         ? 'bg-rose-500/[0.07] ring-1 ring-inset ring-rose-500/15'
         : 'bg-slate-50 dark:bg-slate-950/50'
-  return <div className={`rounded-lg p-3 ${bg}`}><div className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</div><div className={`mt-1 font-mono font-bold ${cls}`}>{value}</div></div>
+  return (
+    <div className={`rounded-lg p-3 ${bg}`} title={definition?.longDescription}>
+      <div className="text-[10px] font-bold uppercase tracking-widest text-muted">{definition?.label ?? label}</div>
+      <div className={`mt-1 font-mono font-bold ${cls}`}>{value}</div>
+      {definition?.shortDescription ? <div className="mt-1 text-[10px] leading-snug text-tertiary">{definition.shortDescription}</div> : null}
+    </div>
+  )
 }
 
 function ListBox({ title, items, good }: { title: string; items: string[]; good?: boolean }) {

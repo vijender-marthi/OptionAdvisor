@@ -10,7 +10,7 @@ import { useApp } from '../contexts/AppContext'
 const SECTION_ORDER: Array<{ key: keyof AlertCenterPayload['sections']; title: string }> = [
   { key: 'day_trade', title: 'Day Trade Alerts' },
   { key: 'swing_trade', title: 'Swing Trade Alerts' },
-  { key: 'regular_trade', title: 'Regular Trade Alerts' },
+  { key: 'regular_trade', title: 'Position Trade Alerts' },
   { key: 'portfolio', title: 'Portfolio Alerts' },
   { key: 'market', title: 'Market Alerts' },
 ]

@@ -10,7 +10,7 @@
     "build": "npm run test:backend && tsc && vite build",
     "preview": "vite preview",
     "validate:engine": "cd ../backend && python3 tests/run_engine_regression.py",
-    "validate:ui": "tsc --noEmit",
+    "validate:ui": "node scripts/check-business-logic-boundary.mjs && tsc --noEmit",
     "validate": "npm run validate:engine && npm run validate:ui",
     "validate:full": "npm run validate:engine && npm run test:backend && tsc --noEmit && vite build"
   },

@@ -6,7 +6,7 @@ import {
   PlusCircle, Activity, Check, Gauge,
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal, deriveUnifiedFromDayResult } from '../api/client'
-import type { DayTradeScanResult, DeskAlertCreate, UnifiedAnalysis } from '../api/client'
+import type { DayTradeScanResult, DayTradeWorkspaceAction, DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import type { DayTradeAlertEvent, TradeEntryState } from '../types'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
@@ -19,7 +19,9 @@ import EntryWindowBanner from '../components/EntryWindowBanner'
 import TrendDayBanner from '../components/TrendDayBanner'
 import DayTradeStrategiesTab from '../components/DayTradeStrategiesTab'
 import DayTradeChat from '../components/DayTradeChat'
+import DayTradeWorkspaceShell from '../components/DayTradeWorkspaceShell'
 import { useApp } from '../contexts/AppContext'
+import { useDayTradeWorkspace } from '../hooks/useDayTradeWorkspace'
 import { ROUTES, getTradeWorksheetRoute } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
 
@@ -32,6 +34,41 @@ function fmtOptionsVol(v: number): string {
 }
 
 type DayTradeTimeframeState = NonNullable<DayTradeScanResult['timeframe_state']>
+type SidebarTickerGroupKey = 'day' | 'regular' | 'swing'
+
+const SIDEBAR_TICKER_GROUPS: Array<{ key: SidebarTickerGroupKey; title: string; empty: string }> = [
+  { key: 'day', title: 'Day Trade Tickers', empty: 'No Day Trade tickers saved. Add tickers from My Ticker List.' },
+  { key: 'regular', title: 'Position Trading Tickers', empty: 'No Position Trading tickers saved. Add tickers from My Ticker List.' },
+  { key: 'swing', title: 'Swing Trading Tickers', empty: 'No Swing Trading tickers saved. Add tickers from My Ticker List.' },
+]
+
+function normalizeTickerGroup(value: string): SidebarTickerGroupKey | null {
+  const v = String(value || '').trim().toUpperCase()
+  if (v === 'DAY' || v === 'DAY_TRADE' || v === 'DAYTRADE') return 'day'
+  if (v === 'REGULAR' || v === 'POSITION' || v === 'POSITION_TRADE' || v === 'POSITIONTRADING') return 'regular'
+  if (v === 'SWING' || v === 'SWING_TRADE' || v === 'SWINGTRADE') return 'swing'
+  return null
+}
+
+function tickerGroupsFor(item: MyTickerEntry): Set<SidebarTickerGroupKey> {
+  const rawTypes = [
+    ...(Array.isArray(item.trade_types) ? item.trade_types : []),
+    ...(Array.isArray((item as any).categories) ? (item as any).categories : []),
+  ]
+  return new Set(rawTypes.map(normalizeTickerGroup).filter(Boolean) as SidebarTickerGroupKey[])
+}
+
+function sortSidebarTickers(items: MyTickerEntry[]): MyTickerEntry[] {
+  return [...items].sort((a, b) => {
+    const pa = Number((a as any).priority ?? Number.POSITIVE_INFINITY)
+    const pb = Number((b as any).priority ?? Number.POSITIVE_INFINITY)
+    if (pa !== pb) return pa - pb
+    const aa = (a as any).isActive ?? a.is_active ?? true
+    const bb = (b as any).isActive ?? b.is_active ?? true
+    if (aa !== bb) return aa ? -1 : 1
+    return a.symbol.localeCompare(b.symbol)
+  })
+}
 
 function dtLabel(value: unknown): string {
   if (value == null || value === '') return '—'
@@ -447,6 +484,8 @@ export default function DayTradePage() {
     isWatched,
     addManualPosition,
     portfolio,
+    dayTradeWatchlist,
+    swingTradeWatchlist,
     theme,
     user,
   } = useApp()
@@ -467,6 +506,20 @@ export default function DayTradePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const routerNavigate = useNavigate()
   const { ticker, loading, refreshing, error, result, glossaryOpen } = ui
+  const workspaceEnabled = true
+  const workspaceSymbol = (searchParams.get('ticker') || ticker || 'AAPL').trim().toUpperCase()
+  const workspaceSessionDate = searchParams.get('sessionDate')
+  const workspaceIntervalParam = searchParams.get('interval')
+  const workspaceInterval = workspaceIntervalParam === '5m' || workspaceIntervalParam === '15m' ? workspaceIntervalParam : '1m'
+  const workspaceState = useDayTradeWorkspace(
+    workspaceEnabled && workspaceSymbol
+      ? {
+          symbol: workspaceSymbol,
+          sessionDate: workspaceSessionDate,
+          interval: workspaceInterval,
+        }
+      : null
+  )
 
   const existingPositions = useMemo(
     () => portfolio.filter(p => p.ticker.toUpperCase() === result?.ticker?.toUpperCase() && p.status === 'open'),
@@ -497,9 +550,18 @@ export default function DayTradePage() {
   const [notes, setNotes] = useState('')
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
-  const [myTickers, setMyTickers] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<'overview' | 'strategies' | 'chat'>('overview')
   const [myTickerFull, setMyTickerFull] = useState<MyTickerEntry[]>([])
+  const [collapsedTickerGroups, setCollapsedTickerGroups] = useState<Record<SidebarTickerGroupKey, boolean>>({
+    day: false,
+    regular: false,
+    swing: false,
+  })
+  const [expandedTickerGroups, setExpandedTickerGroups] = useState<Record<SidebarTickerGroupKey, boolean>>({
+    day: false,
+    regular: false,
+    swing: false,
+  })
   const preTradeRoute = useMemo(() => {
     const sym = result?.ticker || ticker
     const direction = result?.bias === 'short' ? 'Bearish' : result?.bias === 'long' ? 'Bullish' : null
@@ -518,11 +580,35 @@ export default function DayTradePage() {
   useEffect(() => {
     fetchMyTickers().then(res => {
       const entries = (res.data?.tickers ?? [])
-        .filter(t => (t.trade_types || []).includes('day'))
+        .filter(t => t.symbol && ((t as any).isActive ?? t.is_active ?? true))
       setMyTickerFull(entries)
-      setMyTickers(entries.map(t => t.symbol).filter(Boolean).slice(0, 10))
     }).catch(() => {})
   }, [])
+
+  const sidebarTickerGroups = useMemo(() => {
+    const unique = new Map<string, MyTickerEntry>()
+    for (const item of myTickerFull) {
+      const sym = item.symbol?.trim().toUpperCase()
+      if (!sym) continue
+      if (!unique.has(sym)) unique.set(sym, { ...item, symbol: sym })
+    }
+    const items = [...unique.values()]
+    return SIDEBAR_TICKER_GROUPS.map(group => ({
+      ...group,
+      items: sortSidebarTickers(items.filter(item => tickerGroupsFor(item).has(group.key))),
+    }))
+  }, [myTickerFull])
+
+  const tickerAffiliations = useMemo(() => {
+    const dayDash = new Set<string>()
+    try {
+      const raw = JSON.parse(localStorage.getItem('oa_dashboard_tickers_day') ?? '[]')
+      if (Array.isArray(raw)) raw.forEach(v => dayDash.add(String(v).toUpperCase()))
+    } catch { /* ignore localStorage */ }
+    const watched = new Set([...dayTradeWatchlist, ...swingTradeWatchlist].map(v => String(v).toUpperCase()))
+    const held = new Set(portfolio.map(p => p.ticker.toUpperCase()))
+    return { dayDash, watched, held }
+  }, [dayTradeWatchlist, portfolio, swingTradeWatchlist, scanCount])
 
   // Stable ref to read latest ticker without it being a useCallback dep
   const tickerRef = useRef(ticker)
@@ -581,6 +667,7 @@ export default function DayTradePage() {
   const urlTickerScanRef = useRef('')
   useEffect(() => { runScanRef.current = runScan }, [runScan])
   useEffect(() => {
+    if (workspaceEnabled) return
     if (didMountRef.current) return
     didMountRef.current = true
     const urlT = searchParams.get('ticker')?.trim().toUpperCase()
@@ -601,6 +688,7 @@ export default function DayTradePage() {
   // an infinite loop with the setSearchParams call inside runScan. Also guard while
   // the first URL scan is still loading so app-wide rerenders don't launch duplicates.
   useEffect(() => {
+    if (workspaceEnabled) return
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (!t || t.length > 12 || !didMountRef.current) return
     const loaded = ui.result?.ticker?.toUpperCase()
@@ -618,7 +706,7 @@ export default function DayTradePage() {
     }
   // runScan intentionally excluded — use ref to avoid resetting ticker on each keystroke
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, setUi])
+  }, [searchParams, setUi, workspaceEnabled])
 
   useEffect(() => {
     if (!notice) return
@@ -629,10 +717,11 @@ export default function DayTradePage() {
   // Auto-refresh every 30 seconds when a result is loaded. Force refresh keeps the
   // Day Trade page aligned with the latest available 1m Yahoo bars.
   useEffect(() => {
+    if (workspaceEnabled) return
     if (!result) return
     const id = setInterval(() => void runScan(undefined, true), 30_000)
     return () => clearInterval(id)
-  }, [result, runScan])
+  }, [result, runScan, workspaceEnabled])
 
   const openEnterModal = useCallback(() => {
     if (!result) return
@@ -880,6 +969,7 @@ export default function DayTradePage() {
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false)
   const [searchCollapsed, setSearchCollapsed] = useState(() => {
     try { return localStorage.getItem('day_trade_search_collapsed') === '1' } catch { return false }
   })
@@ -943,7 +1033,7 @@ export default function DayTradePage() {
     })
   }, [scanCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── New state model (WATCH / ARMED / EXECUTE / MANAGE / NO_TRADE) ──────────
+  // ── Local lifecycle display model mapped from existing entry rules ──────────
   const [stateLockedUntil, setStateLockedUntil] = useState(0)
   const prevEntryStateRef = useRef<TradeEntryState | null>(null)
 
@@ -989,6 +1079,11 @@ export default function DayTradePage() {
     if (isGo) return 'ARMED'
     return 'WATCH'
   }, [sessionState, noTradeZoneActive, result, signalFlipCount])
+  const entryLifecycleLabel = entryState === 'NO_TRADE' ? 'WATCHING'
+    : entryState === 'EXECUTE' ? 'TRIGGERED'
+    : entryState === 'MANAGE' ? 'ACTIVE'
+    : entryState === 'WATCH' ? 'WATCHING'
+    : entryState
 
   // State cooldown: lock for 10 min after change, unless strong breakout
   useEffect(() => {
@@ -1017,6 +1112,157 @@ export default function DayTradePage() {
     setSessionState(prev => prev === 'entry' ? 'watch' : prev)
   }, [])
 
+  const handleWorkspaceAction = useCallback((action: DayTradeWorkspaceAction) => {
+    setNotice({
+      tone: 'info',
+      message: action.enabled
+        ? `${action.label} is connected through the backend workspace contract.`
+        : action.disabledReason || `${action.label} is currently unavailable.`,
+    })
+  }, [])
+
+  const handleWorkspaceIntervalChange = useCallback((interval: '1m' | '5m' | '15m') => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('interval', interval)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const handleWorkspaceTickerAnalyze = useCallback((symbol?: string) => {
+    const sym = (symbol || ticker).trim().toUpperCase()
+    if (!sym || sym.length > 12) {
+      setNotice({ tone: 'info', message: 'Enter a valid ticker symbol.' })
+      return
+    }
+    setUi(cur => ({ ...cur, ticker: sym }))
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('ticker', sym)
+      return next
+    }, { replace: true })
+    setWorkspaceDrawerOpen(false)
+  }, [setSearchParams, setUi, ticker])
+
+  if (workspaceEnabled) {
+    const workspaceError = workspaceState.error
+    return (
+      <div className="day-trade-page min-h-screen bg-surface-page p-3 text-primary">
+        <div className="mx-auto flex max-w-[1920px] gap-3">
+          <nav className="flex w-14 shrink-0 flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white py-3 dark:border-white/[0.08] dark:bg-slate-950" aria-label="Day Trade workspace rail">
+            <button type="button" onClick={() => setWorkspaceDrawerOpen(cur => !cur)} className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200" title="Watchlists">
+              W
+            </button>
+            <button type="button" onClick={() => routerNavigate(ROUTES.signals)} className="flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" title="Scanner">
+              S
+            </button>
+            <button type="button" onClick={() => routerNavigate(ROUTES.alerts)} className="flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" title="Alerts">
+              A
+            </button>
+            <button type="button" onClick={() => routerNavigate(ROUTES.positions)} className="flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" title="Positions">
+              P
+            </button>
+            <button type="button" onClick={() => routerNavigate(ROUTES.journal)} className="flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" title="Journal">
+              J
+            </button>
+          </nav>
+
+          {workspaceDrawerOpen && (
+            <aside className="w-80 shrink-0 rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Watchlists</div>
+                  <div className="text-sm font-bold text-heading">Day Trade Tickers</div>
+                </div>
+                <button type="button" onClick={() => setWorkspaceDrawerOpen(false)} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close watchlist drawer">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={ticker}
+                  onChange={event => setUi(cur => ({ ...cur, ticker: event.target.value.toUpperCase() }))}
+                  onKeyDown={event => { if (event.key === 'Enter') handleWorkspaceTickerAnalyze() }}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-heading outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900"
+                  placeholder="Ticker"
+                  aria-label="Ticker"
+                />
+                <button type="button" onClick={() => handleWorkspaceTickerAnalyze()} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-500">
+                  Analyze
+                </button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {sidebarTickerGroups.map(group => (
+                  <div key={group.key} className="rounded-lg border border-slate-200 p-2 dark:border-white/[0.08]">
+                    <div className="mb-2 flex items-center justify-between text-[11px] font-black uppercase tracking-wide text-tertiary">
+                      <span>{group.title}</span>
+                      <span>{group.items.length}</span>
+                    </div>
+                    {group.items.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {group.items.slice(0, 12).map(item => {
+                          const sym = item.symbol.toUpperCase()
+                          const selected = sym === workspaceSymbol
+                          return (
+                            <button
+                              key={`${group.key}-${sym}`}
+                              type="button"
+                              onClick={() => handleWorkspaceTickerAnalyze(sym)}
+                              className={`rounded-lg border px-2 py-1 font-mono text-[11px] font-bold ${
+                                selected
+                                  ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                                  : 'border-slate-200 text-secondary hover:border-violet-400 dark:border-white/[0.08]'
+                              }`}
+                            >
+                              {sym}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-tertiary">{group.empty}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => routerNavigate(ROUTES.myTickers)} className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+                Manage My Tickers
+              </button>
+            </aside>
+          )}
+
+          <main className="min-w-0 flex-1">
+            {notice && (
+              <div className="mb-3 rounded-xl border border-semantic-info-border bg-semantic-info-bg px-4 py-3 text-sm text-semantic-info">
+                {notice.message}
+              </div>
+            )}
+            {workspaceState.loading && !workspaceState.data ? (
+              <div className="flex min-h-[680px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading backend workspace...
+              </div>
+            ) : workspaceError ? (
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-700 dark:text-red-200">
+                <div className="font-bold">Workspace unavailable</div>
+                <p className="mt-1">{workspaceError}</p>
+                <button type="button" onClick={() => void workspaceState.reload()} className="mt-4 rounded-lg border border-red-500/30 px-3 py-2 text-xs font-semibold hover:bg-red-500/10">
+                  Retry
+                </button>
+              </div>
+            ) : workspaceState.data ? (
+              <DayTradeWorkspaceShell workspace={workspaceState.data} onAction={handleWorkspaceAction} onIntervalChange={handleWorkspaceIntervalChange} />
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
+                Enter a ticker to load the backend Day Trade workspace.
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
+    )
+  }
+ 
   return (
     <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'clip', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
@@ -1128,20 +1374,100 @@ export default function DayTradePage() {
             <p className="text-[11px] mt-2" style={{ color: dt.muted }}>
               Uses Yahoo 1-minute RTH data for the most recent session, session VWAP, first 15m opening range, short-horizon momentum, volume vs average, plus SPY/QQQ daily change and VIX.
             </p>
-            {myTickers.length > 0 && (
-              <div className="flex gap-2 mt-3 flex-wrap">
-                <span className="text-xs self-center" style={{ color: dt.muted }}>Quick:</span>
-                {myTickers.map((t: string) => (
-                  <a key={t} href={`/day-trade?ticker=${encodeURIComponent(t)}`}
-                    onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
-                    className="text-xs px-2 py-1 rounded-lg transition-colors font-mono inline-block cursor-pointer"
-                    style={{ background: dt.bgDeep, color: dt.text, border: `1px solid ${dt.border}` }}
-                  >
-                    {t}
-                  </a>
-                ))}
-              </div>
-            )}
+            <div className="mt-4 space-y-2">
+              {sidebarTickerGroups.map(group => {
+                const collapsed = collapsedTickerGroups[group.key]
+                const expanded = expandedTickerGroups[group.key]
+                const visible = expanded ? group.items : group.items.slice(0, 8)
+                return (
+                  <div key={group.key} className="rounded-lg" style={{ border: `1px solid ${dt.border}`, background: dt.bgDeep }}>
+                    <button
+                      type="button"
+                      onClick={() => setCollapsedTickerGroups(cur => ({ ...cur, [group.key]: !cur[group.key] }))}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        {collapsed ? <ChevronRight size={13} style={{ color: dt.muted }} /> : <ChevronDown size={13} style={{ color: dt.muted }} />}
+                        <span className="truncate text-[11px] font-bold uppercase tracking-wide" style={{ color: dt.text }}>
+                          {group.title}
+                        </span>
+                      </span>
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-mono" style={{ color: dt.muted, border: `1px solid ${dt.border}`, background: dt.bg }}>
+                        {group.items.length}
+                      </span>
+                    </button>
+                    {!collapsed && (
+                      <div className="px-3 pb-3">
+                        {group.items.length === 0 ? (
+                          <p className="rounded-md px-2 py-2 text-[11px] leading-snug" style={{ color: dt.muted, background: dt.bg }}>
+                            {group.empty}
+                          </p>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap gap-1.5">
+                              {visible.map(item => {
+                                const sym = item.symbol.toUpperCase()
+                                const selected = sym === ticker.trim().toUpperCase()
+                                const badges = [
+                                  tickerAffiliations.dayDash.has(sym) ? { label: 'D', title: 'Dashboard' } : null,
+                                  tickerAffiliations.watched.has(sym) ? { label: 'W', title: 'Watchlist' } : null,
+                                  tickerAffiliations.held.has(sym) ? { label: 'P', title: 'Portfolio' } : null,
+                                ].filter(Boolean) as Array<{ label: string; title: string }>
+                                return (
+                                  <button
+                                    key={`${group.key}-${sym}`}
+                                    type="button"
+                                    onClick={() => { setUi(cur => ({ ...cur, ticker: sym })); void runScan(sym) }}
+                                    title={item.company_name || sym}
+                                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-mono font-bold transition-colors"
+                                    style={{
+                                      background: selected ? 'rgba(74,124,255,0.18)' : dt.bg,
+                                      borderColor: selected ? dt.accent : dt.border,
+                                      color: selected ? dt.accent : dt.text,
+                                    }}
+                                  >
+                                    {sym}
+                                    {badges.map(badge => (
+                                      <span
+                                        key={badge.label}
+                                        title={badge.title}
+                                        className="rounded-full px-1 text-[8px] font-black"
+                                        style={{ background: selected ? 'rgba(74,124,255,0.22)' : dt.bgDeep, color: dt.muted, border: `1px solid ${dt.border}` }}
+                                      >
+                                        {badge.label}
+                                      </span>
+                                    ))}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            {group.items.length > 8 && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedTickerGroups(cur => ({ ...cur, [group.key]: !cur[group.key] }))}
+                                className="mt-2 text-[11px] font-semibold"
+                                style={{ color: dt.accent }}
+                              >
+                                {expanded ? 'Show less' : `View all ${group.items.length}`}
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <button
+                type="button"
+                onClick={() => routerNavigate(ROUTES.myTickers)}
+                className="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-bold transition-colors"
+                style={{ borderColor: dt.border, background: dt.bgDeep, color: dt.text }}
+              >
+                Manage My Tickers
+                <ArrowUpRight size={12} />
+              </button>
+            </div>
           </section>
 
           {/* Already in Position */}
@@ -2327,14 +2653,14 @@ export default function DayTradePage() {
                 padding: '1px 8px', borderRadius: 12,
                 color: entryState === 'NO_TRADE' ? '#EF4444' : entryState === 'EXECUTE' ? '#34d399' : entryState === 'ARMED' ? '#E87B3A' : entryState === 'MANAGE' ? '#818CF8' : '#38bdf8',
                 background: entryState === 'NO_TRADE' ? 'rgba(239,68,68,0.15)' : entryState === 'EXECUTE' ? 'rgba(52,211,153,0.15)' : entryState === 'ARMED' ? 'rgba(232,123,58,0.15)' : entryState === 'MANAGE' ? 'rgba(129,140,248,0.15)' : 'rgba(56,189,248,0.15)',
-              }}>{entryState === 'NO_TRADE' ? '⛔ NO TRADE' : `◆ ${entryState}`}</span>
+              }}>{entryState === 'NO_TRADE' ? '◇ WATCHING' : entryState === 'EXECUTE' ? '🟢 TRIGGERED' : entryState === 'MANAGE' ? '🟢 ACTIVE' : entryState === 'ARMED' ? '🟠 ARMED' : `◇ ${entryLifecycleLabel}`}</span>
               <span style={{ fontSize: '0.68rem', color: dt.muted, flex: 1, minWidth: 0 }}>
                 {entryState === 'NO_TRADE' && noTradeZoneActive ? 'Price inside OR + within 0.30% of VWAP — wait for breakout with volume.'
-                : entryState === 'NO_TRADE' ? 'Setup exhausted or no clean edge — check again next bar.'
-                : entryState === 'EXECUTE' ? 'All conditions met — execute within 1-2 candles.'
+                : entryState === 'NO_TRADE' ? 'No valid setup yet — monitoring market structure and waiting for alignment.'
+                : entryState === 'EXECUTE' ? 'Entry trigger fired — manage entry, stop, and targets.'
                 : entryState === 'ARMED' ? 'Setup present — wait for trigger confirmation before entering.'
-                : entryState === 'MANAGE' ? 'Managing position — hold stops and targets.'
-                : 'Setup developing — monitor for confluence.'}
+                : entryState === 'MANAGE' ? 'Trade active — manage stop, targets, and partial exits.'
+                : 'Watching — setup developing, waiting for confluence.'}
               </span>
               {stateLocked && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#F59E0B' }}>⏳ {(stateLockedUntil - Date.now() > 0 ? Math.ceil((stateLockedUntil - Date.now()) / 60000) : 0)}m</span>}
             </div>

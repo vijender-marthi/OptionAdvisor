@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+import engine
 from analysis import MarketSignals
 from engine import (
     compute_bs_ev_credit_spread,
@@ -259,6 +260,53 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
         )
 
         self.assertIn("Short Call", strategies)
+
+    def test_auto_mode_does_not_suppress_low_iv_income_candidates(self):
+        """Auto should build viable income candidates; IV fit should score them, not hide them."""
+        strategies = _strategies_for(
+            _signals(
+                bias="Bearish",
+                confidence=75,
+                iv_rank=20,
+                iv_vs_hv=-4,
+                volatility_regime="Buy Premium",
+            ),
+            "all",
+        )
+
+        self.assertTrue(
+            {"Bear Call Spread", "Short Call"} & strategies,
+            f"Expected Auto mode to surface a bearish income candidate, got {strategies}",
+        )
+
+    def test_auto_mode_keeps_income_fallback_when_defined_risk_spread_fails_ev(self):
+        signals = _signals(
+            bias="Bearish",
+            confidence=75,
+            iv_rank=20,
+            iv_vs_hv=-4,
+            volatility_regime="Buy Premium",
+        )
+        original_builder = engine._build_credit_spread
+
+        def bad_ev_spread(*args, **kwargs):
+            trade = original_builder(*args, **kwargs)
+            if trade:
+                trade["expected_value"] = -1.0
+            return trade
+
+        with patch("engine._build_credit_spread", side_effect=bad_ev_spread):
+            trades = run_engine(
+                signals,
+                _calls_chain(),
+                _puts_chain(),
+                [_expiry()],
+                spread_width_override=5,
+                weeks_out=4,
+                strategy_mode="all",
+            )
+
+        self.assertIn("Short Call", {trade.strategy for trade in trades})
 
     def test_recommendations_have_positive_ev_and_kelly_metrics(self):
         trades = run_engine(

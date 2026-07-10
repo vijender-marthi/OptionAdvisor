@@ -62,10 +62,23 @@ from unified_analysis import serialize_day_trade, serialize_swing_trade, seriali
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
+from day_trade_workspace import build_day_trade_workspace_response
+from day_trade_workspace_models import DayTradeWorkspaceResponse as DayTradeWorkspaceResponseModel
 from auth_routes import auth_router, ensure_same_user, require_access_email
 import exit_monitor
 from command_center_router import command_center_router, api_envelope, _seed_default_my_tickers
 from decision_resolver import resolve_trade_decision
+from calculation_vault import (
+    CALCULATION_ROUTER_VERSION,
+    CURRENT_FORMULA_PACK_VERSION,
+    CURRENT_METRIC_DEFINITIONS_VERSION,
+    TRADE_WORKSHEET_ENGINE_VERSION,
+    create_failed_calculation_run,
+    create_calculation_snapshot,
+    list_metric_definitions,
+    list_supported_calculation_run_types,
+    trade_worksheet_metric_definitions,
+)
 from storage import (
     alert_center_active_counts_by_ticker,
     alert_center_create,
@@ -3089,6 +3102,61 @@ def day_trade_scan(
         raise HTTPException(status_code=502, detail=str(e)) from None
 
 
+@app.get("/api/day-trade/workspace", response_model=DayTradeWorkspaceResponseModel)
+def day_trade_workspace(
+    symbol: str = Query(..., min_length=1),
+    sessionDate: Optional[str] = Query(default=None),
+    interval: str = Query(default="1m", regex="^(1m|5m|15m)$"),
+    force_refresh: bool = Query(default=False),
+    auth_email: str = Depends(require_access_email),
+):
+    """Page-ready Day Trade workspace model.
+
+    This endpoint is the backend-owned presentation contract for the V2 Day
+    Trade workspace. It wraps existing Day Trade calculations; it does not add
+    strategy rules.
+    """
+    ticker = symbol.strip().upper()
+    session_date_value = sessionDate if isinstance(sessionDate, str) and sessionDate.strip() else None
+    interval_value = interval if isinstance(interval, str) and interval in {"1m", "5m", "15m"} else "1m"
+    try:
+        r = run_day_trade_scan(ticker, force_refresh=force_refresh)
+        resolved_obj = resolve_trade_decision(
+            {
+                "engine_type": "day",
+                "ticker": r.ticker,
+                "verdict": r.verdict,
+                "bias": r.bias,
+                "reasons": r.reasons,
+                "metrics": r.metrics,
+                "trader_decision": r.trader_decision,
+            }
+        )
+        timeframe_state = dict((r.metrics or {}).get("timeframe_state") or {})
+        timeframe_final = str(timeframe_state.get("final_decision") or (r.metrics or {}).get("timeframe_final_decision") or "").upper()
+        final_decision = timeframe_final or str(resolved_obj.verdict or "WAIT").upper()
+        resolved = {
+            "verdict": str(resolved_obj.verdict or "WAIT").upper(),
+            "final_decision": final_decision,
+            "market_bias": resolved_obj.market_bias,
+            "headline": final_decision.replace("_", " ").title(),
+            "reason": resolved_obj.reason,
+            "supporting_factors": list(resolved_obj.supporting_factors or []),
+            "missing_confirmations": list(resolved_obj.missing_confirmations or []),
+            "risk_state": resolved_obj.risk_state,
+            "confidence": resolved_obj.confidence,
+            "display_confidence": int(resolved_obj.display_confidence or 0),
+        }
+        return build_day_trade_workspace_response(
+            scan=r,
+            resolved=resolved,
+            session_date=session_date_value,
+            interval=interval_value,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Unable to build Day Trade workspace: {exc}") from exc
+
+
 class TradeCheckRequest(BaseModel):
     message: str
     ticker: str | None = None  # override ticker if parsed from message
@@ -5050,6 +5118,296 @@ class TradeWorksheetEvaluateRequest(BaseModel):
     daysPassed: int = 3
 
 
+class DayTradeDisplayValue(BaseModel):
+    raw: float | str | None = None
+    display: str
+    tone: str | None = None
+    helpText: str | None = None
+
+
+class DayTradeDisplayStatus(BaseModel):
+    code: str
+    label: str
+    tone: str
+    iconKey: str | None = None
+    description: str | None = None
+
+
+class DayTradeWorkspaceAction(BaseModel):
+    id: str
+    type: str
+    label: str
+    enabled: bool
+    disabledReason: str | None = None
+    payload: dict[str, str | int | float | bool | None] | None = None
+
+
+class DayTradeSymbolView(BaseModel):
+    ticker: str
+    companyName: str | None = None
+    price: DayTradeDisplayValue
+    change: DayTradeDisplayValue
+
+
+class DayTradeSessionView(BaseModel):
+    mode: str
+    status: DayTradeDisplayStatus
+    sessionDate: str
+    displayDate: str
+    marketTimeZone: str
+    isExecutionAllowed: bool
+    reviewCopy: str | None = None
+
+
+class DayTradeDecisionView(BaseModel):
+    context: DayTradeDisplayStatus
+    permission: DayTradeDisplayStatus
+    headline: str
+    reason: str
+    nextCondition: str | None = None
+    setupName: str | None = None
+    primaryAction: DayTradeWorkspaceAction
+    secondaryActions: list[DayTradeWorkspaceAction] = Field(default_factory=list)
+
+
+class DayTradeTriggerRequirementView(BaseModel):
+    id: str
+    label: str
+    displayValue: str | None = None
+    result: str
+    tone: str
+
+
+class DayTradeTriggerView(BaseModel):
+    status: DayTradeDisplayStatus
+    summary: str
+    requirements: list[DayTradeTriggerRequirementView] = Field(default_factory=list)
+
+
+class DayTradeRiskPlanView(BaseModel):
+    entry: DayTradeDisplayValue
+    stop: DayTradeDisplayValue
+    target1: DayTradeDisplayValue
+    target2: DayTradeDisplayValue
+    positionSize: DayTradeDisplayValue
+    riskReward: DayTradeDisplayValue
+
+
+class DayTradeEvidenceItemView(BaseModel):
+    id: str
+    label: str
+    detail: str | None = None
+    result: str
+    tone: str
+    order: int
+    ruleId: str | None = None
+    observedAt: str | None = None
+
+
+class DayTradeSelectedContractView(BaseModel):
+    expiration: DayTradeDisplayValue
+    dte: DayTradeDisplayValue
+    strike: DayTradeDisplayValue
+    optionType: DayTradeDisplayValue
+    bid: DayTradeDisplayValue
+    ask: DayTradeDisplayValue
+    midpoint: DayTradeDisplayValue
+    spread: DayTradeDisplayValue
+    spreadPercent: DayTradeDisplayValue
+    liquidity: DayTradeDisplayStatus
+    roundTrip: DayTradeDisplayValue
+
+
+class DayTradeChartCandleView(BaseModel):
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+class DayTradeChartLevelView(BaseModel):
+    id: str
+    kind: str
+    price: float
+    label: str
+    tone: str
+    lineStyleToken: str
+    active: bool
+    visibleByDefault: bool
+    affectsTradeFocusScale: bool
+    priority: int
+    offscreenLabel: str | None = None
+
+
+class DayTradeChartEventView(BaseModel):
+    id: str
+    timestamp: str
+    eventType: str
+    title: str
+    detail: str | None = None
+    tone: str
+    visibleByDefault: bool
+    priority: int
+    price: float | None = None
+
+
+class DayTradeChartDefaultsView(BaseModel):
+    interval: str
+    visibleRange: str
+    initialVisibleBars: int
+    initialBarSpacing: int
+    minBarSpacing: int
+    maxBarSpacing: int
+    rightOffsetBars: int
+    scaleMode: str
+    followLive: bool
+    visibleOverlayIds: list[str] = Field(default_factory=list)
+
+
+class DayTradeChartTradeFocusView(BaseModel):
+    scalePaddingPercent: float
+    levelIdsAllowedToAffectScale: list[str] = Field(default_factory=list)
+
+
+class DayTradeChartView(BaseModel):
+    candles: list[DayTradeChartCandleView] = Field(default_factory=list)
+    levels: list[DayTradeChartLevelView] = Field(default_factory=list)
+    events: list[DayTradeChartEventView] = Field(default_factory=list)
+    defaults: DayTradeChartDefaultsView
+    tradeFocus: DayTradeChartTradeFocusView | None = None
+
+
+class DayTradeWorkspaceResponse(BaseModel):
+    schemaVersion: str
+    generatedAt: str
+    symbol: DayTradeSymbolView
+    session: DayTradeSessionView
+    decision: DayTradeDecisionView
+    trigger: DayTradeTriggerView
+    riskPlan: DayTradeRiskPlanView
+    evidence: list[DayTradeEvidenceItemView] = Field(default_factory=list)
+    selectedContract: DayTradeSelectedContractView | None = None
+    chart: DayTradeChartView
+    tabs: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] | None = None
+
+
+class MetricDefinitionOut(BaseModel):
+    metricId: str
+    label: str
+    category: str
+    unit: str
+    formulaId: str
+    formulaVersion: str
+    shortDescription: str
+    longDescription: str
+    inputsUsed: list[str] = Field(default_factory=list)
+    displayRules: dict[str, Any] = Field(default_factory=dict)
+
+
+class MetricDefinitionsResponse(BaseModel):
+    formulaPackVersion: str
+    metricDefinitionsVersion: str
+    metrics: list[MetricDefinitionOut] = Field(default_factory=list)
+
+
+class CalculationRunResponse(BaseModel):
+    run_id: str
+    run_type: str
+    status: str
+    engine_version: str
+    formula_pack_version: str
+    owner_email: str = ""
+    input_hash: str
+    output_hash: str
+    snapshot_id: str | None = None
+    input: dict[str, Any] = Field(default_factory=dict)
+    error: str = ""
+    created_at_ms: int
+    completed_at_ms: int | None = None
+
+
+class CalculationSnapshotResponse(BaseModel):
+    snapshot_id: str
+    run_id: str
+    run_type: str
+    engine_version: str
+    formula_pack_version: str
+    metric_definitions_version: str
+    owner_email: str = ""
+    input_hash: str
+    output_hash: str
+    input: dict[str, Any] = Field(default_factory=dict)
+    output: dict[str, Any] = Field(default_factory=dict)
+    metric_definitions: list[dict[str, Any]] = Field(default_factory=list)
+    created_at_ms: int
+    frozen_at_ms: int
+
+
+class CalculationSnapshotIntegrityResponse(BaseModel):
+    snapshot_id: str
+    run_id: str
+    verified: bool
+    input_hash_matches: bool
+    output_hash_matches: bool
+    run_hash_matches: bool
+    stored_input_hash: str
+    computed_input_hash: str
+    stored_output_hash: str
+    computed_output_hash: str
+    mismatches: list[str] = Field(default_factory=list)
+    verified_at_ms: int
+
+
+class CalculationSnapshotAuditEventResponse(BaseModel):
+    audit_id: str
+    snapshot_id: str
+    event_type: str
+    event: dict[str, Any] = Field(default_factory=dict)
+    created_at_ms: int
+
+
+class CalculationSnapshotAuditLogResponse(BaseModel):
+    snapshot_id: str
+    events: list[CalculationSnapshotAuditEventResponse] = Field(default_factory=list)
+    count: int = 0
+
+
+class CalculationRunCreateRequest(BaseModel):
+    runType: str
+    input: dict[str, Any] = Field(default_factory=dict)
+
+
+class CalculationRunCreateResponse(BaseModel):
+    run: CalculationRunResponse
+    snapshot: CalculationSnapshotResponse
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+class CalculationRunsListResponse(BaseModel):
+    runs: list[CalculationRunResponse] = Field(default_factory=list)
+    count: int = 0
+
+
+class CalculationRunTypeResponse(BaseModel):
+    runType: str
+    label: str
+    description: str
+    engineVersion: str
+    formulaPackVersion: str
+    metricDefinitionsVersion: str
+    snapshotSupported: bool
+    status: str
+
+
+class CalculationRunTypesResponse(BaseModel):
+    routerVersion: str
+    runTypes: list[CalculationRunTypeResponse] = Field(default_factory=list)
+    count: int = 0
+
+
 _WORKSHEET_STRATEGIES = {
     "Long Call", "Long Put", "Bull Call Spread", "Bull Put Spread",
     "Bear Put Spread", "Bear Call Spread", "Calendar Spread",
@@ -5502,7 +5860,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
     ]
     base = max(1, safe_float(req.stockPrice))
     payoff = [{"price": round(base * (1 + i / 100), 2), "pnl": round(_tw_payoff(req, base * (1 + i / 100)))} for i in range(-30, 31, 2)]
-    return {
+    response = {
         "summary": {
             "ticker": req.ticker.upper().strip(),
             "strategy": req.strategy,
@@ -5564,6 +5922,33 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
             f"{comparisons[0]['strategy']} may express this thesis more efficiently than the selected structure." if comparisons and comparisons[0]["strategy"] != req.strategy else "Selected strategy is competitive against alternatives.",
         ],
     }
+    metric_definitions = trade_worksheet_metric_definitions()
+    response["metricDefinitions"] = {
+        "formulaPackVersion": CURRENT_FORMULA_PACK_VERSION,
+        "metricDefinitionsVersion": CURRENT_METRIC_DEFINITIONS_VERSION,
+        "metrics": metric_definitions,
+    }
+    input_payload = req.model_dump(mode="json") if hasattr(req, "model_dump") else req.dict()
+    snapshot = create_calculation_snapshot(
+        run_type="trade_worksheet",
+        input_payload=input_payload,
+        output_payload=response,
+        engine_version=TRADE_WORKSHEET_ENGINE_VERSION,
+        owner_email=auth_email,
+        formula_pack_version=CURRENT_FORMULA_PACK_VERSION,
+        metric_definitions=metric_definitions,
+    )
+    response["calculationSnapshot"] = {
+        "runId": snapshot["run_id"],
+        "snapshotId": snapshot["snapshot_id"],
+        "engineVersion": snapshot["engine_version"],
+        "formulaPackVersion": snapshot["formula_pack_version"],
+        "metricDefinitionsVersion": snapshot["metric_definitions_version"],
+        "inputHash": snapshot["input_hash"],
+        "outputHash": snapshot["output_hash"],
+        "frozenAtMs": snapshot["frozen_at_ms"],
+    }
+    return response
 
 
 @app.get("/api/option-chain/{ticker}")
@@ -5737,6 +6122,122 @@ def option_chain_liquidity(
         "calls":           calls_rows,
         "puts":            puts_rows,
     }
+
+
+@app.get("/api/v1/metric-definitions", response_model=MetricDefinitionsResponse)
+def metric_definitions(auth_email: str = Depends(require_access_email)):
+    return {
+        "formulaPackVersion": CURRENT_FORMULA_PACK_VERSION,
+        "metricDefinitionsVersion": CURRENT_METRIC_DEFINITIONS_VERSION,
+        "metrics": list_metric_definitions(),
+    }
+
+
+@app.get("/api/v1/calculation-run-types", response_model=CalculationRunTypesResponse)
+def calculation_run_types(auth_email: str = Depends(require_access_email)):
+    run_types = list_supported_calculation_run_types()
+    return {"routerVersion": CALCULATION_ROUTER_VERSION, "runTypes": run_types, "count": len(run_types)}
+
+
+@app.post("/api/v1/calculation-runs", response_model=CalculationRunCreateResponse)
+def create_calculation_run_v1(request: CalculationRunCreateRequest, auth_email: str = Depends(require_access_email)):
+    run_type = request.runType.strip().lower()
+    if run_type != "trade_worksheet":
+        detail = f"Unsupported calculation run type: {request.runType}"
+        create_failed_calculation_run(
+            run_type=run_type or "unknown",
+            input_payload=request.input,
+            error=detail,
+            engine_version=CALCULATION_ROUTER_VERSION,
+            owner_email=auth_email,
+        )
+        raise HTTPException(status_code=400, detail=detail)
+
+    try:
+        worksheet_request = TradeWorksheetEvaluateRequest(**request.input)
+    except Exception as exc:
+        detail = f"Invalid trade worksheet input: {exc}"
+        create_failed_calculation_run(
+            run_type="trade_worksheet",
+            input_payload=request.input,
+            error=detail,
+            engine_version=TRADE_WORKSHEET_ENGINE_VERSION,
+            owner_email=auth_email,
+        )
+        raise HTTPException(status_code=422, detail=detail) from exc
+
+    result = trade_worksheet_evaluate(worksheet_request, auth_email=auth_email)
+    snapshot_meta = result.get("calculationSnapshot") or {}
+    run_id = str(snapshot_meta.get("runId") or "")
+    snapshot_id = str(snapshot_meta.get("snapshotId") or "")
+    from calculation_vault import get_calculation_run, get_calculation_snapshot
+
+    run = get_calculation_run(run_id, owner_email=auth_email) if run_id else None
+    snapshot = get_calculation_snapshot(snapshot_id, owner_email=auth_email) if snapshot_id else None
+    if run is None or snapshot is None:
+        raise HTTPException(status_code=500, detail="Calculation snapshot was not created")
+    return {"run": run, "snapshot": snapshot, "result": result}
+
+
+@app.get("/api/v1/calculation-runs", response_model=CalculationRunsListResponse)
+def calculation_runs(
+    status: Optional[str] = Query(default=None),
+    run_type: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    auth_email: str = Depends(require_access_email),
+):
+    from calculation_vault import list_calculation_runs
+
+    status_value = status if isinstance(status, str) and status.strip() else None
+    run_type_value = run_type if isinstance(run_type, str) and run_type.strip() else None
+    limit_value = limit if isinstance(limit, int) else 50
+    runs = list_calculation_runs(
+        owner_email=auth_email,
+        status=status_value,
+        run_type=run_type_value,
+        limit=limit_value,
+    )
+    return {"runs": runs, "count": len(runs)}
+
+
+@app.get("/api/v1/calculation-runs/{run_id}", response_model=CalculationRunResponse)
+def calculation_run(run_id: str, auth_email: str = Depends(require_access_email)):
+    from calculation_vault import get_calculation_run
+
+    row = get_calculation_run(run_id, owner_email=auth_email)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Calculation run not found")
+    return row
+
+
+@app.get("/api/v1/calculation-snapshots/{snapshot_id}", response_model=CalculationSnapshotResponse)
+def calculation_snapshot(snapshot_id: str, auth_email: str = Depends(require_access_email)):
+    from calculation_vault import get_calculation_snapshot
+
+    row = get_calculation_snapshot(snapshot_id, owner_email=auth_email)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Calculation snapshot not found")
+    return row
+
+
+@app.get("/api/v1/calculation-snapshots/{snapshot_id}/integrity", response_model=CalculationSnapshotIntegrityResponse)
+def calculation_snapshot_integrity(snapshot_id: str, auth_email: str = Depends(require_access_email)):
+    from calculation_vault import verify_calculation_snapshot
+
+    row = verify_calculation_snapshot(snapshot_id, owner_email=auth_email)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Calculation snapshot not found")
+    return row
+
+
+@app.get("/api/v1/calculation-snapshots/{snapshot_id}/audit-log", response_model=CalculationSnapshotAuditLogResponse)
+def calculation_snapshot_audit_log(snapshot_id: str, auth_email: str = Depends(require_access_email)):
+    from calculation_vault import list_calculation_snapshot_audit_log
+
+    rows = list_calculation_snapshot_audit_log(snapshot_id, owner_email=auth_email)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="Calculation snapshot not found")
+    return {"snapshot_id": snapshot_id, "events": rows, "count": len(rows)}
 
 
 @app.post("/api/backtest")

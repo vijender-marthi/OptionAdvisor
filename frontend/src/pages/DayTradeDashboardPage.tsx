@@ -364,6 +364,59 @@ function decisionVerdictColor(verdict: string, dt: Record<string, string>) {
   return dt.muted
 }
 
+function lifecycleTone(state: unknown, dt: Record<string, string>): string {
+  const s = String(state || '').toUpperCase()
+  if (s === 'TRIGGERED' || s === 'ACTIVE' || s === 'PARTIAL_EXIT') return dt.green
+  if (s === 'ARMED') return dt.amber
+  if (s === 'SETUP_READY') return '#facc15'
+  if (s === 'EXITED') return dt.muted
+  return dt.muted
+}
+
+function renderLifecycleStatus(decision: Record<string, any>, dt: Record<string, string>) {
+  const lifecycle = decision.trade_lifecycle && typeof decision.trade_lifecycle === 'object'
+    ? decision.trade_lifecycle as Record<string, any>
+    : null
+  if (!lifecycle) return <>{String(decision.arm_trigger || '—')}</>
+  const state = String(lifecycle.state || 'WATCHING').toUpperCase()
+  const side = String(lifecycle.side || decision.verdict || '').toUpperCase()
+  const label = String(lifecycle.label || `${side} ${state}`.trim()).replace(/_/g, ' ')
+  const tone = lifecycleTone(state, dt)
+  if (state === 'TRIGGERED') {
+    return (
+      <div style={{ display: 'grid', gap: 2 }}>
+        <div style={{ color: tone, fontWeight: 950 }}>{label}</div>
+        <div>Entry fired at {decisionPrice(lifecycle.entry_price)}</div>
+        <div style={{ color: dt.muted }}>Current {decisionPrice(lifecycle.current_price)}</div>
+      </div>
+    )
+  }
+  if (state === 'ARMED') {
+    return (
+      <div style={{ display: 'grid', gap: 2 }}>
+        <div style={{ color: tone, fontWeight: 950 }}>{label}</div>
+        <div>Trigger: {String(lifecycle.trigger || 'Close through entry')}</div>
+        <div style={{ color: dt.muted }}>Current {decisionPrice(lifecycle.current_price)}</div>
+        {Array.isArray(lifecycle.needs) && lifecycle.needs.length > 0 && <div style={{ color: dt.muted }}>Needs: {String(lifecycle.needs[0])}</div>}
+      </div>
+    )
+  }
+  if (state === 'SETUP_READY') {
+    return (
+      <div style={{ display: 'grid', gap: 2 }}>
+        <div style={{ color: tone, fontWeight: 950 }}>{side === 'CALL' || side === 'PUT' ? `${side} READY` : 'SETUP READY'}</div>
+        {Array.isArray(lifecycle.needs) && lifecycle.needs.length > 0 && <div>Need: {String(lifecycle.needs[0])}</div>}
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'grid', gap: 2 }}>
+      <div style={{ color: tone, fontWeight: 900 }}>{label}</div>
+      {Array.isArray(lifecycle.needs) && lifecycle.needs.length > 0 ? <div>{String(lifecycle.needs[0])}</div> : <div>{String(decision.arm_trigger || 'Monitoring structure')}</div>}
+    </div>
+  )
+}
+
 function latestChartClose(metrics?: Record<string, unknown> | null): number | null {
   const bars = parseChartBars(metrics?.chart_bars)
   if (!bars || bars.length === 0) return null
@@ -670,7 +723,9 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
       next[row.sym] = verdictNow
       if (verdictPrev === 'WAIT' && (verdictNow === 'CALL' || verdictNow === 'PUT')) {
         const levels = (row.decisionTable?.levels ?? {}) as Record<string, unknown>
-        const body = `${row.sym} ${verdictNow} armed — E ${decisionPrice(levels.entry)} T1 ${decisionPrice(levels.t1)}`
+        const lifecycle = row.decisionTable?.trade_lifecycle as Record<string, unknown> | undefined
+        const state = String(lifecycle?.state || 'TRIGGERED').replace(/_/g, ' ')
+        const body = `${row.sym} ${verdictNow} ${state} — Entry ${decisionPrice(levels.entry)} T1 ${decisionPrice(levels.t1)}`
         try {
           if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('OptionAdvisor Day Trade', { body })
@@ -896,7 +951,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                   <td style={{ ...td, ...mono, color: levelColor, opacity: isGo ? 1 : 0.48 }}>{decisionPrice(decisionLevels.t1)}</td>
                   <td style={{ ...td, ...mono, color: levelColor, opacity: isGo ? 1 : 0.48 }}>{decisionPrice(decisionLevels.t2)}</td>
                   <td style={{ ...td, color: isGo ? goColor : dt.muted, whiteSpace: 'normal', lineHeight: 1.35, fontWeight: 700 }}>
-                    {String(decision.arm_trigger || '—')}
+                    {renderLifecycleStatus(decision, dt)}
                   </td>
                 </tr>
                 {isExpanded && hasChart && (

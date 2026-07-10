@@ -5,7 +5,7 @@ from math import erf, exp, log, sqrt
 import pandas as pd
 
 from analysis import MarketSignals
-from engine import _build_credit_spread, _build_long_call
+from engine import _build_credit_spread, _build_long_call, _build_vertical_spread
 
 
 PRICE = 100.0
@@ -218,6 +218,44 @@ class TradeEngineProbabilityMathTest(unittest.TestCase):
         self.assertAlmostEqual(trade["prob_of_max_loss"], expected_prob_max_loss, places=4)
         self.assertAlmostEqual(trade["expected_value"], expected_ev, places=4)
         self.assertGreater(trade["prob_of_profit"], old_binary_pop)
+        self.assertNotAlmostEqual(trade["expected_value"], old_binary_ev, places=2)
+
+    def test_bull_call_debit_spread_uses_full_payoff_distribution(self):
+        expiry = _expiry()
+        signals = _signals(
+            bias="Bullish",
+            confidence=80,
+            iv_rank=20,
+            iv_vs_hv=-4,
+            volatility_regime="Buy Premium",
+        )
+        trade = _build_vertical_spread(
+            signals,
+            _calls_chain(),
+            _calls_chain(),
+            "CALL",
+            "Bull Call Spread",
+            "Bullish",
+            expiry,
+            PRICE,
+        )
+
+        self.assertIsNotNone(trade)
+        buy_leg, sell_leg = trade["legs"]
+        drift = _directional_drift(signals.directional_bias, signals.bias_confidence)
+        expected_ev = round(
+            _expected_option_payoff(PRICE, buy_leg.strike, buy_leg.iv, expiry, "CALL", drift)
+            - _expected_option_payoff(PRICE, sell_leg.strike, sell_leg.iv, expiry, "CALL", drift)
+            - abs(trade["net_credit"]),
+            4,
+        )
+        old_binary_ev = round(
+            trade["prob_of_profit"] * trade["max_profit"]
+            - (1.0 - trade["prob_of_profit"]) * trade["max_loss"],
+            4,
+        )
+
+        self.assertAlmostEqual(trade["expected_value"], expected_ev, places=4)
         self.assertNotAlmostEqual(trade["expected_value"], old_binary_ev, places=2)
 
 

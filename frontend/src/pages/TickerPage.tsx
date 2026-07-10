@@ -844,7 +844,7 @@ export default function TickerPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight" style={{ color: C.text }}>Position Trading</h1>
-              <p className="text-xs" style={{ color: C.muted }}>Regular options workflow and strategy playbook.</p>
+              <p className="text-xs" style={{ color: C.muted }}>Position options workflow and strategy playbook.</p>
             </div>
           </div>
         </div>
@@ -860,7 +860,7 @@ export default function TickerPage() {
             Pre-Trade Analysis
           </button>
           {[
-            { id: 'active' as const, label: 'Active Regular Trading', icon: <Search size={14} /> },
+            { id: 'active' as const, label: 'Active Position Trading', icon: <Search size={14} /> },
             { id: 'strategy' as const, label: 'Strategy Guide', icon: <BookOpen size={14} /> },
           ].map(tab => (
             <button

@@ -376,6 +376,8 @@ def save_dashboard_tickers(email: str, day: list[str], swing: list[str]) -> dict
 
 def init_db() -> None:
     with _connect() as conn:
+        from calculation_vault import ensure_calculation_vault_schema
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_state (
@@ -564,6 +566,7 @@ def init_db() -> None:
         # user_alerts: kept for backwards compatibility; sync_user_alerts_to_alert_center() migrates to alert_center_items
         # trade_ideas: replaced by trade_journal with trade_type column
         conn.execute("DROP TABLE IF EXISTS trade_ideas")
+        ensure_calculation_vault_schema(conn)
 
 
 def upsert_eod_journal_snapshot(

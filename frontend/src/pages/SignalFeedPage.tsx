@@ -130,7 +130,7 @@ const PRIMARY_SORT_OPTIONS: Array<{ value: SortField; label: string }> = [
 const SIGNAL_TABLE_GROUPS: Array<{ engine: EngineKey; title: string; subtitle: string }> = [
   { engine: 'day', title: 'Day Trades', subtitle: 'Intraday setup, confirmation, and execution signals' },
   { engine: 'swing', title: 'Swing Trades', subtitle: 'Multi-day trend and momentum setups' },
-  { engine: 'regular', title: 'Regular Trades', subtitle: 'Position trade and core option strategy signals' },
+  { engine: 'regular', title: 'Position Trades', subtitle: 'Position trade and core option strategy signals' },
 ]
 
 function FilterPillGroup<T extends string>({

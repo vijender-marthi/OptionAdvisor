@@ -413,6 +413,263 @@ export interface DayTradeScanResult {
   is_chasing?: boolean
 }
 
+export type DayTradeSemanticTone = 'neutral' | 'info' | 'positive' | 'warning' | 'danger' | 'managing' | string
+
+export interface DayTradeWorkspaceDisplayValue {
+  raw?: number | string | null
+  display: string
+  tone?: DayTradeSemanticTone | null
+  helpText?: string | null
+}
+
+export interface DayTradeWorkspaceStatus {
+  code: string
+  label: string
+  tone: DayTradeSemanticTone
+  iconKey?: string | null
+  description?: string | null
+}
+
+export interface DayTradeWorkspaceAction {
+  id: string
+  type: string
+  label: string
+  enabled: boolean
+  disabledReason?: string | null
+  payload?: Record<string, string | number | boolean | null> | null
+}
+
+export interface DayTradeWorkspaceResponse {
+  schemaVersion: string
+  generatedAt: string
+  symbol: {
+    ticker: string
+    companyName?: string | null
+    price: DayTradeWorkspaceDisplayValue
+    change: DayTradeWorkspaceDisplayValue
+  }
+  session: {
+    mode: 'live' | 'review' | 'planning' | string
+    status: DayTradeWorkspaceStatus
+    sessionDate: string
+    displayDate: string
+    marketTimeZone: string
+    isExecutionAllowed: boolean
+    reviewCopy?: string | null
+  }
+  decision: {
+    context: DayTradeWorkspaceStatus
+    permission: DayTradeWorkspaceStatus
+    headline: string
+    reason: string
+    nextCondition?: string | null
+    setupName?: string | null
+    primaryAction: DayTradeWorkspaceAction
+    secondaryActions: DayTradeWorkspaceAction[]
+  }
+  trigger: {
+    status: DayTradeWorkspaceStatus
+    summary: string
+    requirements: Array<{
+      id: string
+      label: string
+      displayValue?: string | null
+      result: string
+      tone: DayTradeSemanticTone
+    }>
+  }
+  riskPlan: {
+    entry: DayTradeWorkspaceDisplayValue
+    stop: DayTradeWorkspaceDisplayValue
+    target1: DayTradeWorkspaceDisplayValue
+    target2: DayTradeWorkspaceDisplayValue
+    positionSize: DayTradeWorkspaceDisplayValue
+    riskReward: DayTradeWorkspaceDisplayValue
+  }
+  evidence: Array<{
+    id: string
+    label: string
+    detail?: string | null
+    result: string
+    tone: DayTradeSemanticTone
+    order: number
+    ruleId?: string | null
+    observedAt?: string | null
+  }>
+  selectedContract?: {
+    expiration: DayTradeWorkspaceDisplayValue
+    dte: DayTradeWorkspaceDisplayValue
+    strike: DayTradeWorkspaceDisplayValue
+    optionType: DayTradeWorkspaceDisplayValue
+    bid: DayTradeWorkspaceDisplayValue
+    ask: DayTradeWorkspaceDisplayValue
+    midpoint: DayTradeWorkspaceDisplayValue
+    spread: DayTradeWorkspaceDisplayValue
+    spreadPercent: DayTradeWorkspaceDisplayValue
+    liquidity: DayTradeWorkspaceStatus
+    roundTrip: DayTradeWorkspaceDisplayValue
+  } | null
+  chart: {
+    candles: Array<{
+      time: string
+      open: number
+      high: number
+      low: number
+      close: number
+      volume: number
+    }>
+    levels: Array<{
+      id: string
+      kind: string
+      price: number
+      label: string
+      tone: DayTradeSemanticTone
+      lineStyleToken: string
+      active: boolean
+      visibleByDefault: boolean
+      affectsTradeFocusScale: boolean
+      priority: number
+      offscreenLabel?: string | null
+    }>
+    events: Array<{
+      id: string
+      timestamp: string
+      eventType: string
+      title: string
+      detail?: string | null
+      tone: DayTradeSemanticTone
+      visibleByDefault: boolean
+      priority: number
+      price?: number | null
+    }>
+    vwapOverlay?: {
+      id: 'session-vwap' | string
+      label: string
+      sessionDate: string
+      exchangeTimeZone: string
+      anchorPolicy: string
+      includesExtendedHours: boolean
+      latestValue?: number | null
+      latestAsOfUtc?: string | null
+      visibleByDefault: boolean
+      affectsTradeFocusScale: boolean
+      points: Array<{
+        barStartUtc: string
+        value?: number | null
+        sourceTimestampUtc: string
+        state: 'forming' | 'closed' | string
+        quality: 'good' | 'stale' | 'partial' | 'unavailable' | string
+      }>
+    } | null
+    defaults: {
+      interval: '1m' | '5m' | '15m' | string
+      visibleRange: string
+      initialVisibleBars: number
+      initialBarSpacing: number
+      minBarSpacing: number
+      maxBarSpacing: number
+      rightOffsetBars: number
+      scaleMode: string
+      followLive: boolean
+      visibleOverlayIds: string[]
+    }
+    tradeFocus?: {
+      scalePaddingPercent: number
+      levelIdsAllowedToAffectScale: string[]
+    } | null
+  }
+  tabs: Record<string, unknown>
+  provenance?: Record<string, unknown> | null
+}
+
+export interface DayTradeWorkspaceQuery {
+  symbol: string
+  sessionDate?: string | null
+  interval?: '1m' | '5m' | '15m'
+  forceRefresh?: boolean
+}
+
+const DAY_TRADE_WORKSPACE_SCHEMA_VERSION = 'day-trade-workspace.v1'
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readPath(value: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((cur, part) => {
+    if (!isPlainRecord(cur)) return undefined
+    return cur[part]
+  }, value)
+}
+
+function requireWorkspaceString(value: unknown, path: string, missing: string[]): void {
+  if (typeof readPath(value, path) !== 'string') missing.push(path)
+}
+
+function requireWorkspaceBoolean(value: unknown, path: string, missing: string[]): void {
+  if (typeof readPath(value, path) !== 'boolean') missing.push(path)
+}
+
+function requireWorkspaceArray(value: unknown, path: string, missing: string[]): void {
+  if (!Array.isArray(readPath(value, path))) missing.push(path)
+}
+
+function requireWorkspaceRecord(value: unknown, path: string, missing: string[]): void {
+  if (!isPlainRecord(readPath(value, path))) missing.push(path)
+}
+
+function validateDayTradeWorkspaceResponse(value: unknown): asserts value is DayTradeWorkspaceResponse {
+  const missing: string[] = []
+  requireWorkspaceString(value, 'schemaVersion', missing)
+  if (isPlainRecord(value) && value.schemaVersion !== DAY_TRADE_WORKSPACE_SCHEMA_VERSION) {
+    throw new Error(`Unsupported Day Trade workspace schema: ${String(value.schemaVersion || 'missing')}`)
+  }
+  requireWorkspaceString(value, 'generatedAt', missing)
+  requireWorkspaceString(value, 'symbol.ticker', missing)
+  requireWorkspaceString(value, 'symbol.price.display', missing)
+  requireWorkspaceString(value, 'symbol.change.display', missing)
+  requireWorkspaceString(value, 'session.mode', missing)
+  requireWorkspaceString(value, 'session.status.label', missing)
+  requireWorkspaceString(value, 'session.status.tone', missing)
+  requireWorkspaceString(value, 'session.sessionDate', missing)
+  requireWorkspaceString(value, 'session.displayDate', missing)
+  requireWorkspaceString(value, 'session.marketTimeZone', missing)
+  requireWorkspaceBoolean(value, 'session.isExecutionAllowed', missing)
+  requireWorkspaceString(value, 'decision.context.label', missing)
+  requireWorkspaceString(value, 'decision.permission.code', missing)
+  requireWorkspaceString(value, 'decision.permission.label', missing)
+  requireWorkspaceString(value, 'decision.headline', missing)
+  requireWorkspaceString(value, 'decision.reason', missing)
+  requireWorkspaceString(value, 'decision.primaryAction.label', missing)
+  requireWorkspaceBoolean(value, 'decision.primaryAction.enabled', missing)
+  requireWorkspaceArray(value, 'decision.secondaryActions', missing)
+  requireWorkspaceString(value, 'trigger.status.label', missing)
+  requireWorkspaceString(value, 'trigger.summary', missing)
+  requireWorkspaceArray(value, 'trigger.requirements', missing)
+  requireWorkspaceString(value, 'riskPlan.entry.display', missing)
+  requireWorkspaceString(value, 'riskPlan.stop.display', missing)
+  requireWorkspaceString(value, 'riskPlan.target1.display', missing)
+  requireWorkspaceString(value, 'riskPlan.target2.display', missing)
+  requireWorkspaceString(value, 'riskPlan.positionSize.display', missing)
+  requireWorkspaceString(value, 'riskPlan.riskReward.display', missing)
+  requireWorkspaceArray(value, 'evidence', missing)
+  requireWorkspaceArray(value, 'chart.candles', missing)
+  requireWorkspaceArray(value, 'chart.levels', missing)
+  requireWorkspaceArray(value, 'chart.events', missing)
+  requireWorkspaceRecord(value, 'chart.vwapOverlay', missing)
+  requireWorkspaceString(value, 'chart.vwapOverlay.id', missing)
+  requireWorkspaceString(value, 'chart.vwapOverlay.label', missing)
+  requireWorkspaceArray(value, 'chart.vwapOverlay.points', missing)
+  requireWorkspaceString(value, 'chart.defaults.interval', missing)
+  requireWorkspaceString(value, 'chart.defaults.visibleRange', missing)
+  requireWorkspaceString(value, 'chart.defaults.scaleMode', missing)
+  requireWorkspaceArray(value, 'chart.defaults.visibleOverlayIds', missing)
+  requireWorkspaceRecord(value, 'tabs', missing)
+  if (missing.length) {
+    throw new Error(`Invalid Day Trade workspace response. Missing: ${missing.join(', ')}`)
+  }
+}
+
 export interface OptionChainRow {
   strike: number
   bid: number
@@ -483,6 +740,131 @@ export interface TradeWorksheetEvaluateRequest {
   daysPassed: number
 }
 
+export interface MetricDefinition {
+  metricId: string
+  label: string
+  category: string
+  unit: string
+  formulaId: string
+  formulaVersion: string
+  shortDescription: string
+  longDescription: string
+  inputsUsed: string[]
+  displayRules: Record<string, unknown>
+}
+
+export interface MetricDefinitionsResponse {
+  formulaPackVersion: string
+  metricDefinitionsVersion: string
+  metrics: MetricDefinition[]
+}
+
+export interface CalculationSnapshotMetadata {
+  runId: string
+  snapshotId: string
+  engineVersion: string
+  formulaPackVersion: string
+  metricDefinitionsVersion: string
+  inputHash: string
+  outputHash: string
+  frozenAtMs: number
+}
+
+export interface CalculationRun {
+  run_id: string
+  run_type: string
+  status: string
+  engine_version: string
+  formula_pack_version: string
+  owner_email: string
+  input_hash: string
+  output_hash: string
+  snapshot_id: string | null
+  input: Record<string, unknown>
+  error: string
+  created_at_ms: number
+  completed_at_ms: number | null
+}
+
+export interface CalculationSnapshot {
+  snapshot_id: string
+  run_id: string
+  run_type: string
+  engine_version: string
+  formula_pack_version: string
+  metric_definitions_version: string
+  owner_email: string
+  input_hash: string
+  output_hash: string
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+  metric_definitions: MetricDefinition[]
+  created_at_ms: number
+  frozen_at_ms: number
+}
+
+export interface CalculationSnapshotIntegrity {
+  snapshot_id: string
+  run_id: string
+  verified: boolean
+  input_hash_matches: boolean
+  output_hash_matches: boolean
+  run_hash_matches: boolean
+  stored_input_hash: string
+  computed_input_hash: string
+  stored_output_hash: string
+  computed_output_hash: string
+  mismatches: string[]
+  verified_at_ms: number
+}
+
+export interface CalculationSnapshotAuditEvent {
+  audit_id: string
+  snapshot_id: string
+  event_type: string
+  event: Record<string, unknown>
+  created_at_ms: number
+}
+
+export interface CalculationSnapshotAuditLog {
+  snapshot_id: string
+  events: CalculationSnapshotAuditEvent[]
+  count: number
+}
+
+export interface CalculationRunCreateRequest {
+  runType: 'trade_worksheet' | string
+  input: Record<string, unknown>
+}
+
+export interface CalculationRunCreateResponse<T = Record<string, unknown>> {
+  run: CalculationRun
+  snapshot: CalculationSnapshot
+  result: T
+}
+
+export interface CalculationRunsListResponse {
+  runs: CalculationRun[]
+  count: number
+}
+
+export interface CalculationRunType {
+  runType: string
+  label: string
+  description: string
+  engineVersion: string
+  formulaPackVersion: string
+  metricDefinitionsVersion: string
+  snapshotSupported: boolean
+  status: string
+}
+
+export interface CalculationRunTypesResponse {
+  routerVersion: string
+  runTypes: CalculationRunType[]
+  count: number
+}
+
 export interface TradeWorksheetEvaluation {
   summary: {
     ticker: string
@@ -551,17 +933,80 @@ export interface TradeWorksheetEvaluation {
   pros: string[]
   cons: string[]
   coach: string[]
+  metricDefinitions?: MetricDefinitionsResponse
+  calculationSnapshot?: CalculationSnapshotMetadata
+}
+
+export const fetchMetricDefinitions = async (): Promise<MetricDefinitionsResponse> => {
+  const { data } = await api.get<MetricDefinitionsResponse>('/v1/metric-definitions')
+  return data
+}
+
+export const fetchCalculationRunTypes = async (): Promise<CalculationRunTypesResponse> => {
+  const { data } = await api.get<CalculationRunTypesResponse>('/v1/calculation-run-types')
+  return data
+}
+
+export const createCalculationRun = async <T = Record<string, unknown>>(
+  payload: CalculationRunCreateRequest,
+): Promise<CalculationRunCreateResponse<T>> => {
+  const { data } = await api.post<CalculationRunCreateResponse<T>>('/v1/calculation-runs', payload)
+  return data
+}
+
+export const fetchCalculationRuns = async (params?: {
+  status?: string
+  run_type?: string
+  limit?: number
+}): Promise<CalculationRunsListResponse> => {
+  const { data } = await api.get<CalculationRunsListResponse>('/v1/calculation-runs', { params })
+  return data
+}
+
+export const fetchCalculationRun = async (runId: string): Promise<CalculationRun> => {
+  const { data } = await api.get<CalculationRun>(`/v1/calculation-runs/${encodeURIComponent(runId)}`)
+  return data
+}
+
+export const fetchCalculationSnapshot = async (snapshotId: string): Promise<CalculationSnapshot> => {
+  const { data } = await api.get<CalculationSnapshot>(`/v1/calculation-snapshots/${encodeURIComponent(snapshotId)}`)
+  return data
+}
+
+export const fetchCalculationSnapshotIntegrity = async (snapshotId: string): Promise<CalculationSnapshotIntegrity> => {
+  const { data } = await api.get<CalculationSnapshotIntegrity>(`/v1/calculation-snapshots/${encodeURIComponent(snapshotId)}/integrity`)
+  return data
+}
+
+export const fetchCalculationSnapshotAuditLog = async (snapshotId: string): Promise<CalculationSnapshotAuditLog> => {
+  const { data } = await api.get<CalculationSnapshotAuditLog>(`/v1/calculation-snapshots/${encodeURIComponent(snapshotId)}/audit-log`)
+  return data
 }
 
 export const evaluateTradeWorksheet = async (
   payload: TradeWorksheetEvaluateRequest,
 ): Promise<TradeWorksheetEvaluation> => {
-  const { data } = await api.post<TradeWorksheetEvaluation>('/trade-worksheet/evaluate', payload)
-  return data
+  const { data } = await api.post<CalculationRunCreateResponse<TradeWorksheetEvaluation>>('/v1/calculation-runs', {
+    runType: 'trade_worksheet',
+    input: { ...payload },
+  })
+  return data.result
 }
 
 export const analyzeDayTrade = async (ticker: string, forceRefresh = false): Promise<DayTradeScanResult> => {
   const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
+  return data
+}
+
+export const fetchDayTradeWorkspace = async (query: DayTradeWorkspaceQuery): Promise<DayTradeWorkspaceResponse> => {
+  const params = {
+    symbol: query.symbol.trim().toUpperCase(),
+    ...(query.sessionDate ? { sessionDate: query.sessionDate } : {}),
+    ...(query.interval ? { interval: query.interval } : {}),
+    ...(query.forceRefresh ? { force_refresh: true } : {}),
+  }
+  const { data } = await api.get<unknown>('/day-trade/workspace', { params })
+  validateDayTradeWorkspaceResponse(data)
   return data
 }
 

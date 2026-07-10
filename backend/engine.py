@@ -523,6 +523,45 @@ def compute_bs_ev_credit_spread(
     return round(net_credit - short_payoff + long_payoff, 4)
 
 
+def compute_bs_ev_debit_spread(
+    current_price: float,
+    long_strike: float,
+    short_strike: float,
+    long_iv_pct: float,
+    short_iv_pct: float,
+    expiry: str,
+    net_debit: float,
+    option_type: str,
+    directional_bias: str,
+    bias_confidence: int,
+) -> float:
+    """
+    Expected expiry profit for a vertical debit spread.
+
+    Profit = long-option payoff - short-option payoff - debit paid.
+    This uses the same payoff model as long options and credit spreads instead
+    of the old binary shortcut.
+    """
+    mu = directional_drift(directional_bias, bias_confidence)
+    long_payoff = expected_option_payoff(
+        current_price=current_price,
+        strike=long_strike,
+        iv_pct=long_iv_pct,
+        expiry=expiry,
+        option_type=option_type,
+        annual_drift=mu,
+    )
+    short_payoff = expected_option_payoff(
+        current_price=current_price,
+        strike=short_strike,
+        iv_pct=short_iv_pct,
+        expiry=expiry,
+        option_type=option_type,
+        annual_drift=mu,
+    )
+    return round(long_payoff - short_payoff - net_debit, 4)
+
+
 def compute_bs_ev_long(
     current_price: float,
     strike: float,
@@ -1008,7 +1047,18 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
         rop = round(max(0.05, min(0.95, 1 - delta_at_be)), 2)
     else:
         rop = round(max(0.05, min(0.95, delta_at_be)), 2)
-    ev = compute_ev(max_profit, max_loss, rop)
+    ev = compute_bs_ev_debit_spread(
+        current_price=price,
+        long_strike=buy_leg.strike,
+        short_strike=sell_leg.strike,
+        long_iv_pct=buy_leg.iv,
+        short_iv_pct=sell_leg.iv,
+        expiry=expiry,
+        net_debit=net_debit,
+        option_type=option_type,
+        directional_bias=signals.directional_bias,
+        bias_confidence=signals.bias_confidence,
+    )
 
     return dict(
         strategy=strategy_name, bias=bias,
@@ -1723,9 +1773,13 @@ def run_engine(
     BUILD_SHORT_COVERED = strategy_mode in ('all', 'short_or_covered')
     BUILD_STRADDLE_ONLY = strategy_mode == 'straddle_only'
     BUILD_CALENDAR_ONLY = strategy_mode == 'calendar_only'
-    # In dedicated modes, relax IV gates so users always see their preferred type
+    # In dedicated modes, relax IV gates so users always see their preferred type.
+    # In Auto mode, also build credit/income structures even when IV is not ideal;
+    # IV fit, EV, liquidity, and the checklist should decide ranking/blocking.
+    # The old IV>=50 build gate caused false "no recommendations" results for
+    # tickers with valid positive-EV income setups in moderate/low IV.
     LONG_IV_OK   = LOW_IV  or strategy_mode in ('long_only', 'straddle_only', 'calendar_only')
-    CREDIT_IV_OK = HIGH_IV or strategy_mode in ('credit_only', 'short_or_covered')
+    CREDIT_IV_OK = HIGH_IV or strategy_mode in ('all', 'credit_only', 'short_or_covered')
 
     # Near-money strikes with a usable mid (NaN-safe — matches get_mid semantics).
     calls_f = _tradeable_chain_near_money(calls, price)
@@ -1829,12 +1883,12 @@ def run_engine(
     exp_covered = exp_credit if days_to_expiry(exp_credit) >= 14 else \
         pick_expiry_by_dte(option_dates, 14, dte_hi + 14) or exp_credit
 
-    # In 'all' mode suppress naked single-leg sells if a spread already covers the same
-    # directional thesis with defined risk.  Stock-ownership strategies (Covered Call,
-    # Covered Put) are exempt — they are not naked premium sells.
-    # In 'short_or_covered' mode always build them (no spreads were built above).
-    _suppress_bull_naked = bull_spread_built and strategy_mode == 'all'
-    _suppress_bear_naked = bear_spread_built and strategy_mode == 'all'
+    # Build fallback naked income candidates in Auto mode, then dedupe after
+    # filtering/scoring.  Suppressing here is too early: the spread may fail EV or
+    # liquidity later, leaving Auto with no recommendation even though the fallback
+    # income trade is viable.
+    _suppress_bull_naked = False
+    _suppress_bear_naked = False
 
     if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK:
         c, p = get_chain(exp_covered)
@@ -1987,6 +2041,14 @@ def run_engine(
             edge_ratio=t["edge_ratio"],
             time_horizon_tier=_time_horizon_tier(t["dte"]),
         ))
+
+    if strategy_mode == "all":
+        surviving = {t.strategy for t in scored}
+        scored = [
+            t for t in scored
+            if not (t.strategy == "Short Put" and "Bull Put Spread" in surviving)
+            and not (t.strategy == "Short Call" and "Bear Call Spread" in surviving)
+        ]
 
     scored.sort(key=lambda x: x.total_score, reverse=True)
     return scored[:6]  # Return top 6
