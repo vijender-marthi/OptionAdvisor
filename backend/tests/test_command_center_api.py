@@ -254,6 +254,8 @@ class CommandCenterApiTests(unittest.TestCase):
                 {"symbol": "NVDA", "trade_types": ["day", "swing"], "company_name": "NVIDIA Corp.", "is_active": True, "added_date": "2026-04-01"},
                 {"symbol": "TSLA", "trade_types": ["swing"], "company_name": "Tesla Inc.", "is_active": True, "added_date": "2026-04-01"},
             ],
+            day_trade_watchlist=[],
+            swing_trade_watchlist=[],
         )
 
         def fake_regular(_ticker: str, **_kwargs):
@@ -384,6 +386,8 @@ class CommandCenterApiTests(unittest.TestCase):
                 {"symbol": "NVDA", "trade_type": "SWING_TRADE", "company": "NVIDIA"},
                 {"symbol": "ZZZ", "trade_types": ["DAY_TRADE"], "is_active": False},
             ],
+            day_trade_watchlist=[],
+            swing_trade_watchlist=[],
         )
 
         def fake_regular(ticker: str, **_kwargs):
@@ -458,6 +462,105 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertEqual(set(by_symbol["AAPL"]["sources"]), {"day", "regular", "swing"})
         self.assertEqual(set(by_symbol["MSFT"]["sources"]), {"day", "regular"})
         self.assertEqual(by_symbol["NVDA"]["sources"], ["swing"])
+
+    def test_signal_feed_quote_prefetch_batches_tickers_by_five(self) -> None:
+        tickers = [f"T{i:02d}" for i in range(12)]
+        calls: list[tuple[list[str], bool]] = []
+
+        def fake_get_quotes(batch: list[str], force_refresh: bool = False):
+            calls.append((list(batch), force_refresh))
+            return (
+                {
+                    sym: SimpleNamespace(
+                        ticker=sym,
+                        price=100.0,
+                        previous_close=99.0,
+                        change=1.0,
+                        change_percent=1.01,
+                        volume=1000,
+                        avg_volume=900,
+                        high=101.0,
+                        low=98.0,
+                        open=99.5,
+                        source="test",
+                        cache_age_seconds=0.0,
+                    )
+                    for sym in batch
+                },
+                {
+                    "used_cache": False,
+                    "cache_hits": 0,
+                    "cache_misses": len(batch),
+                    "force_refresh": force_refresh,
+                    "oldest_cache_age_seconds": 0.0,
+                    "source": "test",
+                    "ttl_seconds": 90,
+                },
+            )
+
+        with patch.object(main_module, "_get_quotes", side_effect=fake_get_quotes):
+            _quotes, meta = main_module._get_quotes_in_day_trade_batches(tickers, force_refresh=True)
+
+        self.assertEqual([len(batch) for batch, _force in calls], [5, 5, 2])
+        self.assertTrue(all(force for _batch, force in calls))
+        self.assertEqual(meta["batch_size"], 5)
+        self.assertEqual(meta["batch_count"], 3)
+        self.assertEqual(meta["cache_misses"], 12)
+
+    def test_signal_feed_source_items_include_legacy_watchlists(self) -> None:
+        items = main_module._signal_feed_source_items(
+            {
+                "my_tickers": [],
+                "day_trade_watchlist": ["AAPL", "NVDA"],
+                "swing_trade_watchlist": ["NVDA", "MSFT"],
+                "watchlist": [{"ticker": "SPY", "notes": "Index"}, "QQQ"],
+            }
+        )
+        by_ticker = {item["ticker"]: set(item["sources"]) for item in items}
+        self.assertEqual(by_ticker["AAPL"], {"day"})
+        self.assertEqual(by_ticker["NVDA"], {"day", "swing"})
+        self.assertEqual(by_ticker["MSFT"], {"swing"})
+        self.assertEqual(by_ticker["SPY"], {"regular"})
+        self.assertEqual(by_ticker["QQQ"], {"regular"})
+
+    def test_day_trade_quote_warmer_uses_saved_day_trade_tickers_only(self) -> None:
+        storage.save_user_state(
+            "ccc_user@example.com",
+            [],
+            [],
+            my_tickers=[
+                {"symbol": "AAPL", "trade_types": ["DAY_TRADE", "SWING_TRADE"], "is_active": True},
+                {"symbol": "MSFT", "trade_types": ["POSITION_TRADE"], "is_active": True},
+                {"symbol": "NVDA", "trade_types": ["DAY_TRADE"], "is_active": True},
+                {"symbol": "AMD", "trade_types": ["DAY_TRADE"], "is_active": False},
+            ],
+        )
+
+        seen: list[list[str]] = []
+
+        def fake_batch(tickers: list[str], *, force_refresh: bool):
+            seen.append(list(tickers))
+            return {}, {
+                "batch_size": 5,
+                "batch_count": 1,
+                "cache_hits": 0,
+                "cache_misses": len(tickers),
+                "oldest_cache_age_seconds": 0.0,
+                "source": "test",
+            }
+
+        with (
+            patch.object(main_module, "_is_day_trade_quote_warm_window_pt", return_value=True),
+            patch.object(main_module, "list_user_states", return_value=[storage.get_user_state("ccc_user@example.com")]),
+            patch.object(main_module, "_get_quotes_in_day_trade_batches", side_effect=fake_batch),
+        ):
+            main_module._run_day_trade_quote_cache_warm()
+
+        warmed = seen[0]
+        self.assertIn("AAPL", warmed)
+        self.assertIn("NVDA", warmed)
+        self.assertNotIn("MSFT", warmed)
+        self.assertNotIn("AMD", warmed)
 
 
 if __name__ == "__main__":

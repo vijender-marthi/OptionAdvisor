@@ -269,6 +269,20 @@ class CalculationVaultTests(unittest.TestCase):
         self.assertIn("iv_rank", ids)
         self.assertTrue(all(d["formulaVersion"] == calculation_vault.CURRENT_FORMULA_PACK_VERSION for d in definitions))
 
+    def test_day_trade_workspace_metric_definitions_include_decision_metadata(self) -> None:
+        definitions = calculation_vault.day_trade_workspace_metric_definitions()
+        ids = [d["metricId"] for d in definitions]
+        self.assertEqual(ids[0], "trade_quality_score")
+        self.assertIn("day_trade_verdict", ids)
+        self.assertIn("day_trade_bias", ids)
+        self.assertIn("trade_lifecycle_state", ids)
+        self.assertIn("recommended_dte", ids)
+        self.assertIn("exit_signal_state", ids)
+        by_id = {d["metricId"]: d for d in definitions}
+        self.assertEqual(by_id["day_trade_verdict"]["category"], "day_trade_decision")
+        self.assertEqual(by_id["trade_lifecycle_state"]["displayRules"]["allowedValues"][2], "ARMED")
+        self.assertTrue(all(d["formulaVersion"] == calculation_vault.CURRENT_FORMULA_PACK_VERSION for d in definitions))
+
     def test_supported_calculation_run_types_are_explicit(self) -> None:
         run_types = calculation_vault.list_supported_calculation_run_types()
         self.assertEqual(len(run_types), 2)

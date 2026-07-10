@@ -16,7 +16,7 @@ from typing import Any
 
 
 CURRENT_FORMULA_PACK_VERSION = "formula-pack-2026.07"
-CURRENT_METRIC_DEFINITIONS_VERSION = "metric-definitions-2026.07.1"
+CURRENT_METRIC_DEFINITIONS_VERSION = "metric-definitions-2026.07.2"
 CALCULATION_ROUTER_VERSION = "calculation-router-2026.07"
 TRADE_WORKSHEET_ENGINE_VERSION = "trade-worksheet-engine-2026.07"
 DAY_TRADE_WORKSPACE_ENGINE_VERSION = "day-trade-workspace-engine-2026.07"
@@ -251,6 +251,66 @@ DEFAULT_METRIC_DEFINITIONS: list[dict[str, Any]] = [
         "inputsUsed": ["capital_required", "max_loss", "scenario_outputs"],
         "displayRules": {"precision": 2, "tone": "risk"},
     },
+    {
+        "metricId": "day_trade_verdict",
+        "label": "Day Trade Verdict",
+        "category": "day_trade_decision",
+        "unit": "label",
+        "formulaId": "day_trade_workspace_presenter",
+        "formulaVersion": CURRENT_FORMULA_PACK_VERSION,
+        "shortDescription": "Backend-authoritative Day Trade permission or verdict.",
+        "longDescription": "Resolved by the backend Day Trade workspace presenter from session mode, risk halts, setup validity, trigger state, and active position precedence. The UI should display the returned label and must not infer the verdict.",
+        "inputsUsed": ["workspace_mode", "risk_halt", "setup_state", "trigger_state", "active_position"],
+        "displayRules": {"tone": "semantic", "source": "decision.permission"},
+    },
+    {
+        "metricId": "day_trade_bias",
+        "label": "Day Trade Bias",
+        "category": "day_trade_context",
+        "unit": "label",
+        "formulaId": "day_trade_market_context",
+        "formulaVersion": CURRENT_FORMULA_PACK_VERSION,
+        "shortDescription": "Backend market-context bias for the Day Trade workspace.",
+        "longDescription": "Resolved by the backend from the existing Day Trade market context, VWAP/session state, opening range behavior, and structure evidence. It describes context only and does not authorize a trade by itself.",
+        "inputsUsed": ["market_context", "vwap_state", "opening_range", "structure_evidence"],
+        "displayRules": {"tone": "semantic", "source": "decision.context"},
+    },
+    {
+        "metricId": "trade_lifecycle_state",
+        "label": "Trade Lifecycle",
+        "category": "execution_state",
+        "unit": "label",
+        "formulaId": "trade_lifecycle_resolver",
+        "formulaVersion": CURRENT_FORMULA_PACK_VERSION,
+        "shortDescription": "Where the setup or trade sits in its execution lifecycle.",
+        "longDescription": "Resolved by the backend from existing setup, trigger, active-position, target, and exit state. ARMED is only a pre-trigger state; triggered or open trades must be represented as TRIGGERED, ACTIVE, PARTIAL EXIT, or EXITED.",
+        "inputsUsed": ["setup_state", "trigger_event", "active_trade", "targets_hit", "exit_event"],
+        "displayRules": {"allowedValues": ["WATCHING", "SETUP_READY", "ARMED", "TRIGGERED", "ACTIVE", "PARTIAL_EXIT", "EXITED"], "tone": "semantic"},
+    },
+    {
+        "metricId": "recommended_dte",
+        "label": "Recommended DTE",
+        "category": "contract_selection",
+        "unit": "days",
+        "formulaId": "day_trade_contract_guidance",
+        "formulaVersion": CURRENT_FORMULA_PACK_VERSION,
+        "shortDescription": "Backend-recommended option expiration window.",
+        "longDescription": "Provided by the backend contract guidance for the active trading context. It should be shown as recommendation text and not recalculated from holding period controls in the UI.",
+        "inputsUsed": ["trade_type", "session_mode", "liquidity_context", "risk_policy"],
+        "displayRules": {"precision": 0, "source": "selectedContract.dte"},
+    },
+    {
+        "metricId": "exit_signal_state",
+        "label": "Exit Signal",
+        "category": "position_management",
+        "unit": "label",
+        "formulaId": "exit_signal_resolver",
+        "formulaVersion": CURRENT_FORMULA_PACK_VERSION,
+        "shortDescription": "Backend position-management signal for exits or profit protection.",
+        "longDescription": "Resolved by the backend from target hits, stop state, invalidation, active position status, and end-of-day policy. It explains whether to hold, reduce, exit, or mark the trade complete.",
+        "inputsUsed": ["active_trade", "current_price", "stop", "targets", "invalidation", "session_clock"],
+        "displayRules": {"tone": "semantic", "source": "tabs.position"},
+    },
 ]
 
 
@@ -277,6 +337,11 @@ TRADE_WORKSHEET_METRIC_IDS = [
 
 DAY_TRADE_WORKSPACE_METRIC_IDS = [
     "trade_quality_score",
+    "day_trade_verdict",
+    "day_trade_bias",
+    "trade_lifecycle_state",
+    "recommended_dte",
+    "exit_signal_state",
     "risk_level",
 ]
 

@@ -288,6 +288,10 @@ ALERT_SCAN_SPREAD_WIDTH = 5
 ANALYZE_CACHE_TTL_MARKET_HOURS   = int(os.getenv("ANALYZE_CACHE_TTL_MARKET_HOURS",   "90"))
 ANALYZE_CACHE_TTL_OFF_HOURS      = int(os.getenv("ANALYZE_CACHE_TTL_OFF_HOURS",      "600"))
 SIGNAL_FEED_CACHE_TTL_SECONDS    = int(os.getenv("SIGNAL_FEED_CACHE_TTL_SECONDS",    "900"))  # 15 minutes
+DAY_TRADE_QUOTE_WARM_INTERVAL_SECONDS = int(os.getenv("DAY_TRADE_QUOTE_WARM_INTERVAL_SECONDS", "300"))
+DAY_TRADE_QUOTE_WARM_START_DELAY_SECONDS = int(os.getenv("DAY_TRADE_QUOTE_WARM_START_DELAY_SECONDS", "30"))
+DAY_TRADE_QUOTE_BATCH_SIZE = int(os.getenv("DAY_TRADE_QUOTE_BATCH_SIZE", "5"))
+DAY_TRADE_QUOTE_WARM_MARKET_HOURS_ONLY = os.getenv("DAY_TRADE_QUOTE_WARM_MARKET_HOURS_ONLY", "true").lower() != "false"
 
 # Separate in-memory cache for user-facing /api/analyze requests
 analyze_user_cache: dict[str, tuple[float, "AnalyzeResponse"]] = {}
@@ -1719,7 +1723,120 @@ def _signal_feed_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
         for src in types:
             ensure_item(sym, source=src, notes=company)
 
+    for sym in (state.get("day_trade_watchlist") or []):
+        ensure_item(str(sym or ""), source="day")
+
+    for sym in (state.get("swing_trade_watchlist") or []):
+        ensure_item(str(sym or ""), source="swing")
+
+    for raw in (state.get("watchlist") or []):
+        if isinstance(raw, str):
+            ensure_item(raw, source="regular")
+        elif isinstance(raw, dict):
+            ensure_item(
+                str(raw.get("ticker") or raw.get("symbol") or ""),
+                source="regular",
+                notes=str(raw.get("notes") or raw.get("company_name") or raw.get("companyName") or ""),
+                added_at=str(raw.get("addedAt") or raw.get("added_at") or ""),
+            )
+
     return sorted(merged.values(), key=lambda x: (str(x.get("ticker") or "")))
+
+
+def _day_trade_quote_batch_size() -> int:
+    try:
+        return max(1, min(25, int(DAY_TRADE_QUOTE_BATCH_SIZE)))
+    except (TypeError, ValueError):
+        return 5
+
+
+def _unique_tickers_in_order(tickers: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for ticker in tickers:
+        symbol = str(ticker or "").strip().upper()
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        result.append(symbol)
+    return result
+
+
+def _get_quotes_in_day_trade_batches(
+    tickers: list[str],
+    *,
+    force_refresh: bool,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Warm or read quote cache in small sequential batches.
+
+    Passing a whole saved ticker universe into quote_cache can fan out one
+    Yahoo .info request per missed ticker.  Day Trade pages only need cache
+    freshness, so we cap each pass to deterministic five-symbol batches by
+    default and merge the same quote_cache metadata shape expected downstream.
+    """
+    clean = _unique_tickers_in_order(tickers)
+    batch_size = _day_trade_quote_batch_size()
+    batches = [clean[i:i + batch_size] for i in range(0, len(clean), batch_size)]
+    merged_quotes: dict[str, Any] = {}
+    meta: dict[str, Any] = {
+        "used_cache": False,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "force_refresh": force_refresh,
+        "oldest_cache_age_seconds": 0.0,
+        "source": "day_trade_quote_batch:none",
+        "ttl_seconds": None,
+        "batch_size": batch_size,
+        "batch_count": len(batches),
+        "ticker_count": len(clean),
+    }
+    sources: set[str] = set()
+
+    for batch in batches:
+        batch_quotes, batch_meta = _get_quotes(batch, force_refresh=force_refresh)
+        merged_quotes.update(batch_quotes or {})
+        meta["cache_hits"] += int(batch_meta.get("cache_hits", 0) or 0)
+        meta["cache_misses"] += int(batch_meta.get("cache_misses", 0) or 0)
+        meta["oldest_cache_age_seconds"] = max(
+            float(meta.get("oldest_cache_age_seconds", 0.0) or 0.0),
+            float(batch_meta.get("oldest_cache_age_seconds", 0.0) or 0.0),
+        )
+        if batch_meta.get("ttl_seconds") is not None:
+            meta["ttl_seconds"] = batch_meta.get("ttl_seconds")
+        if batch_meta.get("used_cache"):
+            meta["used_cache"] = True
+        source = str(batch_meta.get("source") or "").strip()
+        if source:
+            sources.add(source)
+
+    if sources:
+        meta["source"] = "day_trade_quote_batch:" + ",".join(sorted(sources))
+    meta["oldest_cache_age_seconds"] = round(float(meta["oldest_cache_age_seconds"] or 0.0), 1)
+    return merged_quotes, meta
+
+
+def _day_trade_tickers_from_user_state(state: dict[str, Any]) -> list[str]:
+    return _unique_tickers_in_order(
+        [
+            str(item.get("ticker") or "").strip().upper()
+            for item in _signal_feed_source_items(state)
+            if "day" in {str(src or "").strip().lower() for src in (item.get("sources") or [])}
+        ]
+    )
+
+
+def _all_day_trade_tickers_for_cache_warm() -> list[str]:
+    tickers: list[str] = []
+    try:
+        user_states = list_user_states()
+    except Exception as exc:
+        logging.getLogger(__name__).warning("DAY_TRADE_QUOTE_WARM_LOAD_USERS_FAILED error=%s", exc)
+        return []
+
+    for state in user_states:
+        tickers.extend(_day_trade_tickers_from_user_state(state))
+    return _unique_tickers_in_order(tickers)
 
 
 def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str = "", reason: str = "") -> dict[str, Any]:
@@ -2482,6 +2599,10 @@ def get_signal_feed(
         _seed_default_my_tickers(email)
         state = get_user_state(email)
     source_items = _signal_feed_source_items(state)
+    if not source_items:
+        _seed_default_my_tickers(email)
+        state = get_user_state(email)
+        source_items = _signal_feed_source_items(state)
     source_filter = str(source or "").strip().lower()
     if source_filter in {"day", "swing", "regular"}:
         source_items = [
@@ -2537,7 +2658,7 @@ def get_signal_feed(
         for item in source_items
         if item.get("ticker")
     ]
-    _prefetched_quotes, _cache_meta = _get_quotes(all_tickers, force_refresh=refresh)
+    _prefetched_quotes, _cache_meta = _get_quotes_in_day_trade_batches(all_tickers, force_refresh=refresh)
     alert_counts = alert_center_active_counts_by_ticker(email, all_tickers)
     _existing_day_watch = [
         str(sym or "").strip().upper()
@@ -2901,17 +3022,22 @@ def refresh_signal_feed(
     email = normalize_email(auth_email)
     state = get_user_state(email)
     source_items = _signal_feed_source_items(state)
+    if not source_items:
+        _seed_default_my_tickers(email)
+        state = get_user_state(email)
+        source_items = _signal_feed_source_items(state)
     all_tickers = [
         str(item.get("ticker") or "").strip().upper()
         for item in source_items
         if item.get("ticker")
     ]
     # Warm the quote cache first so downstream engine calls find entries
-    _prefetched_quotes, _cache_meta = _get_quotes(all_tickers, force_refresh=True)
+    _prefetched_quotes, _cache_meta = _get_quotes_in_day_trade_batches(all_tickers, force_refresh=True)
 
     logging.getLogger(__name__).info(
-        "WATCHLISTX_REFRESH ticker_count=%d yahoo_fetch_count=%d elapsed_ms=%d",
+        "WATCHLISTX_REFRESH ticker_count=%d quote_batch_count=%d yahoo_fetch_count=%d elapsed_ms=%d",
         len(all_tickers),
+        _cache_meta.get("batch_count", 0),
         _cache_meta.get("cache_misses", 0),
         round((_time.time() - _t0) * 1000),
     )
@@ -2923,6 +3049,8 @@ def refresh_signal_feed(
             "cache": {
                 "cache_hits": _cache_meta.get("cache_hits", 0),
                 "cache_misses": _cache_meta.get("cache_misses", 0),
+                "batch_size": _cache_meta.get("batch_size", _day_trade_quote_batch_size()),
+                "batch_count": _cache_meta.get("batch_count", 0),
                 "force_refresh": True,
                 "oldest_cache_age_seconds": _cache_meta.get("oldest_cache_age_seconds", 0.0),
                 "source": _cache_meta.get("source", "yahoo_live"),
@@ -7464,3 +7592,59 @@ def _swing_alert_batch_loop() -> None:
 _swing_batch_thread = threading.Thread(target=_swing_alert_batch_loop, daemon=True, name="swing-alert-batch")
 _swing_batch_thread.start()
 print(f"[swing-alert-batch] background scanner started (interval={SWING_ALERT_SCAN_INTERVAL_SECONDS}s, window=6AM–2PM PT)", flush=True)
+
+
+# ─── Day trade quote cache warmer ────────────────────────────────────────────
+
+def _is_day_trade_quote_warm_window_pt() -> bool:
+    if not DAY_TRADE_QUOTE_WARM_MARKET_HOURS_ONLY:
+        return True
+    return _is_day_trade_alert_window_pt()
+
+
+def _run_day_trade_quote_cache_warm() -> None:
+    """Warm quote_cache for saved Day Trade tickers in small Yahoo-safe batches."""
+    if not _is_day_trade_quote_warm_window_pt():
+        print("[day-quote-warm] outside day trade window (5 AM – 1 PM PT) — skipping", flush=True)
+        return
+
+    started = time.time()
+    tickers = _all_day_trade_tickers_for_cache_warm()
+    if not tickers:
+        print("[day-quote-warm] no saved day trade tickers found", flush=True)
+        return
+
+    _quotes, meta = _get_quotes_in_day_trade_batches(tickers, force_refresh=False)
+    logging.getLogger(__name__).info(
+        "DAY_TRADE_QUOTE_WARM ticker_count=%d batch_size=%d batch_count=%d cache_hits=%d cache_misses=%d elapsed_ms=%d",
+        len(tickers),
+        meta.get("batch_size", _day_trade_quote_batch_size()),
+        meta.get("batch_count", 0),
+        meta.get("cache_hits", 0),
+        meta.get("cache_misses", 0),
+        round((time.time() - started) * 1000),
+    )
+
+
+def _day_trade_quote_cache_warm_loop() -> None:
+    """Daemon thread: refresh Day Trade quote cache every five minutes by default."""
+    time.sleep(DAY_TRADE_QUOTE_WARM_START_DELAY_SECONDS)
+    while True:
+        try:
+            _run_day_trade_quote_cache_warm()
+        except Exception as exc:
+            print(f"[day-quote-warm] unhandled error: {exc}", flush=True)
+        time.sleep(DAY_TRADE_QUOTE_WARM_INTERVAL_SECONDS)
+
+
+_day_trade_quote_warm_thread = threading.Thread(
+    target=_day_trade_quote_cache_warm_loop,
+    daemon=True,
+    name="day-trade-quote-warm",
+)
+_day_trade_quote_warm_thread.start()
+print(
+    f"[day-quote-warm] background quote warmer started "
+    f"(interval={DAY_TRADE_QUOTE_WARM_INTERVAL_SECONDS}s, batch_size={_day_trade_quote_batch_size()})",
+    flush=True,
+)

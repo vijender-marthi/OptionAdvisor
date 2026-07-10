@@ -82,7 +82,7 @@ class TradeWorksheetGoldenSnapshotTests(unittest.TestCase):
         self.assertEqual(output["score"]["total"], 75)
         self.assertEqual(output["score"]["label"], "ACCEPTABLE")
         self.assertEqual(output["bestStrategy"]["strategy"], "Bull Call Spread")
-        self.assertEqual(result["snapshot"]["output_hash"], "a341a8f66192b0f7c5bd5f550ecedb05877600d97df19678faec69ee008d2261")
+        self.assertEqual(result["snapshot"]["output_hash"], "8e11a5180dbc1bcb8116f768bc63e9ff8a26be53aad7548c373a2a1dd9f73edf")
 
     def test_bear_put_spread_golden_snapshot(self) -> None:
         result = self._run_golden(
@@ -146,7 +146,7 @@ class TradeWorksheetGoldenSnapshotTests(unittest.TestCase):
         self.assertEqual(output["score"]["total"], 79)
         self.assertEqual(output["score"]["label"], "BUY")
         self.assertEqual(output["bestStrategy"]["strategy"], "Bear Call Spread")
-        self.assertEqual(result["snapshot"]["output_hash"], "57e88ede496377e83f693163f1133587d4b7a8b588ca75298cafc16af63f903b")
+        self.assertEqual(result["snapshot"]["output_hash"], "efcd0768ed33a9a4c428dbdda03c5b635610f539f817d9ccfbe75b0ad5277be3")
 
 
 if __name__ == "__main__":

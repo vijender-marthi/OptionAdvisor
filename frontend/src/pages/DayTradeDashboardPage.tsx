@@ -55,7 +55,17 @@ function signalFeedRowToDayResult(row: SignalFeedRow): DayTradeScanResult {
     : biasRaw.includes('bull') || biasRaw.includes('long') || biasRaw.includes('call')
       ? 'long'
       : null
-  const lastPrice = typeof metrics.last_price === 'number' ? metrics.last_price : row.price
+  const lastPrice = num(metrics.last_price)
+    ?? num(metrics.live_stream_price)
+    ?? num(metrics.current_price)
+    ?? num(metrics.price)
+    ?? num(row.price)
+  const changePct = num(metrics.change_pct)
+    ?? num(metrics.regular_market_change_pct)
+    ?? num(metrics.post_market_change_pct)
+    ?? num(metrics.pre_market_change_pct)
+    ?? num(metrics.session_change_pct)
+    ?? num(row.price_change_pct)
   return {
     ticker: row.ticker,
     company_name: row.company_name || row.ticker,
@@ -67,8 +77,9 @@ function signalFeedRowToDayResult(row: SignalFeedRow): DayTradeScanResult {
     metrics: {
       ...metrics,
       last_price: lastPrice,
-      change_pct: typeof metrics.change_pct === 'number' ? metrics.change_pct : row.price_change_pct,
-      session_change_pct: typeof metrics.session_change_pct === 'number' ? metrics.session_change_pct : row.price_change_pct,
+      live_stream_price: num(metrics.live_stream_price) ?? lastPrice,
+      change_pct: changePct,
+      session_change_pct: num(metrics.session_change_pct) ?? changePct,
       scanner_backend_source: 'signal-feed',
     },
     trader_decision: undefined,
@@ -426,6 +437,9 @@ function latestChartClose(metrics?: Record<string, unknown> | null): number | nu
 
 function dayMetricPrice(metrics?: Record<string, unknown> | null, fallback?: number | null): number | null {
   return num(metrics?.last_price)
+    ?? num(metrics?.live_stream_price)
+    ?? num(metrics?.current_price)
+    ?? num(metrics?.price)
     ?? num((metrics?.entry_guidance as Record<string, unknown> | undefined)?.current_price)
     ?? latestChartClose(metrics)
     ?? (fallback ?? null)

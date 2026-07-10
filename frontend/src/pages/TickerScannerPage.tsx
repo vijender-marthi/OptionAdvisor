@@ -900,6 +900,11 @@ export default function TickerScannerPage() {
     try {
       const env = await fetchSignalFeed({ sort_by: 'relative_strength', sort_dir: 'desc', page: 1, page_size: 100, refresh: forceRefresh })
       const fetched = env.data?.rows ?? []
+      if (fetched.length === 0 && hasRows) {
+        setShowingCache(true)
+        setError('Live scanner returned no rows. Showing cached scanner data.')
+        return
+      }
       setRows(fetched)
       setFetchedAt(env.fetched_at ?? null)
       setShowingCache(Boolean(env.stale))
