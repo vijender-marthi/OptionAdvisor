@@ -120,6 +120,28 @@ const CLIENT_OPERATION_IDS = {
   deskCreateAlert: 'create_alert_api_desk_alerts_post',
   deskDeleteAlert: 'delete_alert_api_desk_alerts__alert_id__delete',
   deskFireAlert: 'fire_alert_api_desk_alerts__alert_id__fire_patch',
+  sendAlertEmail: 'send_alert_api_send_alert_post',
+  backtest: 'backtest_strategy_api_backtest_post',
+  journalSave: 'journal_save_api_journal_save_post',
+  journalList: 'journal_list_api_journal__email__get',
+  journalRefresh: 'journal_refresh_api_journal_refresh__email__post',
+  journalClose: 'journal_close_api_journal__email___entry_id__close_patch',
+  journalNotes: 'journal_notes_api_journal__email___entry_id__notes_patch',
+  journalUpdate: 'journal_update_api_journal__email___entry_id__update_patch',
+  journalDelete: 'journal_delete_api_journal__email___entry_id__delete',
+  eodJournalSave: 'eod_journal_save_snapshot_api_eod_journal__email__snapshot_post',
+  eodJournalDates: 'eod_journal_dates_api_eod_journal__email__dates_get',
+  eodJournalSnapshot: 'eod_journal_get_snapshot_api_eod_journal__email__snapshot__mode___date_key___ticker__get',
+  tradeIdeas: 'list_trade_ideas_api_trade_ideas__email__get',
+  tradeIdeaCreate: 'create_trade_idea_api_trade_ideas__email__post',
+  tradeIdeaUpdate: 'patch_trade_idea_api_trade_ideas__email___idea_id__patch',
+  tradeIdeaDelete: 'delete_trade_idea_endpoint_api_trade_ideas__email___idea_id__delete',
+  tradingStatus: 'trading_status_api_trading_status_get',
+  tradingPositions: 'trading_positions_api_trading_positions_get',
+  tradingOrders: 'trading_orders_api_trading_orders_get',
+  tradingExecute: 'trading_execute_api_trading_execute_post',
+  tradingCancel: 'trading_cancel_api_trading_cancel_post',
+  tradingClose: 'trading_close_position_api_trading_close_post',
 } as const satisfies Record<string, ApiOperationId>
 
 export interface AuthLoginResponse {
@@ -1328,7 +1350,8 @@ export const sendAlertEmail = async (
     ev: alert.ev,
     time_window: alert.timeWindow,
   }))
-  const { data } = await api.post('/send-alert', { email, user_name: userName, alerts: payload })
+  const body: ApiSchemas['AlertEmailRequest'] = { email, user_name: userName, alerts: payload }
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.sendAlertEmail), body)
   return data
 }
 
@@ -1445,7 +1468,8 @@ export const runBacktest = async (params: {
   weeks_out: number
   spread_width: number | null
 }): Promise<import('../types').BacktestResult> => {
-  const { data } = await api.post('/backtest', params)
+  const body: ApiSchemas['BacktestRequest'] = params
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.backtest), body)
   return data
 }
 
@@ -1459,42 +1483,48 @@ export const saveToJournal = async (email: string, payload: {
   total_score: number; notes?: string
   trade_type?: string; engine_signal?: string; engine_state?: number
 }): Promise<{ id: string }> => {
-  const { data } = await api.post(`/journal/save?email=${encodeURIComponent(email)}`, payload)
+  const body: ApiSchemas['JournalSaveRequest'] = {
+    ...payload,
+    legs: payload.legs as Record<string, unknown>[],
+  }
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.journalSave), body, { params: { email } })
   return data
 }
 
 export const getJournal = async (email: string, status = ''): Promise<{ entries: object[] }> => {
-  const { data } = await api.get(`/journal/${encodeURIComponent(email)}`, { params: status ? { status } : {} })
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.journalList, { email }), { params: status ? { status } : {} })
   return data
 }
 
 export const refreshJournal = async (email: string): Promise<{ entries: object[] }> => {
-  const { data } = await api.post(`/journal/refresh/${encodeURIComponent(email)}`)
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.journalRefresh, { email }))
   return data
 }
 
 export const closeJournalEntry = async (
   email: string, id: string, exit_reason = 'MANUAL', notes = ''
 ): Promise<{ outcome: string; realized_pnl: number }> => {
+  const body: ApiSchemas['JournalCloseRequest'] = { exit_reason, notes }
   const { data } = await api.patch(
-    `/journal/${encodeURIComponent(email)}/${id}/close`,
-    { exit_reason, notes }
+    generatedApiPath(CLIENT_OPERATION_IDS.journalClose, { email, entry_id: id }),
+    body,
   )
   return data
 }
 
 export const updateJournalNotes = async (email: string, id: string, notes: string): Promise<void> => {
-  await api.patch(`/journal/${encodeURIComponent(email)}/${id}/notes`, { notes })
+  const body: ApiSchemas['JournalNotesRequest'] = { notes }
+  await api.patch(generatedApiPath(CLIENT_OPERATION_IDS.journalNotes, { email, entry_id: id }), body)
 }
 
 export const updateJournalEntry = async (
   email: string, id: string, fields: Record<string, unknown>
 ): Promise<void> => {
-  await api.patch(`/journal/${encodeURIComponent(email)}/${id}/update`, fields)
+  await api.patch(generatedApiPath(CLIENT_OPERATION_IDS.journalUpdate, { email, entry_id: id }), fields as ApiSchemas['JournalUpdateRequest'])
 }
 
 export const deleteJournalEntry = async (email: string, id: string): Promise<void> => {
-  await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
+  await api.delete(generatedApiPath(CLIENT_OPERATION_IDS.journalDelete, { email, entry_id: id }))
 }
 
 // ─── EOD Journal Snapshots ─────────────────────────────────────────────────
@@ -1522,7 +1552,8 @@ export const saveEodJournalSnapshot = async (
   email: string,
   payload: EodJournalSnapshotPayload,
 ): Promise<{ ok: boolean; entry: EodJournalSnapshotResponse }> => {
-  const { data } = await api.post(`/eod-journal/${encodeURIComponent(email)}/snapshot`, payload)
+  const body: ApiSchemas['EodJournalSnapshotRequest'] = payload
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.eodJournalSave, { email }), body)
   return data
 }
 
@@ -1531,7 +1562,7 @@ export const getEodJournalDates = async (
   mode: 'day' | 'swing',
   limit = 60,
 ): Promise<{ dates: string[] }> => {
-  const { data } = await api.get(`/eod-journal/${encodeURIComponent(email)}/dates`, { params: { mode, limit } })
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.eodJournalDates, { email }), { params: { mode, limit } })
   return data
 }
 
@@ -1542,7 +1573,7 @@ export const getEodJournalSnapshot = async (
   ticker: string,
 ): Promise<EodJournalSnapshotResponse> => {
   const { data } = await api.get(
-    `/eod-journal/${encodeURIComponent(email)}/snapshot/${mode}/${encodeURIComponent(date)}/${encodeURIComponent(ticker)}`,
+    generatedApiPath(CLIENT_OPERATION_IDS.eodJournalSnapshot, { email, mode, date_key: date, ticker }),
   )
   return data
 }
@@ -1688,7 +1719,7 @@ export const analyzePublic = (
 import type { TradeIdea } from '../types'
 
 export const getTradeIdeas = async (email: string): Promise<TradeIdea[]> => {
-  const { data } = await api.get(`/trade-ideas/${encodeURIComponent(email)}`)
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.tradeIdeas, { email }))
   return (data.ideas ?? []) as TradeIdea[]
 }
 
@@ -1696,7 +1727,8 @@ export const createTradeIdea = async (
   email: string,
   idea: Omit<TradeIdea, 'id' | 'created_at' | 'updated_at'>,
 ): Promise<{ id: string }> => {
-  const { data } = await api.post(`/trade-ideas/${encodeURIComponent(email)}`, idea)
+  const body: ApiSchemas['TradeIdeaCreateRequest'] = idea
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.tradeIdeaCreate, { email }), body)
   return data
 }
 
@@ -1705,11 +1737,11 @@ export const updateTradeIdea = async (
   id: string,
   fields: Partial<Omit<TradeIdea, 'id' | 'ticker' | 'created_at' | 'updated_at'>>,
 ): Promise<void> => {
-  await api.patch(`/trade-ideas/${encodeURIComponent(email)}/${id}`, fields)
+  await api.patch(generatedApiPath(CLIENT_OPERATION_IDS.tradeIdeaUpdate, { email, idea_id: id }), fields as ApiSchemas['TradeIdeaUpdateRequest'])
 }
 
 export const deleteTradeIdea = async (email: string, id: string): Promise<void> => {
-  await api.delete(`/trade-ideas/${encodeURIComponent(email)}/${id}`)
+  await api.delete(generatedApiPath(CLIENT_OPERATION_IDS.tradeIdeaDelete, { email, idea_id: id }))
 }
 
 // ─── Alpaca Paper Trading (admin only) ──────────────────────────────────────
@@ -1760,33 +1792,39 @@ export const getTradingStatus = async (email: string): Promise<{
   /** Present when keys are set but Alpaca API returned an error (401, wrong endpoint, etc.) */
   alpaca_error?: string
 }> => {
-  const { data } = await api.get('/trading/status', { params: { email } })
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.tradingStatus), { params: { email } })
   return data
 }
 
 export const getTradingPositions = async (email: string): Promise<AlpacaPosition[]> => {
-  const { data } = await api.get('/trading/positions', { params: { email } })
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.tradingPositions), { params: { email } })
   return data.positions ?? []
 }
 
 export const getTradingOrders = async (email: string, status = 'all'): Promise<AlpacaOrder[]> => {
-  const { data } = await api.get('/trading/orders', { params: { email, status } })
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.tradingOrders), { params: { email, status } })
   return data.orders ?? []
 }
 
 export const executeTrade = async (params: {
   email: string; ticker: string; strategy: string; legs: object[]; contracts: number
 }): Promise<{ ok: boolean; order_id: string; status: string; symbol: string }> => {
-  const { data } = await api.post('/trading/execute', params)
+  const body: ApiSchemas['TradingExecuteRequest'] = {
+    ...params,
+    legs: params.legs as Record<string, unknown>[],
+  }
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.tradingExecute), body)
   return data
 }
 
 export const cancelTradingOrder = async (email: string, order_id: string): Promise<void> => {
-  await api.post('/trading/cancel', { email, order_id })
+  const body: ApiSchemas['TradingCancelRequest'] = { email, order_id }
+  await api.post(generatedApiPath(CLIENT_OPERATION_IDS.tradingCancel), body)
 }
 
 export const closeTradingPosition = async (email: string, symbol: string): Promise<void> => {
-  await api.post('/trading/close', { email, symbol })
+  const body: ApiSchemas['TradingCloseRequest'] = { email, symbol }
+  await api.post(generatedApiPath(CLIENT_OPERATION_IDS.tradingClose), body)
 }
 
 // ─── TradeDesk API ────────────────────────────────────────────────────────────
