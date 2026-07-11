@@ -97,6 +97,29 @@ const CLIENT_OPERATION_IDS = {
   saveDashboardTickers: 'api_save_dashboard_tickers_api_dashboard_tickers_post',
   unifiedAnalyze: 'unified_analyze_api_v2_analyze__ticker__get',
   unifiedAnalyzePublic: 'unified_analyze_public_api_v2_analyze__ticker__public_get',
+  clearCache: 'clear_all_caches_api_cache_clear_post',
+  getUserAccent: 'get_user_accent_api_user_accent_get',
+  setUserAccent: 'set_user_accent_api_user_accent_put',
+  sendTestEmail: 'send_test_email_api_test_email_post',
+  emailStatus: 'email_status_api_email_status_get',
+  alertCenter: 'list_alerts_center_api_alerts_get',
+  alertScan: 'scan_alerts_center_api_alerts_scan_post',
+  deskWatchlist: 'get_watchlist_api_desk_watchlist_get',
+  deskAddWatchlist: 'add_to_watchlist_api_desk_watchlist_post',
+  deskRemoveWatchlist: 'remove_from_watchlist_api_desk_watchlist__ticker__delete',
+  deskAnalysis: 'get_analysis_api_desk_analysis__ticker__get',
+  deskTrades: 'list_trades_api_desk_trades_get',
+  deskOpenTrades: 'list_open_trades_api_desk_trades_open_get',
+  deskTradeStats: 'get_trade_stats_api_desk_trades_stats_get',
+  deskCreateTrade: 'create_trade_api_desk_trades_post',
+  deskUpdateTrade: 'update_trade_api_desk_trades__trade_id__patch',
+  deskDeleteTrade: 'delete_trade_api_desk_trades__trade_id__delete',
+  deskAlerts: 'list_alerts_api_desk_alerts_get',
+  deskAlertHistory: 'alert_history_api_desk_alerts_history_get',
+  deskAlertCount: 'alert_count_api_desk_alerts_count_get',
+  deskCreateAlert: 'create_alert_api_desk_alerts_post',
+  deskDeleteAlert: 'delete_alert_api_desk_alerts__alert_id__delete',
+  deskFireAlert: 'fire_alert_api_desk_alerts__alert_id__fire_patch',
 } as const satisfies Record<string, ApiOperationId>
 
 export interface AuthLoginResponse {
@@ -1321,17 +1344,17 @@ export const clearAllCaches = async (): Promise<{
     swing_scan_cache: number
   }
 }> => {
-  const { data } = await api.post('/cache/clear')
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.clearCache))
   return data.data || data
 }
 
 export const getUserAccent = async (): Promise<string> => {
-  const { data } = await api.get('/user/accent')
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.getUserAccent))
   return data.accent || 'emerald'
 }
 
 export const setUserAccent = async (accent: string): Promise<void> => {
-  await api.put('/user/accent', { accent })
+  await api.put(generatedApiPath(CLIENT_OPERATION_IDS.setUserAccent), { accent })
 }
 
 export interface DashboardTickers {
@@ -1352,7 +1375,8 @@ export const sendTestEmail = async (
   email: string,
   userName?: string,
 ): Promise<{ sent: boolean; message: string }> => {
-  const { data } = await api.post('/test-email', { email, user_name: userName })
+  const body: ApiSchemas['TestEmailRequest'] = { email, user_name: userName }
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.sendTestEmail), body)
   return data
 }
 
@@ -1367,17 +1391,17 @@ export const getEmailStatus = async (): Promise<{
   envFile: string
   envFileExists: boolean
 }> => {
-  const { data } = await api.get('/email-status')
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.emailStatus))
   return data
 }
 
 export const getAlerts = async (email: string): Promise<AlertEntry[]> => {
-  const { data } = await api.get<{ data: { alerts: AlertEntry[] } }>('/alerts')
+  const { data } = await api.get<{ data: { alerts: AlertEntry[] } }>(generatedApiPath(CLIENT_OPERATION_IDS.alertCenter))
   return data.data?.alerts ?? []
 }
 
 export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> => {
-  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/alerts/scan')
+  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>(generatedApiPath(CLIENT_OPERATION_IDS.alertScan))
   return data.data?.alerts ?? []
 }
 
@@ -1875,70 +1899,74 @@ export interface DeskAlertCreate {
 export const deskApi = {
   // Watchlist
   getWatchlist: async (): Promise<DeskWatchlistItem[]> => {
-    const { data } = await api.get<DeskWatchlistItem[]>('/desk/watchlist')
+    const { data } = await api.get<DeskWatchlistItem[]>(generatedApiPath(CLIENT_OPERATION_IDS.deskWatchlist))
     return data
   },
   addToWatchlist: async (ticker: string, trade_type = 'day'): Promise<DeskWatchlistItem> => {
-    const { data } = await api.post<DeskWatchlistItem>('/desk/watchlist', { ticker, trade_type })
+    const body: ApiSchemas['WatchlistAddRequest'] = { ticker, trade_type }
+    const { data } = await api.post<DeskWatchlistItem>(generatedApiPath(CLIENT_OPERATION_IDS.deskAddWatchlist), body)
     return data
   },
   removeFromWatchlist: async (ticker: string, trade_type = 'day'): Promise<void> => {
-    await api.delete(`/desk/watchlist/${encodeURIComponent(ticker)}`, { params: { trade_type } })
+    await api.delete(generatedApiPath(CLIENT_OPERATION_IDS.deskRemoveWatchlist, { ticker }), { params: { trade_type } })
   },
 
   // Analysis
   getAnalysis: async (ticker: string, trade_type = 'day'): Promise<DayTradeScanResult & SwingTradeScanResult & { trade_type: string }> => {
-    const { data } = await api.get(`/desk/analysis/${encodeURIComponent(ticker)}`, { params: { trade_type } })
+    const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.deskAnalysis, { ticker }), { params: { trade_type } })
     return data
   },
 
   // Trade Log
   getTrades: async (filters?: { trade_type?: string; outcome?: string; ticker?: string }): Promise<DeskTradeLog[]> => {
-    const { data } = await api.get<DeskTradeLog[]>('/desk/trades', { params: filters })
+    const { data } = await api.get<DeskTradeLog[]>(generatedApiPath(CLIENT_OPERATION_IDS.deskTrades), { params: filters })
     return data
   },
   getOpenTrades: async (): Promise<DeskTradeLog[]> => {
-    const { data } = await api.get<DeskTradeLog[]>('/desk/trades/open')
+    const { data } = await api.get<DeskTradeLog[]>(generatedApiPath(CLIENT_OPERATION_IDS.deskOpenTrades))
     return data
   },
   getTradeStats: async (days = 30): Promise<DeskTradeStats> => {
-    const { data } = await api.get<DeskTradeStats>('/desk/trades/stats', { params: { days } })
+    const { data } = await api.get<DeskTradeStats>(generatedApiPath(CLIENT_OPERATION_IDS.deskTradeStats), { params: { days } })
     return data
   },
   createTrade: async (body: DeskTradeCreate): Promise<DeskTradeLog> => {
-    const { data } = await api.post<DeskTradeLog>('/desk/trades', body)
+    const payload: ApiSchemas['TradeLogCreate'] = body
+    const { data } = await api.post<DeskTradeLog>(generatedApiPath(CLIENT_OPERATION_IDS.deskCreateTrade), payload)
     return data
   },
   updateTrade: async (id: string, body: DeskTradeUpdate): Promise<DeskTradeLog> => {
-    const { data } = await api.patch<DeskTradeLog>(`/desk/trades/${encodeURIComponent(id)}`, body)
+    const payload: ApiSchemas['TradeLogUpdate'] = body
+    const { data } = await api.patch<DeskTradeLog>(generatedApiPath(CLIENT_OPERATION_IDS.deskUpdateTrade, { trade_id: id }), payload)
     return data
   },
   deleteTrade: async (id: string): Promise<void> => {
-    await api.delete(`/desk/trades/${encodeURIComponent(id)}`)
+    await api.delete(generatedApiPath(CLIENT_OPERATION_IDS.deskDeleteTrade, { trade_id: id }))
   },
 
   // Alerts
   getAlerts: async (active_only = true): Promise<DeskAlert[]> => {
-    const { data } = await api.get<DeskAlert[]>('/desk/alerts', { params: { active_only } })
+    const { data } = await api.get<DeskAlert[]>(generatedApiPath(CLIENT_OPERATION_IDS.deskAlerts), { params: { active_only } })
     return data
   },
   getAlertHistory: async (): Promise<DeskAlert[]> => {
-    const { data } = await api.get<DeskAlert[]>('/desk/alerts/history')
+    const { data } = await api.get<DeskAlert[]>(generatedApiPath(CLIENT_OPERATION_IDS.deskAlertHistory))
     return data
   },
   getAlertCount: async (): Promise<number> => {
-    const { data } = await api.get<{ count: number }>('/desk/alerts/count')
+    const { data } = await api.get<{ count: number }>(generatedApiPath(CLIENT_OPERATION_IDS.deskAlertCount))
     return data.count
   },
   createAlert: async (body: DeskAlertCreate): Promise<DeskAlert> => {
-    const { data } = await api.post<DeskAlert>('/desk/alerts', body)
+    const payload: ApiSchemas['AlertCreate'] = body
+    const { data } = await api.post<DeskAlert>(generatedApiPath(CLIENT_OPERATION_IDS.deskCreateAlert), payload)
     return data
   },
   deleteAlert: async (id: string): Promise<void> => {
-    await api.delete(`/desk/alerts/${encodeURIComponent(id)}`)
+    await api.delete(generatedApiPath(CLIENT_OPERATION_IDS.deskDeleteAlert, { alert_id: id }))
   },
   fireAlert: async (id: string, fired_value?: number, action_taken = ''): Promise<void> => {
-    await api.patch(`/desk/alerts/${encodeURIComponent(id)}/fire`, null, {
+    await api.patch(generatedApiPath(CLIENT_OPERATION_IDS.deskFireAlert, { alert_id: id }), null, {
       params: { fired_value, action_taken },
     })
   },

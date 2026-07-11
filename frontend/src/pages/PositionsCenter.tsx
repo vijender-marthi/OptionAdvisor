@@ -229,6 +229,15 @@ function deriveEngineSource(pos: PortfolioPosition): 'day' | 'swing' | 'regular'
   return 'regular'
 }
 
+function positionTicker(pos: PortfolioPosition): string {
+  const raw = pos.ticker
+    || (pos as unknown as Record<string, unknown>).symbol
+    || (pos as unknown as Record<string, unknown>).underlying
+    || (pos as unknown as Record<string, unknown>).underlying_symbol
+    || ''
+  return String(raw).trim().toUpperCase()
+}
+
 function fmtUsd(n: unknown): string {
   if (n == null || n === '') return '—'
   const x = typeof n === 'number' ? n : Number(n)
@@ -2100,6 +2109,10 @@ export default function PositionsCenter() {
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
+      const tickerTokens = q
+        .split(/[\s,;]+/)
+        .map(token => token.trim().toUpperCase())
+        .filter(Boolean)
       const dateTokens = (value?: string | null) => {
         if (!value) return []
         const raw = String(value)
@@ -2114,8 +2127,11 @@ export default function PositionsCenter() {
         return tokens
       }
       list = list.filter(p => {
+        const ticker = positionTicker(p)
+        if (ticker && tickerTokens.some(token => ticker === token || ticker.includes(token))) return true
         const fields = [
-          p.ticker,
+          ticker,
+          p.companyName,
           p.strategy,
           p.source,
           p.notes,
@@ -2164,7 +2180,7 @@ export default function PositionsCenter() {
       const dir = sortDir === 'asc' ? 1 : -1
       let va: number, vb: number
       switch (sortKey) {
-        case 'ticker': return dir * a.ticker.localeCompare(b.ticker)
+        case 'ticker': return dir * positionTicker(a).localeCompare(positionTicker(b))
         case 'dte': va = a.dte ?? 99; vb = b.dte ?? 99; break
         case 'entryPrice': va = a.entryPrice ?? 0; vb = b.entryPrice ?? 0; break
         case 'max_profit': va = a.max_profit ?? 0; vb = b.max_profit ?? 0; break

@@ -310,6 +310,7 @@ Implementation status:
 - Started: `npm --prefix frontend run validate:ui` now checks that generated OpenAPI artifacts are current before running the business-logic boundary guard and TypeScript.
 - Started: Vault API types in `frontend/src/api/client.ts` use generated schema-backed types.
 - Started: core auth, option-analysis, day/swing/carry trading, active-trade, dashboard, and unified-analysis calls in `frontend/src/api/client.ts` use generated operation paths.
+- Started: cache, email, accent, alert-center, and Desk workflow calls in `frontend/src/api/client.ts` use generated operation paths.
 - Started: command-center API calls in `frontend/src/api/commandCenter.ts` use generated operation paths for core alerts, signal feed, portfolio, My Tickers, and supporting workflow endpoints.
 - Pending: replace remaining hand-written endpoint response types in `frontend/src/api/client.ts`, `frontend/src/api/commandCenter.ts`, and shared `frontend/src/types/*` incrementally with generated schema-backed types.
 
