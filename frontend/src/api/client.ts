@@ -70,6 +70,35 @@ const VAULT_OPERATION_IDS = {
   calculationSnapshotAuditLog: 'calculation_snapshot_audit_log_api_v1_calculation_snapshots__snapshot_id__audit_log_get',
 } as const satisfies Record<string, ApiOperationId>
 
+const CLIENT_OPERATION_IDS = {
+  authLogin: 'auth_login_api_auth_login_post',
+  authRegister: 'auth_register_api_auth_register_post',
+  authGoogle: 'auth_google_api_auth_google_post',
+  authActivate: 'auth_activate_api_auth_activate_get',
+  authForgotPassword: 'auth_forgot_password_api_auth_forgot_password_post',
+  authResetPassword: 'auth_reset_password_api_auth_reset_password_post',
+  analyze: 'analyze_api_analyze_post',
+  optionChainLiquidity: 'option_chain_liquidity_api_option_chain__ticker__get',
+  dayTradeScan: 'day_trade_scan_api_day_trade_post',
+  dayTradeWorkspace: 'day_trade_workspace_api_day_trade_workspace_get',
+  carryTradeScan: 'carry_trade_scan_api_carry_trade_post',
+  tradeDashboardStory: 'trade_dashboard_story_api_trade_dashboard_story_post',
+  swingTradeScan: 'swing_trade_scan_api_swing_trade_post',
+  investmentThesisStarter: 'investment_thesis_starter_api_investment_thesis_starter__ticker__get',
+  activeTrades: 'active_trades_list_api_trades_active_get',
+  activeTradeEnter: 'active_trade_enter_api_trades_enter_post',
+  activeTradeExit: 'active_trade_exit_api_api_trades__trade_id__exit_post',
+  exitSignals: 'exit_signals_api_exit_signals_get',
+  acknowledgeExitSignal: 'acknowledge_exit_signal_api_exit_signals_acknowledge_post',
+  dayTradeAlerts: 'list_day_trade_alerts_api_api_day_trade_alerts__email__get',
+  userData: 'get_user_data_api_user_data__email__get',
+  saveUserData: 'save_user_data_api_user_data__email__put',
+  dashboardTickers: 'api_get_dashboard_tickers_api_dashboard_tickers_get',
+  saveDashboardTickers: 'api_save_dashboard_tickers_api_dashboard_tickers_post',
+  unifiedAnalyze: 'unified_analyze_api_v2_analyze__ticker__get',
+  unifiedAnalyzePublic: 'unified_analyze_public_api_v2_analyze__ticker__public_get',
+} as const satisfies Record<string, ApiOperationId>
+
 export interface AuthLoginResponse {
   access_token: string
   token_type: string
@@ -79,7 +108,8 @@ export interface AuthLoginResponse {
 }
 
 export const authLogin = async (email: string, password: string): Promise<AuthLoginResponse> => {
-  const { data } = await api.post<AuthLoginResponse>('/auth/login', { email, password })
+  const body: ApiSchemas['LoginRequest'] = { email, password }
+  const { data } = await api.post<AuthLoginResponse>(generatedApiPath(CLIENT_OPERATION_IDS.authLogin), body)
   return data
 }
 
@@ -88,26 +118,29 @@ export const authRegister = async (payload: {
   password: string
   name?: string
 }): Promise<{ ok: boolean; needs_activation: boolean; message: string }> => {
-  const { data } = await api.post('/auth/register', payload)
+  const body: ApiSchemas['RegisterRequest'] = payload
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.authRegister), body)
   return data
 }
 
 export const authGoogle = async (credential: string): Promise<AuthLoginResponse> => {
-  const { data } = await api.post<AuthLoginResponse>('/auth/google', { credential })
+  const body: ApiSchemas['GoogleAuthRequest'] = { credential }
+  const { data } = await api.post<AuthLoginResponse>(generatedApiPath(CLIENT_OPERATION_IDS.authGoogle), body)
   return data
 }
 
 export const authActivate = async (
   token: string,
 ): Promise<{ ok: boolean; email: string; message: string }> => {
-  const { data } = await api.get('/auth/activate', { params: { token } })
+  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.authActivate), { params: { token } })
   return data
 }
 
 export const authForgotPassword = async (
   email: string,
 ): Promise<{ ok: boolean; message: string; dev_reset_token?: string }> => {
-  const { data } = await api.post('/auth/forgot-password', { email })
+  const body: ApiSchemas['ForgotPasswordRequest'] = { email }
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.authForgotPassword), body)
   return data
 }
 
@@ -115,7 +148,8 @@ export const authResetPassword = async (
   token: string,
   password: string,
 ): Promise<{ ok: boolean; message: string }> => {
-  const { data } = await api.post('/auth/reset-password', { token, password })
+  const body: ApiSchemas['ResetPasswordRequest'] = { token, password }
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.authResetPassword), body)
   return data
 }
 
@@ -126,14 +160,14 @@ export const analyzeOptions = async (
   strategyMode: StrategyMode = 'all',
   chainExpiry?: string | null,
 ): Promise<AnalyzeResponse> => {
-  const payload: Record<string, unknown> = {
+  const payload: ApiSchemas['AnalyzeRequest'] = {
     ticker,
     weeks_out: weeksOut,
     spread_width: spreadWidth ?? null,
     strategy_mode: strategyMode,
+    ...(chainExpiry?.trim() ? { chain_expiry: chainExpiry.trim().slice(0, 10) } : {}),
   }
-  if (chainExpiry?.trim()) payload.chain_expiry = chainExpiry.trim().slice(0, 10)
-  const { data } = await api.post<AnalyzeResponse>('/analyze', payload)
+  const { data } = await api.post<AnalyzeResponse>(generatedApiPath(CLIENT_OPERATION_IDS.analyze), payload)
   return data
 }
 
@@ -737,7 +771,10 @@ export const fetchOptionChainLiquidity = async (
   forceRefresh = false,
 ): Promise<OptionChainLiquidityResponse> => {
   const params = { ...(expiry ? { expiry } : {}), ...(forceRefresh ? { force_refresh: true } : {}) }
-  const { data } = await api.get<OptionChainLiquidityResponse>(`/option-chain/${encodeURIComponent(ticker.trim().toUpperCase())}`, { params })
+  const { data } = await api.get<OptionChainLiquidityResponse>(
+    generatedApiPath(CLIENT_OPERATION_IDS.optionChainLiquidity, { ticker: ticker.trim().toUpperCase() }),
+    { params },
+  )
   return data
 }
 
@@ -949,7 +986,8 @@ export const evaluateTradeWorksheet = async (
 }
 
 export const analyzeDayTrade = async (ticker: string, forceRefresh = false): Promise<DayTradeScanResult> => {
-  const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
+  const body: ApiSchemas['DayTradeRequest'] = { ticker: ticker.trim(), force_refresh: forceRefresh }
+  const { data } = await api.post<DayTradeScanResult>(generatedApiPath(CLIENT_OPERATION_IDS.dayTradeScan), body)
   return data
 }
 
@@ -960,7 +998,7 @@ export const fetchDayTradeWorkspace = async (query: DayTradeWorkspaceQuery): Pro
     ...(query.interval ? { interval: query.interval } : {}),
     ...(query.forceRefresh ? { force_refresh: true } : {}),
   }
-  const { data } = await api.get<unknown>('/day-trade/workspace', { params })
+  const { data } = await api.get<unknown>(generatedApiPath(CLIENT_OPERATION_IDS.dayTradeWorkspace), { params })
   validateDayTradeWorkspaceResponse(data)
   return data
 }
@@ -987,7 +1025,8 @@ export interface CarryTradeScanResult {
 }
 
 export const analyzeCarryTrade = async (ticker: string, forceRefresh = false): Promise<CarryTradeScanResult> => {
-  const { data } = await api.post<CarryTradeScanResult>('/carry-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
+  const body: ApiSchemas['CarryTradeRequest'] = { ticker: ticker.trim(), force_refresh: forceRefresh }
+  const { data } = await api.post<CarryTradeScanResult>(generatedApiPath(CLIENT_OPERATION_IDS.carryTradeScan), body)
   return data
 }
 
@@ -1014,7 +1053,8 @@ export interface TradeDashboardStory {
 }
 
 export const getTradeDashboardStory = async (ticker: string, forceRefresh = false): Promise<TradeDashboardStory> => {
-  const { data } = await api.post<TradeDashboardStory>('/trade-dashboard/story', { ticker: ticker.trim(), force_refresh: forceRefresh })
+  const body: ApiSchemas['TradeDashboardStoryRequest'] = { ticker: ticker.trim(), force_refresh: forceRefresh }
+  const { data } = await api.post<TradeDashboardStory>(generatedApiPath(CLIENT_OPERATION_IDS.tradeDashboardStory), body)
   return data
 }
 
@@ -1091,7 +1131,8 @@ export interface SwingTradeScanResult {
 }
 
 export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {
-  const { data } = await api.post<SwingTradeScanResult>('/swing-trade', { ticker: ticker.trim() })
+  const body: ApiSchemas['SwingTradeRequest'] = { ticker: ticker.trim() }
+  const { data } = await api.post<SwingTradeScanResult>(generatedApiPath(CLIENT_OPERATION_IDS.swingTradeScan), body)
   return data
 }
 
@@ -1133,7 +1174,9 @@ export interface InvestmentThesisStarter {
 }
 
 export const generateInvestmentThesisStarter = async (ticker: string): Promise<InvestmentThesisStarter> => {
-  const { data } = await api.get<InvestmentThesisStarter>(`/investment-thesis/starter/${encodeURIComponent(ticker.trim().toUpperCase())}`)
+  const { data } = await api.get<InvestmentThesisStarter>(
+    generatedApiPath(CLIENT_OPERATION_IDS.investmentThesisStarter, { ticker: ticker.trim().toUpperCase() }),
+  )
   return data
 }
 
@@ -1173,7 +1216,7 @@ export type ActiveTradeListResult = {
 }
 
 export const listActiveTrades = async (): Promise<ActiveTradeListResult> => {
-  const { data } = await api.get<ActiveTradeListResult>('/trades/active')
+  const { data } = await api.get<ActiveTradeListResult>(generatedApiPath(CLIENT_OPERATION_IDS.activeTrades))
   return {
     trades: data.trades ?? [],
     included_opened_before_today: Boolean(data.included_opened_before_today),
@@ -1192,15 +1235,16 @@ export interface ExitSignal {
 }
 
 export const fetchExitSignals = async (): Promise<ExitSignal[]> => {
-  const { data } = await api.get<{ signals: ExitSignal[]; count: number }>('/exit-signals')
+  const { data } = await api.get<{ signals: ExitSignal[]; count: number }>(generatedApiPath(CLIENT_OPERATION_IDS.exitSignals))
   return data.signals ?? []
 }
 
 export const acknowledgeExitSignal = async (ticker: string, code: string): Promise<void> => {
-  await api.post('/exit-signals/acknowledge', { ticker, code })
+  const body: ApiSchemas['ExitSignalAckBody'] = { ticker, code }
+  await api.post(generatedApiPath(CLIENT_OPERATION_IDS.acknowledgeExitSignal), body)
 }
 
-export const enterActiveTrade = async (body: {
+export const enterActiveTrade = async (body: ApiSchemas['ActiveTradeEnterRequest'] & {
   ticker: string
   side: 'CALL' | 'PUT'
   entry_price: number
@@ -1220,23 +1264,23 @@ export const enterActiveTrade = async (body: {
   strike?: number | null
   expiry?: string | null
 }> => {
-  const { data } = await api.post('/trades/enter', body)
+  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.activeTradeEnter), body)
   return data
 }
 
 export const exitActiveTrade = async (tradeId: string): Promise<void> => {
-  await api.post(`/trades/${encodeURIComponent(tradeId)}/exit`)
+  await api.post(generatedApiPath(CLIENT_OPERATION_IDS.activeTradeExit, { trade_id: tradeId }))
 }
 
 export const getDayTradeAlerts = async (email: string): Promise<DayTradeAlertEvent[]> => {
   const { data } = await api.get<{ email: string; alerts: DayTradeAlertEvent[] }>(
-    `/day-trade-alerts/${encodeURIComponent(email)}`,
+    generatedApiPath(CLIENT_OPERATION_IDS.dayTradeAlerts, { email }),
   )
   return data.alerts
 }
 
 export const getUserData = async (email: string): Promise<UserDataState> => {
-  const { data } = await api.get<UserDataState>(`/user-data/${encodeURIComponent(email)}`)
+  const { data } = await api.get<UserDataState>(generatedApiPath(CLIENT_OPERATION_IDS.userData, { email }))
   return data
 }
 
@@ -1296,12 +1340,12 @@ export interface DashboardTickers {
 }
 
 export const getDashboardTickers = async (): Promise<DashboardTickers> => {
-  const { data } = await api.get<DashboardTickers>('/dashboard-tickers')
+  const { data } = await api.get<DashboardTickers>(generatedApiPath(CLIENT_OPERATION_IDS.dashboardTickers))
   return { day: data.day ?? [], swing: data.swing ?? [] }
 }
 
 export const saveDashboardTickers = async (payload: DashboardTickers): Promise<void> => {
-  await api.post('/dashboard-tickers', { day: payload.day, swing: payload.swing })
+  await api.post(generatedApiPath(CLIENT_OPERATION_IDS.saveDashboardTickers), { day: payload.day, swing: payload.swing })
 }
 
 export const sendTestEmail = async (
@@ -1354,21 +1398,18 @@ export const saveUserData = async (
   swingTradeWatchlist?: string[],
   alertEmailEnabled?: boolean,
 ): Promise<UserDataState> => {
-  const body: Record<string, unknown> = { watchlist, portfolio }
-  if (advisory) {
-    body.advisory_terms_version = advisory.advisoryTermsVersion
-    body.advisory_accepted_at = advisory.advisoryAcceptedAt
+  const body: ApiSchemas['UserDataRequest'] = {
+    watchlist: watchlist as unknown as Record<string, unknown>[],
+    portfolio: portfolio as unknown as Record<string, unknown>[],
+    ...(advisory ? {
+      advisory_terms_version: advisory.advisoryTermsVersion,
+      advisory_accepted_at: advisory.advisoryAcceptedAt,
+    } : {}),
+    ...(dayTradeWatchlist !== undefined ? { day_trade_watchlist: dayTradeWatchlist } : {}),
+    ...(swingTradeWatchlist !== undefined ? { swing_trade_watchlist: swingTradeWatchlist } : {}),
+    ...(alertEmailEnabled !== undefined ? { alert_email_enabled: alertEmailEnabled } : {}),
   }
-  if (dayTradeWatchlist !== undefined) {
-    body.day_trade_watchlist = dayTradeWatchlist
-  }
-  if (swingTradeWatchlist !== undefined) {
-    body.swing_trade_watchlist = swingTradeWatchlist
-  }
-  if (alertEmailEnabled !== undefined) {
-    body.alert_email_enabled = alertEmailEnabled
-  }
-  const { data } = await api.put<UserDataState>(`/user-data/${encodeURIComponent(email)}`, body)
+  const { data } = await api.put<UserDataState>(generatedApiPath(CLIENT_OPERATION_IDS.saveUserData, { email }), body)
   return data
 }
 
@@ -1593,7 +1634,7 @@ export const analyzeV2 = (
     forceRefresh?: boolean
   }
 ) => api.get<UnifiedAnalysis>(
-  `/v2/analyze/${encodeURIComponent(ticker)}`,
+  generatedApiPath(CLIENT_OPERATION_IDS.unifiedAnalyze, { ticker }),
   {
     params: {
       trade_type: tradeType,
@@ -1609,7 +1650,7 @@ export const analyzePublic = (
   ticker: string,
   options?: { weeksOut?: number; strategyMode?: string }
 ) => api.get<UnifiedAnalysis>(
-  `/v2/analyze/${encodeURIComponent(ticker)}/public`,
+  generatedApiPath(CLIENT_OPERATION_IDS.unifiedAnalyzePublic, { ticker }),
   {
     params: {
       weeks_out: options?.weeksOut ?? 4,
