@@ -2,12 +2,18 @@ import type { ReactNode } from 'react'
 import { useEffect, useState, useCallback } from 'react'
 import { Activity, Bell, Clock, Database, Mail, Palette, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench, Settings } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { getEmailStatus, sendTestEmail, clearAllCaches, getUserAccent, setUserAccent } from '../api/client'
+import { api, generatedApiPath, getEmailStatus, sendTestEmail, clearAllCaches, getUserAccent, setUserAccent } from '../api/client'
+import type { ApiOperationId } from '../api/generated/openapi-types'
 import { roleBadgeClass, roleLabel } from '../permissions'
 import {
   loadSwingToolSettings, saveFibLookback, saveShowEma9, saveConfluenceTightness,
   type ConfluenceTightness,
 } from '../utils/fibConfluence'
+
+const SETTINGS_OPERATION_IDS = {
+  health: 'health_check_api_health_get',
+  dbCheck: 'admin_db_check_api_admin_db_check_get',
+} as const satisfies Record<string, ApiOperationId>
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
 interface ToggleRowProps {
@@ -109,7 +115,7 @@ export default function SettingsPage() {
     getEmailStatus()
       .then(setEmailStatus)
       .catch(() => setEmailStatus(null))
-    fetch('/api/health').then(r => r.json()).then(d => {
+    api.get(generatedApiPath(SETTINGS_OPERATION_IDS.health)).then(({ data: d }) => {
       if (d.version) setDeployedVersion(d.version)
     }).catch(() => {})
   }, [])
@@ -376,8 +382,8 @@ export default function SettingsPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    const r = await fetch('/api/health')
-                    alert(r.ok ? '✅ API OK' : `⚠️ API returned ${r.status}`)
+                    const r = await api.get(generatedApiPath(SETTINGS_OPERATION_IDS.health))
+                    alert(r.status >= 200 && r.status < 300 ? '✅ API OK' : `⚠️ API returned ${r.status}`)
                   } catch { alert('❌ API unreachable') }
                 }}
                 className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-emerald-600
@@ -402,8 +408,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    const r = await fetch('/api/admin/db-check', { headers: { 'X-Access-Email': '' } })
-                    const d = await r.json()
+                    const { data: d } = await api.get(generatedApiPath(SETTINGS_OPERATION_IDS.dbCheck), { headers: { 'X-Access-Email': '' } })
                     alert(d.ok ? '✅ DB OK' : `❌ DB error: ${d.error}`)
                   } catch { alert('❌ DB check failed') }
                 }}

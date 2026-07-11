@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { api, generatedApiPath } from '../api/client'
+import type { ApiOperationId } from '../api/generated/openapi-types'
 import { useApp } from '../contexts/AppContext'
+
+const DAY_TRADE_BACKTEST_OPERATION_IDS = {
+  historyBars: 'get_history_bars_api_history_bars_get',
+} as const satisfies Record<string, ApiOperationId>
 
 interface Bar {
   t: string; o: number; h: number; l: number; c: number; v: number
@@ -56,7 +61,7 @@ export default function DayTradeBacktestPage() {
     if (!ticker.trim() || !date) return
     setLoading(true); setError('')
     try {
-      const { data } = await api.get('/history-bars', { params: { ticker: ticker.trim(), date } })
+      const { data } = await api.get(generatedApiPath(DAY_TRADE_BACKTEST_OPERATION_IDS.historyBars), { params: { ticker: ticker.trim(), date } })
       const raw: Bar[] = (data as { bars: Bar[] }).bars
       if (!raw?.length) { setError('No data for this date'); setLoading(false); return }
       calcVwap(raw)

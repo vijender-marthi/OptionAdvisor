@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react'
 import { Send, CheckCircle, MinusCircle, XCircle, RefreshCw } from 'lucide-react'
-import { getAccessToken } from '../api/client'
+import { api, generatedApiPath } from '../api/client'
+import type { ApiOperationId, ApiSchemas } from '../api/generated/openapi-types'
+
+const DAY_TRADE_CHAT_OPERATION_IDS = {
+  tradeCheck: 'day_trade_check_api_day_trade_check_post',
+} as const satisfies Record<string, ApiOperationId>
 
 interface Check {
   pass: boolean | null
@@ -61,24 +66,8 @@ export default function DayTradeChat({ dt, currentTicker }: Props) {
     setLoading(true)
 
     try {
-      const t = getAccessToken()
-      const res = await fetch('/api/day-trade/check', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(t ? { Authorization: `Bearer ${t}` } : {}),
-        },
-        body: JSON.stringify({ message: q, ticker: currentTicker }),
-      })
-      if (!res.ok) {
-        let detail = `Trade check failed with HTTP ${res.status}.`
-        try {
-          const err = await res.json()
-          detail = typeof err?.detail === 'string' ? err.detail : detail
-        } catch { /* ignore non-json error body */ }
-        throw new Error(detail)
-      }
-      const data: EvalResult = await res.json()
+      const body: ApiSchemas['TradeCheckRequest'] = { message: q, ticker: currentTicker }
+      const { data } = await api.post<EvalResult>(generatedApiPath(DAY_TRADE_CHAT_OPERATION_IDS.tradeCheck), body)
       setMessages(m => [...m, { id: nextId(), role: 'result', text: q, result: data }])
     } catch (err) {
       const msg = err instanceof Error && err.message ? err.message : 'Could not reach the server. Make sure the backend is running.'

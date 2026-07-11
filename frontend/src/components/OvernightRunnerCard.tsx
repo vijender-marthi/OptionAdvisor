@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { api, generatedApiPath } from '../api/client'
+import type { ApiOperationId, ApiSchemas } from '../api/generated/openapi-types'
 import type { ApiEnvelope } from '../types/commandCenter'
+
+const OVERNIGHT_RUNNER_OPERATION_IDS = {
+  overnightRunner: 'post_overnight_runner_api_day_trade_overnight_runner_post',
+} as const satisfies Record<string, ApiOperationId>
 
 interface RunnerData {
   runner_score: number
@@ -40,7 +45,7 @@ export default function OvernightRunnerCard({
   const evaluate = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: res } = await api.post<ApiEnvelope<RunnerData>>('/day-trade/overnight-runner', {
+      const body: ApiSchemas['OvernightRunnerRequest'] = {
         ticker,
         current_price: currentPrice,
         vwap,
@@ -55,7 +60,11 @@ export default function OvernightRunnerCard({
         t1_hit: t1Hit,
         t2_hit: t2Hit,
         market_regime: marketRegime,
-      })
+      }
+      const { data: res } = await api.post<ApiEnvelope<RunnerData>>(
+        generatedApiPath(OVERNIGHT_RUNNER_OPERATION_IDS.overnightRunner),
+        body,
+      )
       if (res?.data) {
         setData(res.data as RunnerData)
         onVerdict?.((res.data as RunnerData).verdict)
