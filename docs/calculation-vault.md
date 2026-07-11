@@ -314,6 +314,7 @@ Implementation status:
 - Started: backtest, journal, EOD journal, trade-idea, and paper-trading calls in `frontend/src/api/client.ts` use generated operation paths.
 - Started: command-center API calls in `frontend/src/api/commandCenter.ts` use generated operation paths for core alerts, signal feed, portfolio, My Tickers, and supporting workflow endpoints.
 - Started: selected component/page-local API calls use generated operation paths for settings health checks, history bars, overnight runner, and Day Trade chat checks.
+- Started: Day Trade workspace response types in `frontend/src/api/client.ts` use generated schema-backed types with normalized array fields after runtime contract validation.
 - Pending: replace remaining hand-written endpoint response types in `frontend/src/api/client.ts`, `frontend/src/api/commandCenter.ts`, and shared `frontend/src/types/*` incrementally with generated schema-backed types.
 
 ### Phase 5: Design Vault

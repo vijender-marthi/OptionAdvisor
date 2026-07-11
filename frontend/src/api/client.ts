@@ -520,173 +520,46 @@ export interface DayTradeScanResult {
   is_chasing?: boolean
 }
 
-export type DayTradeSemanticTone = 'neutral' | 'info' | 'positive' | 'warning' | 'danger' | 'managing' | string
+export type DayTradeSemanticTone = ApiSchemas['DayTradeDisplayStatus']['tone']
+export type DayTradeWorkspaceDisplayValue = ApiSchemas['DayTradeDisplayValue']
+export type DayTradeWorkspaceStatus = ApiSchemas['DayTradeDisplayStatus']
+export type DayTradeWorkspaceAction = ApiSchemas['DayTradeWorkspaceAction']
 
-export interface DayTradeWorkspaceDisplayValue {
-  raw?: number | string | null
-  display: string
-  tone?: DayTradeSemanticTone | null
-  helpText?: string | null
+type DayTradeWorkspaceChart = Omit<
+  ApiSchemas['DayTradeChartView'],
+  'candles' | 'defaults' | 'events' | 'levels' | 'tradeFocus' | 'vwapOverlay'
+> & {
+  candles: ApiSchemas['DayTradeChartCandleView'][]
+  levels: ApiSchemas['DayTradeChartLevelView'][]
+  events: ApiSchemas['DayTradeChartEventView'][]
+  vwapOverlay?: (Omit<ApiSchemas['DayTradeVwapOverlayView'], 'points'> & {
+    points: ApiSchemas['DayTradeVwapPointView'][]
+  }) | null
+  defaults: Omit<ApiSchemas['DayTradeChartDefaultsView'], 'visibleOverlayIds'> & {
+    visibleOverlayIds: string[]
+  }
+  tradeFocus?: (Omit<ApiSchemas['DayTradeChartTradeFocusView'], 'levelIdsAllowedToAffectScale'> & {
+    levelIdsAllowedToAffectScale: string[]
+  }) | null
 }
 
-export interface DayTradeWorkspaceStatus {
-  code: string
-  label: string
-  tone: DayTradeSemanticTone
-  iconKey?: string | null
-  description?: string | null
+type DayTradeWorkspaceDecision = Omit<ApiSchemas['DayTradeDecisionView'], 'secondaryActions'> & {
+  secondaryActions: DayTradeWorkspaceAction[]
 }
 
-export interface DayTradeWorkspaceAction {
-  id: string
-  type: string
-  label: string
-  enabled: boolean
-  disabledReason?: string | null
-  payload?: Record<string, string | number | boolean | null> | null
+type DayTradeWorkspaceTrigger = Omit<ApiSchemas['DayTradeTriggerView'], 'requirements'> & {
+  requirements: ApiSchemas['DayTradeTriggerRequirementView'][]
 }
 
-export interface DayTradeWorkspaceResponse {
-  schemaVersion: string
-  generatedAt: string
-  symbol: {
-    ticker: string
-    companyName?: string | null
-    price: DayTradeWorkspaceDisplayValue
-    change: DayTradeWorkspaceDisplayValue
-  }
-  session: {
-    mode: 'live' | 'review' | 'planning' | string
-    status: DayTradeWorkspaceStatus
-    sessionDate: string
-    displayDate: string
-    marketTimeZone: string
-    isExecutionAllowed: boolean
-    reviewCopy?: string | null
-  }
-  decision: {
-    context: DayTradeWorkspaceStatus
-    permission: DayTradeWorkspaceStatus
-    headline: string
-    reason: string
-    nextCondition?: string | null
-    setupName?: string | null
-    primaryAction: DayTradeWorkspaceAction
-    secondaryActions: DayTradeWorkspaceAction[]
-  }
-  trigger: {
-    status: DayTradeWorkspaceStatus
-    summary: string
-    requirements: Array<{
-      id: string
-      label: string
-      displayValue?: string | null
-      result: string
-      tone: DayTradeSemanticTone
-    }>
-  }
-  riskPlan: {
-    entry: DayTradeWorkspaceDisplayValue
-    stop: DayTradeWorkspaceDisplayValue
-    target1: DayTradeWorkspaceDisplayValue
-    target2: DayTradeWorkspaceDisplayValue
-    positionSize: DayTradeWorkspaceDisplayValue
-    riskReward: DayTradeWorkspaceDisplayValue
-  }
-  evidence: Array<{
-    id: string
-    label: string
-    detail?: string | null
-    result: string
-    tone: DayTradeSemanticTone
-    order: number
-    ruleId?: string | null
-    observedAt?: string | null
-  }>
-  selectedContract?: {
-    expiration: DayTradeWorkspaceDisplayValue
-    dte: DayTradeWorkspaceDisplayValue
-    strike: DayTradeWorkspaceDisplayValue
-    optionType: DayTradeWorkspaceDisplayValue
-    bid: DayTradeWorkspaceDisplayValue
-    ask: DayTradeWorkspaceDisplayValue
-    midpoint: DayTradeWorkspaceDisplayValue
-    spread: DayTradeWorkspaceDisplayValue
-    spreadPercent: DayTradeWorkspaceDisplayValue
-    liquidity: DayTradeWorkspaceStatus
-    roundTrip: DayTradeWorkspaceDisplayValue
-  } | null
-  chart: {
-    candles: Array<{
-      time: string
-      open: number
-      high: number
-      low: number
-      close: number
-      volume: number
-    }>
-    levels: Array<{
-      id: string
-      kind: string
-      price: number
-      label: string
-      tone: DayTradeSemanticTone
-      lineStyleToken: string
-      active: boolean
-      visibleByDefault: boolean
-      affectsTradeFocusScale: boolean
-      priority: number
-      offscreenLabel?: string | null
-    }>
-    events: Array<{
-      id: string
-      timestamp: string
-      eventType: string
-      title: string
-      detail?: string | null
-      tone: DayTradeSemanticTone
-      visibleByDefault: boolean
-      priority: number
-      price?: number | null
-    }>
-    vwapOverlay?: {
-      id: 'session-vwap' | string
-      label: string
-      sessionDate: string
-      exchangeTimeZone: string
-      anchorPolicy: string
-      includesExtendedHours: boolean
-      latestValue?: number | null
-      latestAsOfUtc?: string | null
-      visibleByDefault: boolean
-      affectsTradeFocusScale: boolean
-      points: Array<{
-        barStartUtc: string
-        value?: number | null
-        sourceTimestampUtc: string
-        state: 'forming' | 'closed' | string
-        quality: 'good' | 'stale' | 'partial' | 'unavailable' | string
-      }>
-    } | null
-    defaults: {
-      interval: '1m' | '5m' | '15m' | string
-      visibleRange: string
-      initialVisibleBars: number
-      initialBarSpacing: number
-      minBarSpacing: number
-      maxBarSpacing: number
-      rightOffsetBars: number
-      scaleMode: string
-      followLive: boolean
-      visibleOverlayIds: string[]
-    }
-    tradeFocus?: {
-      scalePaddingPercent: number
-      levelIdsAllowedToAffectScale: string[]
-    } | null
-  }
+export type DayTradeWorkspaceResponse = Omit<
+  ApiSchemas['DayTradeWorkspaceResponse'],
+  'chart' | 'decision' | 'evidence' | 'tabs' | 'trigger'
+> & {
+  decision: DayTradeWorkspaceDecision
+  trigger: DayTradeWorkspaceTrigger
+  evidence: ApiSchemas['DayTradeEvidenceItemView'][]
+  chart: DayTradeWorkspaceChart
   tabs: Record<string, unknown>
-  provenance?: Record<string, unknown> | null
 }
 
 export interface DayTradeWorkspaceQuery {
