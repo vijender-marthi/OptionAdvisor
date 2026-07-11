@@ -306,8 +306,11 @@ Implementation status:
 
 - Started: FastAPI OpenAPI is exported to `frontend/src/api/generated/openapi.json`.
 - Started: frontend operation/path metadata is generated in `frontend/src/api/generated/openapi-types.ts`.
+- Started: frontend component schema types are generated in `frontend/src/api/generated/openapi-types.ts`.
 - Started: `npm --prefix frontend run validate:ui` now checks that generated OpenAPI artifacts are current before running the business-logic boundary guard and TypeScript.
-- Pending: replace hand-written endpoint response types in `frontend/src/api/client.ts` and `frontend/src/api/commandCenter.ts` incrementally with generated schema-backed types.
+- Started: Vault API types in `frontend/src/api/client.ts` use generated schema-backed types.
+- Started: command-center API calls in `frontend/src/api/commandCenter.ts` use generated operation paths for core alerts, signal feed, portfolio, My Tickers, and supporting workflow endpoints.
+- Pending: replace remaining hand-written endpoint response types in `frontend/src/api/client.ts`, `frontend/src/api/commandCenter.ts`, and shared `frontend/src/types/*` incrementally with generated schema-backed types.
 
 ### Phase 5: Design Vault
 

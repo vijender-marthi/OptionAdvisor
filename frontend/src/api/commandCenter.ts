@@ -1,7 +1,42 @@
-import { api } from './client'
+import { api, generatedApiPath } from './client'
+import type { ApiOperationId, ApiSchemas } from './generated/openapi-types'
 import type { AlertCenterPayload, AlertCenterSummaryResponse, ApiEnvelope, TradeCommandCenterPayload, SignalFeedPayload } from '../types/commandCenter'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+
+const COMMAND_CENTER_OPERATION_IDS = {
+  tradeCommandCenter: 'get_trade_command_center_api_trade_command_center_get',
+  alertCenter: 'list_alerts_center_api_alerts_get',
+  alertSummary: 'list_alerts_summary_api_alerts_summary_get',
+  acknowledgeAlert: 'post_alert_acknowledge_api_alerts__alert_id__acknowledge_post',
+  resolveAlert: 'post_alert_resolve_api_alerts__alert_id__resolve_post',
+  clearAlerts: 'post_alerts_clear_api_alerts_clear_post',
+  noteAlert: 'post_alert_note_api_alerts__alert_id__note_post',
+  marketPosition: 'get_market_position_api_market_position_get',
+  portfolioAdd: 'post_portfolio_add_api_portfolio_add_post',
+  portfolioUpdate: 'post_portfolio_update_api_portfolio_update_post',
+  portfolioRemove: 'post_portfolio_remove_api_portfolio_remove_post',
+  portfolioClose: 'post_portfolio_close_api_portfolio_close_post',
+  stockTargets: 'get_stock_targets_api_stock_targets_get',
+  positionsCenter: 'get_positions_center_api_positions_center_get',
+  signalFeed: 'get_signal_feed_api_signal_feed_get',
+  signalFeedRefresh: 'refresh_signal_feed_api_signal_feed_refresh_post',
+  signalFeedAlert: 'create_signal_feed_alert_api_signal_feed_alerts_post',
+  watchlistAdd: 'post_watchlist_add_api_watchlist_add_post',
+  watchlistRemove: 'post_watchlist_remove_api_watchlist_remove_post',
+  searchTickers: 'search_tickers_api_search_tickers_get',
+  myTickers: 'get_my_tickers_api_my_tickers_get',
+  myTickerAdd: 'post_my_ticker_api_my_tickers_post',
+  myTickerUpdate: 'patch_my_ticker_api_my_tickers__symbol__patch',
+  myTickerDelete: 'delete_my_ticker_api_my_tickers__symbol__delete',
+  myTickerTypeDelete: 'delete_my_ticker_type_api_my_tickers__symbol__type__trade_type__delete',
+  myTickersReorder: 'put_my_tickers_reorder_api_my_tickers_reorder_put',
+  premarketBias: 'get_premarket_bias_api_premarket_bias_get',
+  earlyEntryTrigger: 'get_early_entry_trigger_api_early_entry_trigger_get',
+  trackMode: 'get_track_mode_api_track_mode_get',
+  trackModeAdd: 'post_track_mode_add_api_track_mode_add_post',
+  trackModeRemove: 'post_track_mode_remove_api_track_mode_remove_post',
+} as const satisfies Record<string, ApiOperationId>
 
 /** Accept both `{ data, error, stale, fetched_at }` and a raw inner payload from proxies / older builds. */
 function normalizeCommandCenterEnvelope(raw: unknown): ApiEnvelope<Record<string, unknown>> {
@@ -26,7 +61,7 @@ export async function fetchTradeCommandCenter(params: {
     const { tradeCommandCenterEnvelopeMock } = await import('../mocks/trade-command-center.mock')
     return tradeCommandCenterEnvelopeMock
   }
-  const { data } = await api.get<unknown>('/trade-command-center', {
+  const { data } = await api.get<unknown>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.tradeCommandCenter), {
     params: {
       engine: params.engine || undefined,
       signal: params.signal || undefined,
@@ -50,7 +85,7 @@ export async function fetchAlertCenterPage(opts: {
     const { alertCenterEnvelopeMock } = await import('../mocks/alert-center.mock')
     return alertCenterEnvelopeMock
   }
-  const { data } = await api.get<ApiEnvelope<AlertCenterPayload>>('/alerts', {
+  const { data } = await api.get<ApiEnvelope<AlertCenterPayload>>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.alertCenter), {
     params: {
       engine_type: opts.engine_type,
       alert_type: opts.alert_type,
@@ -79,7 +114,7 @@ export async function fetchAlertCenterSummary(): Promise<ApiEnvelope<AlertCenter
       fetched_at: new Date().toISOString(),
     }
   }
-  const { data } = await api.get<ApiEnvelope<AlertCenterSummaryResponse>>('/alerts/summary')
+  const { data } = await api.get<ApiEnvelope<AlertCenterSummaryResponse>>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.alertSummary))
   return data
 }
 
@@ -92,7 +127,9 @@ export async function acknowledgeAlert(id: string): Promise<ApiEnvelope<{ ok: bo
       fetched_at: new Date().toISOString(),
     }
   }
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean }>>(`/alerts/${encodeURIComponent(id)}/acknowledge`)
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.acknowledgeAlert, { alert_id: id }),
+  )
   return data
 }
 
@@ -105,7 +142,9 @@ export async function resolveAlert(id: string): Promise<ApiEnvelope<{ ok: boolea
       fetched_at: new Date().toISOString(),
     }
   }
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean }>>(`/alerts/${encodeURIComponent(id)}/resolve`)
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.resolveAlert, { alert_id: id }),
+  )
   return data
 }
 
@@ -118,7 +157,9 @@ export async function clearAllAlerts(): Promise<ApiEnvelope<{ ok: boolean; clear
       fetched_at: new Date().toISOString(),
     }
   }
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; cleared: number }>>(`/alerts/clear`)
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; cleared: number }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.clearAlerts),
+  )
   return data
 }
 
@@ -131,7 +172,11 @@ export async function noteAlert(id: string, text: string): Promise<ApiEnvelope<{
       fetched_at: new Date().toISOString(),
     }
   }
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean }>>(`/alerts/${encodeURIComponent(id)}/note`, { text })
+  const body: ApiSchemas['AlertNoteBody'] = { text }
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.noteAlert, { alert_id: id }),
+    body,
+  )
   return data
 }
 
@@ -171,14 +216,18 @@ export async function fetchMarketPosition(): Promise<ApiEnvelope<MarketPositionD
       fetched_at: new Date().toISOString(),
     }
   }
-  const { data } = await api.get<ApiEnvelope<MarketPositionData | null>>('/market-position')
+  const { data } = await api.get<ApiEnvelope<MarketPositionData | null>>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.marketPosition))
   return data
 }
 
 export async function addPortfolioPosition(payload: {
   position: Record<string, unknown>
 }): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/add', payload)
+  const body: ApiSchemas['PortfolioAddBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.portfolioAdd),
+    body,
+  )
   return data
 }
 
@@ -212,7 +261,7 @@ export async function fetchStockTargets(
   const params = new URLSearchParams({ ticker })
   if (entryPrice && entryPrice > 0) params.set('entry_price', String(entryPrice))
   if (fibLookback && fibLookback > 0) params.set('fib_lookback', String(fibLookback))
-  const { data } = await api.get<ApiEnvelope<StockTargetData>>(`/stock-targets?${params}`)
+  const { data } = await api.get<ApiEnvelope<StockTargetData>>(`${generatedApiPath(COMMAND_CENTER_OPERATION_IDS.stockTargets)}?${params}`)
   if (!data.data) throw new Error('No data returned')
   return data.data
 }
@@ -221,14 +270,22 @@ export async function updatePortfolioPositionApi(payload: {
   id: string
   data: Record<string, unknown>
 }): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/update', payload)
+  const body: ApiSchemas['PortfolioUpdateBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.portfolioUpdate),
+    body,
+  )
   return data
 }
 
 export async function removePortfolioPosition(payload: {
   id: string
 }): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/remove', payload)
+  const body: ApiSchemas['PortfolioRemoveBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.portfolioRemove),
+    body,
+  )
   return data
 }
 
@@ -245,7 +302,11 @@ export async function closePortfolioPosition(payload: {
   pnl_overridden?: boolean
   pnl_override_reason?: string
 }): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/close', payload)
+  const body: ApiSchemas['PortfolioCloseBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.portfolioClose),
+    body,
+  )
   return data
 }
 
@@ -253,7 +314,7 @@ export async function fetchPositionsCenter(): Promise<ApiEnvelope<Record<string,
   if (USE_MOCK) {
     return normalizeCommandCenterEnvelope({})
   }
-  const { data } = await api.get<unknown>('/positions-center')
+  const { data } = await api.get<unknown>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.positionsCenter))
   return normalizeCommandCenterEnvelope(data)
 }
 
@@ -267,7 +328,7 @@ export async function fetchSignalFeed(params: {
   /** Pass true only when user explicitly clicks Refresh — not on normal page load */
   refresh?: boolean
 }): Promise<ApiEnvelope<SignalFeedPayload>> {
-  const { data } = await api.get<unknown>('/signal-feed', {
+  const { data } = await api.get<unknown>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.signalFeed), {
     params: {
       search: params.search || undefined,
       source: params.source || undefined,
@@ -287,7 +348,7 @@ export async function refreshSignalFeed(): Promise<ApiEnvelope<{
   refreshed_tickers: string[]
   cache: { cache_hits: number; cache_misses: number; elapsed_ms: number }
 }>> {
-  const { data } = await api.post<unknown>('/signal-feed/refresh')
+  const { data } = await api.post<unknown>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.signalFeedRefresh))
   return normalizeCommandCenterEnvelope(data) as unknown as ApiEnvelope<{
     ok: boolean
     refreshed_tickers: string[]
@@ -301,7 +362,11 @@ export async function createSignalFeedAlert(payload: {
   message?: string
   recommended_action?: string
 }): Promise<ApiEnvelope<{ ok: boolean; id: string }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; id: string }>>('/signal-feed/alerts', payload)
+  const body: ApiSchemas['SignalFeedAlertCreateBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; id: string }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.signalFeedAlert),
+    body,
+  )
   return data
 }
 
@@ -312,14 +377,21 @@ export async function addWatchlistTicker(payload: {
   watch_reason?: string
   desired_entry?: number | null
 }): Promise<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>>; duplicate?: boolean }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>>; duplicate?: boolean }>>('/watchlist/add', payload)
+  const body: ApiSchemas['WatchlistTickerBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>>; duplicate?: boolean }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.watchlistAdd),
+    body,
+  )
   return data
 }
 
 export async function removeWatchlistTicker(payload: {
   ticker: string
 }): Promise<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>>('/watchlist/remove', payload)
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.watchlistRemove),
+    payload,
+  )
   return data
 }
 
@@ -352,12 +424,17 @@ export interface SearchTickerResult {
 }
 
 export async function searchTickers(q: string): Promise<ApiEnvelope<{ results: SearchTickerResult[] }>> {
-  const { data } = await api.get<ApiEnvelope<{ results: SearchTickerResult[] }>>('/search-tickers', { params: { q } })
+  const { data } = await api.get<ApiEnvelope<{ results: SearchTickerResult[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.searchTickers),
+    { params: { q } },
+  )
   return data
 }
 
 export async function fetchMyTickers(): Promise<ApiEnvelope<{ tickers: MyTickerEntry[] }>> {
-  const { data } = await api.get<ApiEnvelope<{ tickers: MyTickerEntry[] }>>('/my-tickers')
+  const { data } = await api.get<ApiEnvelope<{ tickers: MyTickerEntry[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.myTickers),
+  )
   return data
 }
 
@@ -366,29 +443,45 @@ export async function addMyTicker(payload: {
   company_name?: string
   trade_types: string[]
 }): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>('/my-tickers', payload)
+  const body: ApiSchemas['MyTickerBody'] = payload
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.myTickerAdd),
+    body,
+  )
   return data
 }
 
 export async function updateMyTicker(symbol: string, payload: {
   trade_types: string[]
 }): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
-  const { data } = await api.patch<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}`, payload)
+  const body: ApiSchemas['MyTickerUpdateBody'] = payload
+  const { data } = await api.patch<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.myTickerUpdate, { symbol }),
+    body,
+  )
   return data
 }
 
 export async function removeMyTicker(symbol: string): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
-  const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}`)
+  const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.myTickerDelete, { symbol }),
+  )
   return data
 }
 
 export async function removeMyTickerType(symbol: string, tradeType: string): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
-  const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}/type/${encodeURIComponent(tradeType)}`)
+  const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.myTickerTypeDelete, { symbol, trade_type: tradeType }),
+  )
   return data
 }
 
 export async function reorderMyTickers(symbols: string[]): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
-  const { data } = await api.put<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>('/my-tickers/reorder', { symbols })
+  const body: ApiSchemas['MyTickersReorderBody'] = { symbols }
+  const { data } = await api.put<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.myTickersReorder),
+    body,
+  )
   return data
 }
 
@@ -416,7 +509,7 @@ export async function fetchPremarketBias(
   forceRefresh = false,
 ): Promise<PremarketBiasData> {
   const params = forceRefresh ? '?force_refresh=true' : ''
-  const { data } = await api.get<ApiEnvelope<PremarketBiasData>>(`/premarket-bias${params}`)
+  const { data } = await api.get<ApiEnvelope<PremarketBiasData>>(`${generatedApiPath(COMMAND_CENTER_OPERATION_IDS.premarketBias)}${params}`)
   if (!data.data) throw new Error('No premarket bias data')
   return data.data
 }
@@ -451,7 +544,7 @@ export async function fetchEarlyEntryTrigger(
 ): Promise<EarlyEntryResult> {
   const params = new URLSearchParams({ ticker })
   if (forceRefresh) params.set('force_refresh', 'true')
-  const { data } = await api.get<ApiEnvelope<EarlyEntryResult>>(`/early-entry-trigger?${params}`)
+  const { data } = await api.get<ApiEnvelope<EarlyEntryResult>>(`${generatedApiPath(COMMAND_CENTER_OPERATION_IDS.earlyEntryTrigger)}?${params}`)
   if (!data.data) throw new Error('No early entry data')
   return data.data
 }
@@ -469,16 +562,24 @@ export interface TrackModeListResponse {
 }
 
 export async function fetchTrackMode(): Promise<TrackModeListResponse> {
-  const { data } = await api.get<TrackModeListResponse>('/track-mode')
+  const { data } = await api.get<TrackModeListResponse>(generatedApiPath(COMMAND_CENTER_OPERATION_IDS.trackMode))
   return { tracked: data.tracked ?? [], count: data.count ?? 0 }
 }
 
 export async function addTrackModeTicker(ticker: string, notes = ''): Promise<{ ok: boolean }> {
-  const { data } = await api.post<{ ok: boolean }>('/track-mode/add', { ticker, notes })
+  const body: ApiSchemas['TrackModeAddBody'] = { ticker, notes }
+  const { data } = await api.post<{ ok: boolean }>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.trackModeAdd),
+    body,
+  )
   return data
 }
 
 export async function removeTrackModeTicker(ticker: string): Promise<{ ok: boolean }> {
-  const { data } = await api.post<{ ok: boolean }>('/track-mode/remove', { ticker })
+  const body: ApiSchemas['TrackModeRemoveBody'] = { ticker }
+  const { data } = await api.post<{ ok: boolean }>(
+    generatedApiPath(COMMAND_CENTER_OPERATION_IDS.trackModeRemove),
+    body,
+  )
   return data
 }

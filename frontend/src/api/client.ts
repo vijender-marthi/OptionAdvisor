@@ -43,7 +43,7 @@ api.interceptors.response.use(
   },
 )
 
-function generatedApiPath(
+export function generatedApiPath(
   operationId: ApiOperationId,
   pathParams: Record<string, string | number> = {},
 ): string {
