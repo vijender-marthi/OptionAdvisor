@@ -267,6 +267,226 @@ def _interval_chart_bars(chart_bars: list[Any], interval: str) -> list[dict[str,
     return buckets
 
 
+def _five_minute_bars_for_structure(chart_bars: list[Any]) -> list[dict[str, Any]]:
+    """Build backend-owned 5m OHLC bars for chart structure presentation."""
+    return _interval_chart_bars(chart_bars, "5m")
+
+
+DAY_STRUCTURE_LEFT_BARS = 2
+DAY_STRUCTURE_RIGHT_BARS = 2
+DAY_STRUCTURE_MIN_MOVE_PCT = 0.0005
+DAY_STRUCTURE_ATR_MULTIPLIER = 0.0
+DAY_STRUCTURE_TICK_SIZE = 0.01
+DAY_STRUCTURE_TOLERANCE_ATR_MULTIPLIER = 0.0
+
+
+def _true_range(high: float, low: float, previous_close: float | None) -> float:
+    if previous_close is None:
+        return max(0.0, high - low)
+    return max(high - low, abs(high - previous_close), abs(low - previous_close))
+
+
+def _structure_settings(bars: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
+    closes: list[float] = []
+    ranges: list[float] = []
+    prev_close: float | None = None
+    for bar in bars[-14:]:
+        high = _num(bar.get("h", bar.get("high")))
+        low = _num(bar.get("l", bar.get("low")))
+        close = _num(bar.get("c", bar.get("close")))
+        if high is None or low is None:
+            continue
+        ranges.append(_true_range(high, low, prev_close))
+        if close is not None:
+            closes.append(close)
+            prev_close = close
+    atr = sum(ranges) / len(ranges) if ranges else 0.0
+    reference_price = closes[-1] if closes else (_num(metrics.get("last_price")) or 0.0)
+    pct_move = reference_price * DAY_STRUCTURE_MIN_MOVE_PCT if reference_price > 0 else 0.0
+    configured_min = _num(metrics.get("day_structure_minimum_move"))
+    configured_tolerance = _num(metrics.get("day_structure_comparison_tolerance"))
+    minimum_move = configured_min if configured_min is not None else max(pct_move, atr * DAY_STRUCTURE_ATR_MULTIPLIER)
+    comparison_tolerance = configured_tolerance if configured_tolerance is not None else max(
+        DAY_STRUCTURE_TICK_SIZE,
+        atr * DAY_STRUCTURE_TOLERANCE_ATR_MULTIPLIER,
+    )
+    return {
+        "leftBars": DAY_STRUCTURE_LEFT_BARS,
+        "rightBars": DAY_STRUCTURE_RIGHT_BARS,
+        "comparisonTolerance": round(comparison_tolerance, 4),
+        "minimumMove": round(minimum_move, 4),
+        "atr14": round(atr, 4),
+    }
+
+
+def _candidate_pivots(bars: list[dict[str, Any]], settings: dict[str, Any]) -> list[dict[str, Any]]:
+    left = int(settings["leftBars"])
+    right = int(settings["rightBars"])
+    candidates: list[dict[str, Any]] = []
+    if len(bars) < left + right + 1:
+        return candidates
+    for index in range(left, len(bars) - right):
+        bar = bars[index]
+        high = _num(bar.get("h", bar.get("high")))
+        low = _num(bar.get("l", bar.get("low")))
+        if high is None or low is None:
+            continue
+        left_bars = bars[index - left:index]
+        right_bars = bars[index + 1:index + right + 1]
+        left_highs = [_num(b.get("h", b.get("high"))) for b in left_bars]
+        right_highs = [_num(b.get("h", b.get("high"))) for b in right_bars]
+        left_lows = [_num(b.get("l", b.get("low"))) for b in left_bars]
+        right_lows = [_num(b.get("l", b.get("low"))) for b in right_bars]
+        ts = str(bar.get("t") or bar.get("time") or "")
+        if all(v is not None and high > v for v in [*left_highs, *right_highs]):
+            candidates.append({"_index": index, "pivotType": "HIGH", "price": high, "timestamp": ts})
+        if all(v is not None and low < v for v in [*left_lows, *right_lows]):
+            candidates.append({"_index": index, "pivotType": "LOW", "price": low, "timestamp": ts})
+    return sorted(candidates, key=lambda item: int(item["_index"]))
+
+
+def _normalize_pivots(candidates: list[dict[str, Any]], minimum_move: float) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not normalized:
+            normalized.append(candidate)
+            continue
+        last = normalized[-1]
+        if candidate["pivotType"] == last["pivotType"]:
+            if candidate["pivotType"] == "HIGH" and float(candidate["price"]) > float(last["price"]):
+                normalized[-1] = candidate
+            elif candidate["pivotType"] == "LOW" and float(candidate["price"]) < float(last["price"]):
+                normalized[-1] = candidate
+            continue
+        if abs(float(candidate["price"]) - float(last["price"])) < minimum_move:
+            continue
+        normalized.append(candidate)
+    return normalized
+
+
+def _classify_pivots(pivots: list[dict[str, Any]], tolerance: float) -> list[dict[str, Any]]:
+    previous_high: float | None = None
+    previous_low: float | None = None
+    out: list[dict[str, Any]] = []
+    for item in pivots:
+        price = float(item["price"])
+        ptype = str(item["pivotType"])
+        if ptype == "HIGH":
+            if previous_high is None:
+                label = "HH"
+            else:
+                diff = price - previous_high
+                label = "HH" if diff > tolerance else "LH" if diff < -tolerance else "EQH"
+            previous_high = price
+        else:
+            if previous_low is None:
+                label = "HL"
+            else:
+                diff = price - previous_low
+                label = "HL" if diff > tolerance else "LL" if diff < -tolerance else "EQL"
+            previous_low = price
+        out.append({
+            "id": f"structure-{ptype.lower()}-{int(item['_index'])}",
+            "timestamp": item["timestamp"],
+            "label": label,
+            "classification": label,
+            "pivotType": ptype,
+            "type": ptype,
+            "price": round(price, 4),
+            "sourceTimeframe": "5m",
+            "timeframe": "5m",
+            "confirmed": True,
+            "status": "CONFIRMED",
+            "latest": False,
+            "explanation": f"Confirmed backend 5-minute swing {ptype.lower()} compared against the prior confirmed {ptype.lower()}.",
+            "_index": int(item["_index"]),
+        })
+    return out
+
+
+def _trend_from_pivots(pivots: list[dict[str, Any]]) -> tuple[str, str, str, float]:
+    highs = [p for p in pivots if p["pivotType"] == "HIGH"]
+    lows = [p for p in pivots if p["pivotType"] == "LOW"]
+    if len(highs) < 2 or len(lows) < 2:
+        return "UNCONFIRMED", "UNCONFIRMED", "Unconfirmed", 0.35
+    high_label = highs[-1]["label"]
+    low_label = lows[-1]["label"]
+    if high_label == "HH" and low_label == "HL":
+        return "BULLISH", "HH/HL", "HH -> HL", 0.82
+    if high_label == "LH" and low_label == "LL":
+        return "BEARISH", "LH/LL", "LL -> LH", 0.82
+    if high_label in {"EQH"} and low_label in {"EQL"}:
+        return "RANGE", "EQH/EQL", "Range", 0.58
+    if high_label in {"EQH"} or low_label in {"EQL"}:
+        return "RANGE", "RANGE", "Range", 0.55
+    return "TRANSITION", f"{high_label}/{low_label}", "Transition", 0.62
+
+
+def _expected_next_pivot(trend: str, current: dict[str, Any] | None) -> str:
+    if current is None:
+        return "UNKNOWN"
+    if trend == "BULLISH":
+        return "CONTINUATION_LOW" if current.get("pivotType") == "HIGH" else "CONTINUATION_HIGH"
+    if trend == "BEARISH":
+        return "CONTINUATION_LOW" if current.get("pivotType") == "HIGH" else "CONTINUATION_HIGH"
+    return "UNCONFIRMED"
+
+
+def _market_structure(chart_bars: list[Any], metrics: dict[str, Any]) -> dict[str, Any]:
+    bars = _five_minute_bars_for_structure(chart_bars)
+    settings = _structure_settings(bars, metrics)
+    candidates = _candidate_pivots(bars, settings)
+    normalized = _normalize_pivots(candidates, float(settings["minimumMove"]))
+    pivots = _classify_pivots(normalized, float(settings["comparisonTolerance"]))[-15:]
+    if pivots:
+        pivots[-1]["latest"] = True
+    trend, structure, display, derived_confidence = _trend_from_pivots(pivots)
+    for item in pivots:
+        item.pop("_index", None)
+
+    sequence = [str(item["label"]) for item in pivots[-8:]]
+    current_pivot = pivots[-1] if pivots else None
+    current_label = str(current_pivot["label"]) if current_pivot else None
+    invalidation: float | None = None
+    if trend == "BULLISH":
+        lows = [float(item["price"]) for item in pivots if item.get("pivotType") == "LOW" and item.get("label") == "HL"]
+        invalidation = lows[-1] if lows else _num(metrics.get("or_low"))
+    elif trend == "BEARISH":
+        highs = [float(item["price"]) for item in pivots if item.get("pivotType") == "HIGH" and item.get("label") == "LH"]
+        invalidation = highs[-1] if highs else _num(metrics.get("or_high"))
+
+    strength = _num(metrics.get("confidence"))
+    confidence = derived_confidence if strength is None else min(1.0, max(0.0, float(strength) / 100.0))
+    return {
+        "id": "market-structure-5m",
+        "timeframe": "5m",
+        "trend": trend,
+        "structure": structure,
+        "display": display,
+        "confidence": round(confidence, 2),
+        "sequence": sequence,
+        "currentPivot": current_label,
+        "currentPivotDetail": current_pivot,
+        "expectedNext": _expected_next_pivot(trend, current_pivot),
+        "expectedNextPivot": _expected_next_pivot(trend, current_pivot),
+        "invalidationLevel": round(invalidation, 4) if invalidation is not None else None,
+        "invalidation": (
+            {
+                "price": round(invalidation, 4),
+                "basedOn": "LAST_CONFIRMED_HL" if trend == "BULLISH" else "LAST_CONFIRMED_LH",
+            }
+            if invalidation is not None else None
+        ),
+        "structureStrength": round(strength, 2) if strength is not None else None,
+        "sourceTimeframe": "5m",
+        "pivots": pivots,
+        "settings": settings,
+        "visibleByDefault": True,
+        "showZigZagByDefault": True,
+        "explanation": "Day Trade structure uses backend-confirmed 5-minute pivots; 1-minute candles remain execution-only.",
+    }
+
+
 def _vwap_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: str | None) -> dict[str, Any]:
     points: list[dict[str, Any]] = []
     latest_value: float | None = None
@@ -488,7 +708,9 @@ def build_day_trade_workspace_response(
     stop = entry_guidance.get("stop_price") or entry_guidance.get("risk_below")
     target1 = entry_guidance.get("scalp_target") or entry_guidance.get("target_1")
     target2 = entry_guidance.get("target_2")
-    chart_bars = _interval_chart_bars(_as_list(metrics.get("chart_bars")), interval)
+    raw_chart_bars = _as_list(metrics.get("chart_bars"))
+    market_structure = _market_structure(raw_chart_bars, metrics)
+    chart_bars = _interval_chart_bars(raw_chart_bars, interval)
     candles = _chart_candles(chart_bars)
     vwap_overlay = _vwap_overlay(chart_bars, metrics, session_date)
     levels = _chart_levels(metrics, entry_guidance)
@@ -552,6 +774,7 @@ def build_day_trade_workspace_response(
             "levels": levels,
             "events": events,
             "vwapOverlay": vwap_overlay,
+            "marketStructure": market_structure,
             "defaults": {
                 "interval": interval if interval in {"1m", "5m", "15m"} else "1m",
                 "visibleRange": "1h",
@@ -565,6 +788,7 @@ def build_day_trade_workspace_response(
                 "visibleOverlayIds": [
                     *[level["id"] for level in levels if level.get("visibleByDefault")],
                     *([vwap_overlay["id"]] if vwap_overlay.get("visibleByDefault") else []),
+                    *([market_structure["id"]] if market_structure.get("visibleByDefault") else []),
                 ],
             },
             "tradeFocus": {
@@ -713,6 +937,7 @@ def build_day_trade_workspace_unavailable_response(
             "levels": levels,
             "events": events,
             "vwapOverlay": vwap_overlay,
+            "marketStructure": None,
             "defaults": {
                 "interval": interval if interval in {"1m", "5m", "15m"} else "1m",
                 "visibleRange": "1h",

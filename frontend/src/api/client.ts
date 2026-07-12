@@ -144,13 +144,11 @@ const CLIENT_OPERATION_IDS = {
   tradingClose: 'trading_close_position_api_trading_close_post',
 } as const satisfies Record<string, ApiOperationId>
 
-export interface AuthLoginResponse {
-  access_token: string
-  token_type: string
-  email: string
-  name: string
-  role: string
-}
+export type AuthLoginResponse = ApiSchemas['AuthSessionResponse']
+export type AuthRegisterResponse = ApiSchemas['AuthRegisterResponse']
+export type AuthActivateResponse = ApiSchemas['AuthActivateResponse']
+export type AuthForgotPasswordResponse = ApiSchemas['AuthForgotPasswordResponse']
+export type AuthResetPasswordResponse = ApiSchemas['AuthResetPasswordResponse']
 
 export const authLogin = async (email: string, password: string): Promise<AuthLoginResponse> => {
   const body: ApiSchemas['LoginRequest'] = { email, password }
@@ -162,9 +160,9 @@ export const authRegister = async (payload: {
   email: string
   password: string
   name?: string
-}): Promise<{ ok: boolean; needs_activation: boolean; message: string }> => {
+}): Promise<AuthRegisterResponse> => {
   const body: ApiSchemas['RegisterRequest'] = payload
-  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.authRegister), body)
+  const { data } = await api.post<AuthRegisterResponse>(generatedApiPath(CLIENT_OPERATION_IDS.authRegister), body)
   return data
 }
 
@@ -176,25 +174,25 @@ export const authGoogle = async (credential: string): Promise<AuthLoginResponse>
 
 export const authActivate = async (
   token: string,
-): Promise<{ ok: boolean; email: string; message: string }> => {
-  const { data } = await api.get(generatedApiPath(CLIENT_OPERATION_IDS.authActivate), { params: { token } })
+): Promise<AuthActivateResponse> => {
+  const { data } = await api.get<AuthActivateResponse>(generatedApiPath(CLIENT_OPERATION_IDS.authActivate), { params: { token } })
   return data
 }
 
 export const authForgotPassword = async (
   email: string,
-): Promise<{ ok: boolean; message: string; dev_reset_token?: string }> => {
+): Promise<AuthForgotPasswordResponse> => {
   const body: ApiSchemas['ForgotPasswordRequest'] = { email }
-  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.authForgotPassword), body)
+  const { data } = await api.post<AuthForgotPasswordResponse>(generatedApiPath(CLIENT_OPERATION_IDS.authForgotPassword), body)
   return data
 }
 
 export const authResetPassword = async (
   token: string,
   password: string,
-): Promise<{ ok: boolean; message: string }> => {
+): Promise<AuthResetPasswordResponse> => {
   const body: ApiSchemas['ResetPasswordRequest'] = { token, password }
-  const { data } = await api.post(generatedApiPath(CLIENT_OPERATION_IDS.authResetPassword), body)
+  const { data } = await api.post<AuthResetPasswordResponse>(generatedApiPath(CLIENT_OPERATION_IDS.authResetPassword), body)
   return data
 }
 
@@ -527,11 +525,47 @@ export type DayTradeWorkspaceAction = ApiSchemas['DayTradeWorkspaceAction']
 
 type DayTradeWorkspaceChart = Omit<
   ApiSchemas['DayTradeChartView'],
-  'candles' | 'defaults' | 'events' | 'levels' | 'tradeFocus' | 'vwapOverlay'
+  'candles' | 'defaults' | 'events' | 'levels' | 'marketStructure' | 'tradeFocus' | 'vwapOverlay'
 > & {
   candles: ApiSchemas['DayTradeChartCandleView'][]
   levels: ApiSchemas['DayTradeChartLevelView'][]
   events: ApiSchemas['DayTradeChartEventView'][]
+  marketStructure?: {
+    id: string
+    trend: string
+    structure: string
+    display: string
+    sequence: string[]
+    currentPivot?: string | null
+    expectedNextPivot?: string | null
+    invalidationLevel?: number | null
+    structureStrength?: number | null
+    sourceTimeframe: string
+    pivots: Array<{
+      id: string
+      timestamp: string
+      label: string
+      classification?: string | null
+      pivotType: string
+      type?: string | null
+      price: number
+      sourceTimeframe: string
+      timeframe?: string | null
+      confirmed: boolean
+      status?: string | null
+      latest?: boolean
+      explanation?: string | null
+    }>
+    timeframe?: string | null
+    confidence?: number | null
+    currentPivotDetail?: unknown
+    expectedNext?: string | null
+    invalidation?: unknown
+    settings?: Record<string, unknown> | null
+    visibleByDefault: boolean
+    showZigZagByDefault: boolean
+    explanation?: string | null
+  } | null
   vwapOverlay?: (Omit<ApiSchemas['DayTradeVwapOverlayView'], 'points'> & {
     points: ApiSchemas['DayTradeVwapPointView'][]
   }) | null
@@ -653,35 +687,8 @@ function validateDayTradeWorkspaceResponse(value: unknown): asserts value is Day
   }
 }
 
-export interface OptionChainRow {
-  strike: number
-  bid: number
-  ask: number
-  mid: number
-  spread: number
-  spread_pct: number
-  volume: number
-  open_interest: number
-  iv: number
-  in_the_money: boolean
-  is_atm: boolean
-}
-
-export interface OptionChainLiquidityResponse {
-  ticker: string
-  current_price: number
-  price_source?: string
-  price_fetched_at?: string
-  expiries: string[]
-  selected_expiry: string
-  dte: number | null
-  iv_rank?: number | null
-  iv_percentile?: number | null
-  historical_volatility?: number | null
-  current_iv?: number | null
-  calls: OptionChainRow[]
-  puts: OptionChainRow[]
-}
+export type OptionChainRow = ApiSchemas['OptionChainLiquidityRow']
+export type OptionChainLiquidityResponse = ApiSchemas['OptionChainLiquidityResponse']
 
 export const fetchOptionChainLiquidity = async (
   ticker: string,

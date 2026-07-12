@@ -161,6 +161,36 @@ class OptionRowOut(BaseModel):
     data_quality_reason: str = ""
 
 
+class OptionChainLiquidityRow(BaseModel):
+    strike: float
+    bid: float
+    ask: float
+    mid: float
+    spread: float
+    spread_pct: float
+    volume: int
+    open_interest: int
+    iv: float
+    in_the_money: bool
+    is_atm: bool
+
+
+class OptionChainLiquidityResponse(BaseModel):
+    ticker: str
+    current_price: float
+    price_source: str
+    price_fetched_at: str
+    expiries: list[str]
+    selected_expiry: str
+    dte: Optional[int] = None
+    iv_rank: Optional[float] = None
+    iv_percentile: Optional[float] = None
+    historical_volatility: Optional[float] = None
+    current_iv: Optional[float] = None
+    calls: list[OptionChainLiquidityRow]
+    puts: list[OptionChainLiquidityRow]
+
+
 class PricePoint(BaseModel):
     date: str
     open: float

@@ -25,11 +25,11 @@ type VwapRenderPoint = {
 }
 
 const WIDTH = 1000
-const HEIGHT = 520
+const HEIGHT = 620
 const PRICE_TOP = 20
-const PRICE_BOTTOM = 388
-const VOLUME_TOP = 412
-const VOLUME_BOTTOM = 500
+const PRICE_BOTTOM = 468
+const VOLUME_TOP = 500
+const VOLUME_BOTTOM = 600
 const VWAP_STROKE = '#facc15'
 
 function toneStroke(tone: DayTradeSemanticTone): string {
@@ -105,11 +105,19 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           .filter(point => chart.defaults.scaleMode === 'full_context' || visibleTimeSet.has(point.barStartUtc))
           .map(point => point.value)
       : []
+    const confirmedStructurePivots = (chart.marketStructure?.pivots || [])
+      .filter(pivot => pivot.confirmed && String(pivot.status || 'CONFIRMED').toUpperCase() === 'CONFIRMED' && Boolean(pivot.label))
+    const scaleStructureValues = chart.marketStructure && visibleOverlayIds.has(chart.marketStructure.id)
+      ? confirmedStructurePivots
+          .filter(pivot => visibleTimeSet.has(pivot.timestamp))
+          .map(pivot => pivot.price)
+      : []
 
     const prices = [
       ...visibleCandles.flatMap(candle => [candle.high, candle.low]),
       ...scaleLevels.map(level => level.price),
       ...scaleVwapValues,
+      ...scaleStructureValues,
     ].filter(isFiniteNumber)
     const rawMin = prices.length ? Math.min(...prices) : 0
     const rawMax = prices.length ? Math.max(...prices) : 1
@@ -155,6 +163,13 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
       })
     }
     if (currentSegment.length) vwapSegments.push(currentSegment)
+    const structurePoints = confirmedStructurePivots
+      .map(pivot => {
+        const x = visibleTimes.get(pivot.timestamp)
+        if (x == null || !Number.isFinite(pivot.price)) return null
+        return { ...pivot, x, y: yForPrice(pivot.price) }
+      })
+      .filter((point): point is NonNullable<typeof point> => point != null)
 
     return {
       visibleCandles,
@@ -163,18 +178,29 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
       yForPrice,
       visibleTimes,
       vwapSegments,
+      structurePoints,
       minPrice,
       maxPrice,
     }
-  }, [chart, endIndex, followLive, visibleBars])
+  }, [chart, endIndex, followLive, visibleBars, visibleOverlayIds])
 
   const overlayOptions = useMemo(() => {
     const map = new Map<string, { id: string; label: string }>()
     for (const level of chart.levels) map.set(level.id, { id: level.id, label: level.label })
     for (const event of chart.events) map.set(event.id, { id: event.id, label: event.title })
     if (chart.vwapOverlay) map.set(chart.vwapOverlay.id, { id: chart.vwapOverlay.id, label: chart.vwapOverlay.label })
+    if (chart.marketStructure) map.set(chart.marketStructure.id, { id: chart.marketStructure.id, label: 'HH / HL / LH / LL' })
     return [...map.values()]
-  }, [chart.events, chart.levels, chart.vwapOverlay])
+  }, [chart.events, chart.levels, chart.marketStructure, chart.vwapOverlay])
+
+  const activeChips = useMemo(() => {
+    const chips: Array<{ id: string; label: string; removable: boolean }> = []
+    if (chart.vwapOverlay) chips.push({ id: chart.vwapOverlay.id, label: 'VWAP', removable: true })
+    for (const level of chart.levels) chips.push({ id: level.id, label: level.label, removable: true })
+    if (chart.marketStructure) chips.push({ id: chart.marketStructure.id, label: 'HH / HL / LH / LL', removable: true })
+    chips.push({ id: 'volume', label: 'Volume', removable: false })
+    return chips
+  }, [chart.levels, chart.marketStructure, chart.vwapOverlay])
 
   const crosshairDetail = useMemo(() => {
     if (!crosshair || !model.visibleCandles.length) return null
@@ -251,9 +277,16 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   }
 
   if (!chart.candles.length) {
+    const dataEvent = chart.events.find(event => event.eventType === 'data_error') || chart.events[0]
     return (
-      <div className="flex h-[520px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-950/50">
-        No backend chart candles available.
+      <div className="flex h-[620px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-6 text-center text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-950/50">
+        <div className="max-w-xl">
+          <div className="text-xs font-black uppercase tracking-widest text-tertiary">Chart Data Unavailable</div>
+          <div className="mt-2 text-base font-bold text-heading">{dataEvent?.title || 'No backend chart candles available'}</div>
+          <div className="mt-2 leading-relaxed text-secondary">
+            {dataEvent?.detail || 'The backend did not return intraday candles for this ticker/session. Try another ticker or retry after market-data recovers.'}
+          </div>
+        </div>
       </div>
     )
   }
@@ -304,6 +337,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             {fullscreen ? 'Exit' : 'Full'}
           </button>
           <button type="button" onClick={() => setOverlayMenuOpen(cur => !cur)} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">
+            Indicators
+          </button>
+          <button type="button" onClick={() => setOverlayMenuOpen(cur => !cur)} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">
             Overlays
           </button>
           {overlayMenuOpen && (
@@ -326,11 +362,32 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           )}
         </div>
       </div>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 px-3 py-2 text-xs dark:border-white/[0.08]">
+        <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Active</span>
+        {activeChips.map(chip => {
+          const active = chip.id === 'volume' || visibleOverlayIds.has(chip.id)
+          return (
+            <button
+              key={chip.id}
+              type="button"
+              disabled={!chip.removable}
+              onClick={() => chip.removable && toggleOverlay(chip.id)}
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                active
+                  ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                  : 'border-slate-200 text-tertiary opacity-60 dark:border-white/[0.08]'
+              }`}
+            >
+              {chip.label}
+            </button>
+          )
+        })}
+      </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
         aria-label="Backend provided Day Trade workspace chart"
-        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'h-[520px]'} w-full`}
+        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'h-[620px]'} w-full`}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setCrosshair(null)}
       >
@@ -382,6 +439,34 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             />
           )
         })}
+        {chart.marketStructure && visibleOverlayIds.has(chart.marketStructure.id) && model.structurePoints.length > 0 && (
+          <g>
+            {chart.marketStructure.showZigZagByDefault && model.structurePoints.length > 1 && (
+              <polyline
+                points={model.structurePoints.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}
+                fill="none"
+                stroke="rgba(139,92,246,0.72)"
+                strokeWidth="1.8"
+                strokeDasharray="5 5"
+                strokeLinejoin="round"
+              />
+            )}
+            {model.structurePoints.map(point => {
+              const isHigh = point.pivotType === 'HIGH'
+              const labelY = point.y + (isHigh ? -12 : 20)
+              const fill = point.latest ? '#8b5cf6' : isHigh ? '#f59e0b' : '#22c55e'
+              return (
+                <g key={point.id}>
+                  <circle cx={point.x} cy={point.y} r={point.latest ? 5.5 : 4} fill={fill} stroke="white" strokeWidth="1.5" />
+                  <rect x={point.x - 14} y={labelY - 13} width="28" height="16" rx="5" className="fill-white/95 stroke-slate-200 dark:fill-slate-950/95 dark:stroke-white/10" />
+                  <text x={point.x} y={labelY - 2} textAnchor="middle" className="fill-violet-700 text-[10px] font-black dark:fill-violet-200">
+                    {point.label}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
+        )}
         {chart.levels.filter(level => visibleOverlayIds.has(level.id)).sort((a, b) => a.priority - b.priority).map(level => {
           const y = model.yForPrice(level.price)
           const color = toneStroke(level.tone)

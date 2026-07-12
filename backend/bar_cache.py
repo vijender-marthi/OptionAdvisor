@@ -41,11 +41,14 @@ import logging
 import os
 import threading
 import time
+from datetime import date, datetime, timedelta
 from typing import Dict, Optional, Tuple
 
 import pandas as pd
 import yfinance as yf
 from zoneinfo import ZoneInfo
+
+import backup_data
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +96,142 @@ def _history_ttl(period: str, interval: str) -> int:
     if period in _SHORT_PERIODS:
         return BAR_CACHE_TTL_DAILY_SHORT_MARKET if market else BAR_CACHE_TTL_DAILY_SHORT_OFF
     return BAR_CACHE_TTL_DAILY_LONG_MARKET if market else BAR_CACHE_TTL_DAILY_LONG_OFF
+
+
+def _massive_daily_history(ticker: str, period: str) -> pd.DataFrame:
+    """Fallback daily bars via backup_data; returns empty DataFrame when unavailable."""
+    try:
+        start, end = backup_data.period_to_dates(period)
+        rows = backup_data.get_daily_bars(ticker, start, end)
+        if not rows:
+            return pd.DataFrame()
+        df = backup_data.bars_to_dataframe(rows)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        return df
+    except Exception as exc:
+        log.warning("bar_cache massive daily fallback failed %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+
+def _massive_intraday_history(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    """Fallback 1-minute intraday bars via backup_data; returns empty when unavailable."""
+    if interval != "1m":
+        return pd.DataFrame()
+    try:
+        start, end = backup_data.period_to_dates(period)
+        rows = backup_data.get_1min_bars(ticker, start, end, limit=50000)
+        if not rows:
+            return pd.DataFrame()
+        df = backup_data.bars_to_dataframe(rows)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        return df
+    except Exception as exc:
+        log.warning("bar_cache massive intraday fallback failed %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+
+def _normalize_yahoo_download_frame(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """Normalize yf.download output to the same OHLCV shape as Ticker.history."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    out = df.copy()
+    if isinstance(out.columns, pd.MultiIndex):
+        # yfinance may return either (field, ticker) or (ticker, field).
+        t = ticker.upper().strip()
+        levels = [list(map(str, out.columns.get_level_values(i))) for i in range(out.columns.nlevels)]
+        if t in {x.upper() for x in levels[-1]}:
+            try:
+                out = out.xs(t, axis=1, level=-1, drop_level=True)
+            except Exception:
+                out.columns = out.columns.get_level_values(0)
+        elif t in {x.upper() for x in levels[0]}:
+            try:
+                out = out.xs(t, axis=1, level=0, drop_level=True)
+            except Exception:
+                out.columns = out.columns.get_level_values(-1)
+        else:
+            out.columns = out.columns.get_level_values(0)
+    rename = {str(c).lower().replace(" ", ""): c for c in out.columns}
+    required = {
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+    }
+    normalized: dict[str, pd.Series] = {}
+    for key, label in required.items():
+        col = rename.get(key)
+        if col is None:
+            return pd.DataFrame()
+        normalized[label] = out[col]
+    return pd.DataFrame(normalized, index=out.index).dropna(subset=["Open", "High", "Low", "Close"])
+
+
+def _yahoo_download_history(
+    ticker: str,
+    *,
+    period: str | None = None,
+    interval: str = "1d",
+    auto_adjust: bool = True,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> pd.DataFrame:
+    try:
+        df = yf.download(
+            ticker,
+            period=period,
+            interval=interval,
+            start=start,
+            end=end,
+            auto_adjust=auto_adjust,
+            progress=False,
+            threads=False,
+        )
+        return _normalize_yahoo_download_frame(df, ticker)
+    except Exception as exc:
+        log.warning("bar_cache yf.download fallback failed %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+
+def _parse_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _exclusive_end_for_yahoo(start: Optional[str], end: Optional[str]) -> Optional[str]:
+    start_date = _parse_date(start)
+    end_date = _parse_date(end)
+    if start_date and end_date and end_date <= start_date:
+        return (start_date + timedelta(days=1)).isoformat()
+    return end
+
+
+def _date_range_backup_history(ticker: str, start: Optional[str], end: Optional[str], interval: str) -> pd.DataFrame:
+    start_date = _parse_date(start)
+    end_date = _parse_date(end) or start_date
+    if start_date is None or end_date is None:
+        return pd.DataFrame()
+    if end_date < start_date:
+        end_date = start_date
+    if interval in _INTRADAY_INTERVALS:
+        if interval != "1m":
+            return pd.DataFrame()
+        rows = backup_data.get_1min_bars(ticker, start_date, end_date, limit=50000)
+    elif interval in ("1d", "1wk", "1mo"):
+        rows = backup_data.get_daily_bars(ticker, start_date, end_date)
+    else:
+        rows = None
+    if not rows:
+        return pd.DataFrame()
+    df = backup_data.bars_to_dataframe(rows)
+    return df if df is not None and not df.empty else pd.DataFrame()
 
 
 def _info_ttl() -> int:
@@ -189,11 +328,29 @@ def get_history(
     # Date-range fetches bypass cache (unbounded key space)
     if start is not None or end is not None:
         log.debug("bar_cache.get_history %s date-range %s→%s (no cache)", t, start, end)
+        yahoo_end = _exclusive_end_for_yahoo(start, end)
         try:
             tkr = yf.Ticker(t)
-            return tkr.history(start=start, end=end, auto_adjust=auto_adjust)
+            df = tkr.history(start=start, end=yahoo_end, interval=interval, auto_adjust=auto_adjust)
+            if df is not None and not df.empty:
+                return df
+            raise ValueError("Yahoo returned empty DataFrame")
         except Exception as exc:
-            log.warning("bar_cache.get_history date-range failed %s: %s", t, exc)
+            log.warning("bar_cache.get_history date-range failed %s: %s — trying download fallback", t, exc)
+            fallback = _yahoo_download_history(
+                t,
+                interval=interval,
+                auto_adjust=auto_adjust,
+                start=start,
+                end=yahoo_end,
+            )
+            if not fallback.empty:
+                return fallback
+            backup = _date_range_backup_history(t, start, end, interval)
+            if not backup.empty:
+                log.warning("bar_cache.get_history serving backup date-range data for %s", t)
+                _mark_stale(t)
+                return backup
             return pd.DataFrame()
 
     key = _cache_key(t, period, interval, str(auto_adjust))
@@ -211,12 +368,36 @@ def get_history(
         if df.empty:
             raise ValueError("Yahoo returned empty DataFrame")
     except Exception as exc:
-        log.warning("bar_cache.get_history failed %s: %s — trying stale fallback", t, exc)
+        log.warning("bar_cache.get_history failed %s: %s — trying download fallback", t, exc)
+        download = _yahoo_download_history(
+            t,
+            period=period,
+            interval=interval,
+            auto_adjust=auto_adjust,
+        )
+        if not download.empty:
+            _clear_stale(t)
+            _set(key, download)
+            return download
         stale = _get_stale(key)
         if stale is not None:
             log.warning("bar_cache.get_history serving stale data for %s", t)
             _mark_stale(t)
             return stale  # type: ignore[return-value]
+        if interval in _INTRADAY_INTERVALS:
+            fallback = _massive_intraday_history(t, period, interval)
+            if not fallback.empty:
+                log.warning("bar_cache.get_history serving backup intraday data for %s", t)
+                _mark_stale(t)
+                _set(key, fallback)
+                return fallback
+        if interval in ("1d", "1wk", "1mo"):
+            fallback = _massive_daily_history(t, period)
+            if not fallback.empty:
+                log.warning("bar_cache.get_history serving backup daily data for %s", t)
+                _mark_stale(t)
+                _set(key, fallback)
+                return fallback
         return pd.DataFrame()
 
     _clear_stale(t)

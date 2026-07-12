@@ -162,6 +162,45 @@ class DayTradeVwapOverlayView(BaseModel):
     points: list[DayTradeVwapPointView] = Field(default_factory=list)
 
 
+class DayTradeStructurePivotView(BaseModel):
+    id: str
+    timestamp: str
+    label: str
+    classification: str | None = None
+    pivotType: str
+    type: str | None = None
+    price: float
+    sourceTimeframe: str
+    timeframe: str | None = None
+    confirmed: bool
+    status: str | None = None
+    latest: bool = False
+    explanation: str | None = None
+
+
+class DayTradeMarketStructureView(BaseModel):
+    id: str
+    timeframe: str | None = None
+    trend: str
+    structure: str
+    display: str
+    confidence: float | None = None
+    sequence: list[str] = Field(default_factory=list)
+    currentPivot: str | None = None
+    currentPivotDetail: DayTradeStructurePivotView | None = None
+    expectedNext: str | None = None
+    expectedNextPivot: str | None = None
+    invalidationLevel: float | None = None
+    invalidation: dict[str, Any] | None = None
+    structureStrength: float | None = None
+    sourceTimeframe: str
+    pivots: list[DayTradeStructurePivotView] = Field(default_factory=list)
+    settings: dict[str, Any] | None = None
+    visibleByDefault: bool = True
+    showZigZagByDefault: bool = True
+    explanation: str | None = None
+
+
 class DayTradeChartDefaultsView(BaseModel):
     interval: str
     visibleRange: str
@@ -185,6 +224,7 @@ class DayTradeChartView(BaseModel):
     levels: list[DayTradeChartLevelView] = Field(default_factory=list)
     events: list[DayTradeChartEventView] = Field(default_factory=list)
     vwapOverlay: DayTradeVwapOverlayView | None = None
+    marketStructure: DayTradeMarketStructureView | None = None
     defaults: DayTradeChartDefaultsView
     tradeFocus: DayTradeChartTradeFocusView | None = None
 

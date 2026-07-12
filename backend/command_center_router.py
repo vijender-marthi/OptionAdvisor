@@ -1760,6 +1760,12 @@ def get_stock_targets(
         "fib_swing_low":       mkt.get("fib_swing_low"),
         "fib_swing_low_date":  mkt.get("fib_swing_low_date"),
         "fib_direction":       mkt.get("fib_direction"),
+        "fib_retracement_levels": mkt.get("fib_retracement_levels"),
+        "fib_extension_levels":   mkt.get("fib_extension_levels"),
+        "fib_current_zone":       mkt.get("fib_current_zone"),
+        "fib_classification":     mkt.get("fib_classification"),
+        "fib_nearest_confluence": mkt.get("fib_nearest_confluence"),
+        "fib_structural_invalidation": mkt.get("fib_structural_invalidation"),
     })
 
 

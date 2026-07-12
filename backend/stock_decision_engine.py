@@ -76,6 +76,7 @@ def _get_ma_data(ticker: str, fib_lookback: int = 20) -> dict[str, Any]:
         }
         result.update(_ema9_fields(c, current))
         result.update(_swing_fib_fields(c, fib_lookback))
+        result.update(_swing_fib_summary_fields(result, current))
         return result
     except Exception:
         return {}
@@ -140,12 +141,75 @@ def _swing_fib_fields(closes: Any, lookback: int) -> dict[str, Any]:
         lo_date = _iso(lo_idx)
         # Direction: high made after the low → uptrend, measure pullback off the high
         direction = "up" if hi_idx >= lo_idx else "down"
+        span = max(swing_high - swing_low, 0.0)
+
+        def _retracement_value(ratio: float) -> float:
+            if direction == "up":
+                return swing_high - span * ratio
+            return swing_low + span * ratio
+
+        def _extension_value(ratio: float) -> float:
+            if direction == "up":
+                return swing_high + span * (ratio - 1.0)
+            return swing_low - span * (ratio - 1.0)
+
+        retracements = [
+            {"level": "0%", "ratio": 0.0, "price": round(_retracement_value(0.0), 4)},
+            {"level": "23.6%", "ratio": 0.236, "price": round(_retracement_value(0.236), 4)},
+            {"level": "38.2%", "ratio": 0.382, "price": round(_retracement_value(0.382), 4)},
+            {"level": "50%", "ratio": 0.5, "price": round(_retracement_value(0.5), 4)},
+            {"level": "61.8%", "ratio": 0.618, "price": round(_retracement_value(0.618), 4)},
+            {"level": "78.6%", "ratio": 0.786, "price": round(_retracement_value(0.786), 4)},
+            {"level": "100%", "ratio": 1.0, "price": round(_retracement_value(1.0), 4)},
+        ]
+        extensions = [
+            {"level": "127.2%", "ratio": 1.272, "price": round(_extension_value(1.272), 4)},
+            {"level": "161.8%", "ratio": 1.618, "price": round(_extension_value(1.618), 4)},
+            {"level": "261.8%", "ratio": 2.618, "price": round(_extension_value(2.618), 4)},
+        ]
         return {
             "fib_swing_high":      round(swing_high, 4),
             "fib_swing_high_date": hi_date,
             "fib_swing_low":       round(swing_low, 4),
             "fib_swing_low_date":  lo_date,
             "fib_direction":       direction,
+            "fib_retracement_levels": retracements,
+            "fib_extension_levels": extensions,
+        }
+    except Exception:
+        return {}
+
+
+def _swing_fib_summary_fields(fields: dict[str, Any], current: float) -> dict[str, Any]:
+    """Summarize backend Fibonacci context for UI display without frontend inference."""
+    try:
+        levels = fields.get("fib_retracement_levels") or []
+        if not isinstance(levels, list) or not levels:
+            return {}
+        nearest = min(
+            (lvl for lvl in levels if isinstance(lvl, dict) and _float_or(lvl.get("price")) > 0),
+            key=lambda lvl: abs(_float_or(lvl.get("price")) - current),
+        )
+        label = str(nearest.get("level") or "")
+        classification = {
+            "23.6%": "Shallow pullback in a strong trend",
+            "38.2%": "Healthy swing pullback",
+            "50%": "Balanced retracement",
+            "61.8%": "Deep but commonly valid pullback",
+            "78.6%": "Last-chance structural support/resistance",
+        }.get(label, "Outside primary swing pullback zone")
+        confluences: list[str] = []
+        price = _float_or(nearest.get("price"))
+        for name, key in (("EMA9", "ema9"), ("SMA20", "ma20"), ("SMA50", "ma50")):
+            v = _float_or(fields.get(key))
+            if v > 0 and price > 0 and abs(v - price) / price <= 0.015:
+                confluences.append(name)
+        invalidation = fields.get("fib_swing_low") if fields.get("fib_direction") == "up" else fields.get("fib_swing_high")
+        return {
+            "fib_current_zone": label,
+            "fib_classification": classification,
+            "fib_nearest_confluence": " + ".join([label, *confluences]) if confluences else label,
+            "fib_structural_invalidation": round(_float_or(invalidation), 4) if invalidation is not None else None,
         }
     except Exception:
         return {}

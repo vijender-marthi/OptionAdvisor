@@ -251,6 +251,12 @@ export interface StockTargetData {
   fib_swing_low?:       number | null
   fib_swing_low_date?:  string | null
   fib_direction?:       'up' | 'down' | null
+  fib_retracement_levels?: Array<{ level: string; ratio: number; price: number }> | null
+  fib_extension_levels?: Array<{ level: string; ratio: number; price: number }> | null
+  fib_current_zone?: string | null
+  fib_classification?: string | null
+  fib_nearest_confluence?: string | null
+  fib_structural_invalidation?: number | null
 }
 
 export async function fetchStockTargets(

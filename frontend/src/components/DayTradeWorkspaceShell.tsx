@@ -50,7 +50,7 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
   )
 }
 
-function SessionStatusBar({ workspace, displayTimeZone }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string }) {
+export function SessionStatusBar({ workspace, displayTimeZone }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string }) {
   const generatedAt = useMemo(() => {
     const date = new Date(workspace.generatedAt)
     if (Number.isNaN(date.getTime())) return workspace.generatedAt
@@ -63,7 +63,7 @@ function SessionStatusBar({ workspace, displayTimeZone }: { workspace: DayTradeW
     })
   }, [displayTimeZone, workspace.generatedAt])
   return (
-    <div className="flex h-11 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 text-xs dark:border-white/[0.07]">
+    <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-1 text-xs dark:border-white/[0.07]">
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill status={workspace.session.status} />
         <span className="rounded-full border border-slate-200 px-2 py-0.5 font-semibold uppercase tracking-wide text-secondary dark:border-white/[0.08]">
@@ -79,19 +79,24 @@ function SessionStatusBar({ workspace, displayTimeZone }: { workspace: DayTradeW
   )
 }
 
-function TradeDecisionHeader({ workspace, action, onAction }: { workspace: DayTradeWorkspaceResponse; action: DayTradeWorkspaceAction; onAction?: (action: DayTradeWorkspaceAction) => void }) {
+export function TradeDecisionHeader({ workspace, action, onAction }: { workspace: DayTradeWorkspaceResponse; action: DayTradeWorkspaceAction; onAction?: (action: DayTradeWorkspaceAction) => void }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const secondaryActions = workspace.decision.secondaryActions || []
   return (
-    <div className="grid gap-3 border-b border-slate-200 px-3 py-3 dark:border-white/[0.07] lg:grid-cols-[minmax(220px,320px)_minmax(0,1fr)_auto]">
+    <div className="grid gap-3 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07] lg:grid-cols-[minmax(220px,320px)_minmax(0,1fr)_auto]">
       <div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-2xl font-black text-heading">{workspace.symbol.ticker}</span>
           <span className="truncate text-sm font-semibold text-secondary">{workspace.symbol.companyName}</span>
         </div>
-        <div className="mt-1 flex items-center gap-2">
+        <div className="mt-1 flex flex-wrap items-center gap-2">
           <span className="font-mono text-xl font-black text-heading">{workspace.symbol.price.display}</span>
           <span className={`font-mono text-sm font-bold ${workspaceToneTextClass(workspace.symbol.change.tone || 'neutral')}`}>{workspace.symbol.change.display}</span>
+          {workspace.chart.marketStructure && (
+            <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
+              {workspace.chart.marketStructure.display} · {workspace.chart.marketStructure.trend.replace(/_/g, ' ')}
+            </span>
+          )}
         </div>
       </div>
       <div className="min-w-0">
@@ -99,7 +104,7 @@ function TradeDecisionHeader({ workspace, action, onAction }: { workspace: DayTr
           <StatusPill status={workspace.decision.context} />
           <StatusPill status={workspace.decision.permission} />
         </div>
-        <div className="mt-2 text-xl font-black text-heading">{workspace.decision.headline}</div>
+        <div className="mt-1 text-lg font-black text-heading">{workspace.decision.headline}</div>
         <div className="mt-1 line-clamp-2 text-sm text-secondary">{workspace.decision.reason}</div>
         {workspace.decision.nextCondition && (
           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-secondary dark:border-white/[0.07] dark:bg-slate-900">
@@ -164,9 +169,9 @@ function TradeDecisionHeader({ workspace, action, onAction }: { workspace: DayTr
   )
 }
 
-function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
+export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
   return (
-    <section className="min-h-[520px] rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+    <section className="min-h-[700px] rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-xs font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
@@ -185,7 +190,7 @@ function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalChange }:
   )
 }
 
-function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const rrKey = 'risk' + 'Reward'
   const rrValue = workspace.riskPlan[rrKey as keyof typeof workspace.riskPlan] as DayTradeWorkspaceDisplayValue
@@ -209,6 +214,26 @@ function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceRespons
             </div>
           )}
         </div>
+      </Panel>
+      <Panel title="Market Structure">
+        {workspace.chart.marketStructure ? (
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-tertiary">Trend</span>
+              <span className="text-xs font-black text-heading">{workspace.chart.marketStructure.trend.replace(/_/g, ' ')}</span>
+            </div>
+            <Value label="Sequence" value={workspace.chart.marketStructure.sequence.length ? workspace.chart.marketStructure.sequence.join(' → ') : workspace.chart.marketStructure.display} />
+            <Value label="Current Pivot" value={workspace.chart.marketStructure.currentPivot || '—'} />
+            <Value label="Expected Next" value={workspace.chart.marketStructure.expectedNextPivot || '—'} />
+            <Value label="Invalidation" value={workspace.chart.marketStructure.invalidationLevel == null ? '—' : `$${workspace.chart.marketStructure.invalidationLevel.toFixed(2)}`} />
+            <Value label="Strength" value={workspace.chart.marketStructure.structureStrength == null ? '—' : `${workspace.chart.marketStructure.structureStrength.toFixed(0)}%`} />
+            <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">
+              {workspace.chart.marketStructure.explanation || 'Backend-confirmed 5m structure.'}
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-tertiary">No backend market structure payload for this workspace.</div>
+        )}
       </Panel>
       <Panel title="Trigger">
         <StatusPill status={workspace.trigger.status} />
@@ -279,7 +304,7 @@ function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceRespons
   )
 }
 
-function WorkspaceDetailTabs({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+export function WorkspaceDetailTabs({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
   const tabs = useMemo(() => {
     const preferred = ['plan', 'options', 'events', 'alerts', 'position', 'journal']
     const names = Object.keys(workspace.tabs || {})

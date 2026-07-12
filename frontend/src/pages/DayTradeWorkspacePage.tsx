@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Loader2, Search, X, Activity } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { DayTradeWorkspaceAction } from '../api/client'
-import { addMyTicker, fetchMyTickers, removeMyTicker, removeMyTickerType, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
+import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
 import DayTradeWorkspaceShell from '../components/DayTradeWorkspaceShell'
 import { useApp } from '../contexts/AppContext'
 import { useDayTradeWorkspace } from '../hooks/useDayTradeWorkspace'
@@ -17,7 +17,7 @@ const SIDEBAR_TICKER_GROUPS: Array<{ key: SidebarTickerGroupKey; title: string; 
   { key: 'swing', title: 'Swing Trading Tickers', empty: 'No Swing Trading tickers saved. Add tickers from My Ticker List.' },
 ]
 
-const DRAWER_TABS: Array<{ key: TickerListTab; label: string }> = [
+const FILTER_TABS: Array<{ key: TickerListTab; label: string }> = [
   { key: 'day', label: 'Day Trade' },
   { key: 'regular', label: 'Position' },
   { key: 'swing', label: 'Swing' },
@@ -61,38 +61,284 @@ function membershipsFor(item: MyTickerEntry): SidebarTickerGroupKey[] {
   return [...tickerGroupsFor(item)]
 }
 
-function formatPrice(item: MyTickerEntry): string {
-  return typeof item.last_price === 'number' ? `$${item.last_price.toFixed(2)}` : '—'
+function DayTradeSidebarContent({
+  tickerInput,
+  setTickerInput,
+  sidebarSearch,
+  setSidebarSearch,
+  sidebarTab,
+  setSidebarTab,
+  filteredTickers,
+  symbol,
+  tickersLoading,
+  tickersError,
+  refreshMyTickers,
+  workspaceLoading,
+  listRef,
+  handleListScroll,
+  loadTicker,
+  setAddDialogOpen,
+  navigate,
+  onCollapse,
+}: {
+  tickerInput: string
+  setTickerInput: (value: string) => void
+  sidebarSearch: string
+  setSidebarSearch: (value: string) => void
+  sidebarTab: TickerListTab
+  setSidebarTab: (value: TickerListTab) => void
+  filteredTickers: Array<{ item: MyTickerEntry; groups: Set<SidebarTickerGroupKey> }>
+  symbol: string
+  tickersLoading: boolean
+  tickersError: string
+  refreshMyTickers: () => void
+  workspaceLoading: boolean
+  listRef: React.RefObject<HTMLDivElement>
+  handleListScroll: (scrollTop: number) => void
+  loadTicker: (symbol?: string) => void
+  setAddDialogOpen: (open: boolean) => void
+  navigate: (path: string) => void
+  onCollapse: () => void
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex items-start justify-between shrink-0">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Day Workstation</div>
+          <div className="mt-1 flex items-center gap-2">
+            <Activity size={16} className="text-violet-500" />
+            <span className="text-lg font-black text-heading">Day Trade</span>
+          </div>
+        </div>
+        <button type="button" onClick={onCollapse} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Collapse sidebar">
+          <ChevronLeft size={16} />
+        </button>
+      </div>
+
+      <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Search My Tickers</div>
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2 dark:border-white/[0.08] dark:bg-slate-950">
+          <Search size={14} className="text-tertiary" />
+          <input
+            value={sidebarSearch}
+            onChange={event => setSidebarSearch(event.target.value)}
+            className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-heading outline-none placeholder:text-tertiary"
+            placeholder="Symbol or company"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Search My Tickers"
+          />
+          {sidebarSearch && (
+            <button
+              type="button"
+              onClick={() => setSidebarSearch('')}
+              className="rounded-md p-1 text-tertiary hover:bg-slate-100 hover:text-heading dark:hover:bg-slate-900"
+              aria-label="Clear ticker search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Analyze</div>
+        <div className="flex gap-2">
+          <input
+            value={tickerInput}
+            onChange={event => setTickerInput(event.target.value.toUpperCase())}
+            onKeyDown={event => { if (event.key === 'Enter') loadTicker() }}
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm font-black uppercase text-heading outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-950"
+            placeholder="AAPL"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Analyze ticker"
+          />
+          <button
+            type="button"
+            disabled={workspaceLoading}
+            onClick={() => loadTicker()}
+            className="rounded-lg bg-violet-600 px-3 py-2 text-white hover:bg-violet-500 disabled:opacity-60"
+            aria-label="Analyze ticker"
+          >
+            {workspaceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search size={16} />}
+          </button>
+        </div>
+      </section>
+
+      <section className="flex min-h-0 flex-1 flex-col">
+        <div className="mb-2 flex items-center justify-between shrink-0">
+          <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">My Tickers</div>
+          <div className="flex items-center gap-2">
+            <button type="button" className="text-[10px] font-bold text-violet-600 dark:text-violet-300" onClick={() => setAddDialogOpen(true)}>
+              Add Ticker
+            </button>
+            <button type="button" className="text-[10px] font-bold text-violet-600 dark:text-violet-300" onClick={() => navigate(ROUTES.myTickers)}>
+              Manage
+            </button>
+          </div>
+        </div>
+        <div className="mb-2 grid grid-cols-2 gap-1.5 shrink-0">
+          {FILTER_TABS.map(filter => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => setSidebarTab(filter.key)}
+              className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-wide transition ${
+                sidebarTab === filter.key
+                  ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                  : 'border-slate-200 bg-white text-secondary hover:border-violet-300 dark:border-white/[0.08] dark:bg-slate-950'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+        {tickersLoading ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-secondary">Loading tickers...</div>
+        ) : tickersError ? (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-200">
+            <div>{tickersError}</div>
+            <button type="button" onClick={() => void refreshMyTickers()} className="mt-1 text-xs font-bold underline">Retry</button>
+          </div>
+        ) : (
+          <div
+            ref={listRef}
+            className="min-h-0 flex-1 space-y-2 overflow-auto"
+            onScroll={event => handleListScroll(event.currentTarget.scrollTop)}
+          >
+            {filteredTickers.length ? filteredTickers.map(({ item, groups: itemGroups }) => {
+              const sym = item.symbol.toUpperCase()
+              const selected = sym === symbol
+              return (
+                <button
+                  key={sym}
+                  type="button"
+                  onClick={() => loadTicker(sym)}
+                  className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                    selected
+                      ? 'border-violet-500 bg-violet-500/10'
+                      : 'border-slate-200 bg-white hover:border-violet-300 dark:border-white/[0.08] dark:bg-slate-950'
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block font-mono text-sm font-black text-heading">{sym}</span>
+                    <span className="block truncate text-xs text-tertiary">{item.company_name}</span>
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {Array.from(itemGroups).map(groupKey => (
+                        <span key={groupKey} className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
+                          {groupKey === 'regular' ? 'Position' : groupKey}
+                        </span>
+                      ))}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    <span className="block font-mono text-xs font-bold text-heading">{daySidebarMoney(item.last_price)}</span>
+                    <span className={`block font-mono text-[11px] font-bold ${(item.price_change_pct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+                      {daySidebarPct(item.price_change_pct)}
+                    </span>
+                  </span>
+                </button>
+              )
+            }) : (
+              <div className="rounded-lg border border-slate-200 px-3 py-3 text-sm text-tertiary dark:border-white/[0.08]">
+                No tickers match this filter.
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-3 shrink-0">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Quick Tickers</div>
+        <div className="flex flex-wrap gap-1.5">
+          {['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMD', 'META'].map(sym => (
+            <button
+              key={sym}
+              type="button"
+              onClick={() => loadTicker(sym)}
+              className="rounded-full border border-slate-200 px-2 py-1 font-mono text-[11px] font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+            >
+              {sym}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-3 grid shrink-0 gap-2">
+        <button type="button" onClick={() => navigate(ROUTES.signals)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+          Ticker Scanner
+        </button>
+        <button type="button" onClick={() => navigate(ROUTES.alerts)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+          Alerts
+        </button>
+        <button type="button" onClick={() => navigate(ROUTES.positions)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+          Positions Center
+        </button>
+        <button type="button" onClick={() => navigate(ROUTES.journal)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+          Journal
+        </button>
+      </section>
+    </div>
+  )
 }
 
-function formatChange(item: MyTickerEntry): string {
-  if (typeof item.price_change_pct !== 'number') return '—'
-  const sign = item.price_change_pct > 0 ? '+' : ''
-  return `${sign}${item.price_change_pct.toFixed(2)}%`
+function daySidebarMoney(value: unknown): string {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : null
+  return n == null ? '—' : `$${n.toFixed(2)}`
+}
+
+function daySidebarPct(value: unknown): string {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : null
+  if (n == null) return '—'
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
 export default function DayTradeWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { portfolio } = useApp()
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [notice, setNotice] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('day_trade_workspace_sidebar_collapsed') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_sidebar_collapsed', sidebarCollapsed ? '1' : '0') } catch { /* quota */ }
+  }, [sidebarCollapsed])
   const [tickerInput, setTickerInput] = useState((searchParams.get('symbol') || searchParams.get('ticker') || 'AAPL').trim().toUpperCase())
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [tickersLoading, setTickersLoading] = useState(false)
   const [tickersError, setTickersError] = useState('')
-  const [drawerTab, setDrawerTab] = useState<TickerListTab>('day')
-  const [drawerSearch, setDrawerSearch] = useState('')
-  const [switcherOpen, setSwitcherOpen] = useState(false)
-  const [switcherSearch, setSwitcherSearch] = useState('')
-  const [recentTickers, setRecentTickers] = useState<string[]>(() => {
+  const [sidebarTab, setSidebarTab] = useState<TickerListTab>(() => {
     try {
-      const parsed = JSON.parse(localStorage.getItem('oa_day_trade_recent_tickers') || '[]')
-      return Array.isArray(parsed) ? parsed.map(String).slice(0, 8) : []
+      const saved = localStorage.getItem('day_trade_workspace_sidebar_tab') as TickerListTab | null
+      return saved && FILTER_TABS.some(item => item.key === saved) ? saved : 'all'
     } catch {
-      return []
+      return 'all'
     }
   })
+  const [sidebarSearch, setSidebarSearch] = useState(() => {
+    try {
+      return localStorage.getItem('day_trade_workspace_sidebar_search') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [sidebarScrollTop, setSidebarScrollTop] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('day_trade_workspace_sidebar_scroll_top'))
+      return Number.isFinite(saved) ? Math.max(0, saved) : 0
+    } catch {
+      return 0
+    }
+  })
+  const listRef = useRef<HTMLDivElement | null>(null)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addQuery, setAddQuery] = useState('')
   const [addResults, setAddResults] = useState<SearchTickerResult[]>([])
@@ -100,6 +346,18 @@ export default function DayTradeWorkspacePage() {
   const [addTypes, setAddTypes] = useState<Record<SidebarTickerGroupKey, boolean>>({ day: true, regular: false, swing: false })
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState('')
+
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_sidebar_tab', sidebarTab) } catch { /* quota */ }
+  }, [sidebarTab])
+
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_sidebar_search', sidebarSearch) } catch { /* quota */ }
+  }, [sidebarSearch])
+
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_sidebar_scroll_top', String(sidebarScrollTop)) } catch { /* quota */ }
+  }, [sidebarScrollTop])
 
   const symbol = (searchParams.get('symbol') || searchParams.get('ticker') || tickerInput || 'AAPL').trim().toUpperCase()
   const sessionDate = searchParams.get('sessionDate')
@@ -119,12 +377,18 @@ export default function DayTradeWorkspacePage() {
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      setDrawerOpen(false)
-      setSwitcherOpen(false)
       setAddDialogOpen(false)
     }
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
+  }, [])
+
+  useEffect(() => {
+    if (listRef.current && sidebarScrollTop > 0) {
+      listRef.current.scrollTop = sidebarScrollTop
+    }
+    // Only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const refreshMyTickers = useCallback(async () => {
@@ -175,26 +439,34 @@ export default function DayTradeWorkspacePage() {
     }))
   }, [myTickers])
 
-  const allSavedTickers = useMemo(() => sortSidebarTickers(myTickers), [myTickers])
   const savedTickerBySymbol = useMemo(() => {
     const map = new Map<string, MyTickerEntry>()
     for (const item of myTickers) map.set(item.symbol.toUpperCase(), item)
     return map
   }, [myTickers])
-  const drawerTickers = useMemo(() => {
-    const query = drawerSearch.trim().toUpperCase()
-    const base = drawerTab === 'all'
-      ? allSavedTickers
-      : sidebarTickerGroups.find(group => group.key === drawerTab)?.items || []
-    if (!query) return base
-    return base.filter(item => {
-      const company = item.company_name || ''
-      return item.symbol.toUpperCase().includes(query) || company.toUpperCase().includes(query)
-    })
-  }, [allSavedTickers, drawerSearch, drawerTab, sidebarTickerGroups])
-  const currentTickerItem = savedTickerBySymbol.get(symbol)
-  const addExistingTicker = savedTickerBySymbol.get((addSelected?.symbol || addQuery).trim().toUpperCase())
 
+  const filteredTickers = useMemo(() => {
+    const rows = new Map<string, { item: MyTickerEntry; groups: Set<SidebarTickerGroupKey> }>()
+    sidebarTickerGroups.forEach(group => {
+      if (sidebarTab !== 'all' && group.key !== sidebarTab) return
+      group.items.forEach(item => {
+        const sym = item.symbol.toUpperCase()
+        const existing = rows.get(sym)
+        if (existing) {
+          existing.groups.add(group.key)
+        } else {
+          rows.set(sym, { item, groups: new Set([group.key]) })
+        }
+      })
+    })
+    const query = sidebarSearch.trim().toUpperCase()
+    return Array.from(rows.values()).filter(row => {
+      if (!query) return true
+      return row.item.symbol.toUpperCase().includes(query) || String(row.item.company_name || '').toUpperCase().includes(query)
+    })
+  }, [sidebarTab, sidebarTickerGroups, sidebarSearch])
+
+  const currentTickerItem = savedTickerBySymbol.get(symbol)
   const heldTickers = useMemo(() => new Set(portfolio.map(item => item.ticker.toUpperCase())), [portfolio])
 
   const loadTicker = useCallback((raw?: string) => {
@@ -210,13 +482,6 @@ export default function DayTradeWorkspacePage() {
       return next
     }, { replace: true })
     setTickerInput(nextSymbol)
-    setDrawerOpen(false)
-    setSwitcherOpen(false)
-    setRecentTickers(cur => {
-      const next = [nextSymbol, ...cur.filter(item => item !== nextSymbol)].slice(0, 8)
-      try { localStorage.setItem('oa_day_trade_recent_tickers', JSON.stringify(next)) } catch { /* ignore */ }
-      return next
-    })
   }, [setSearchParams, tickerInput])
 
   const handleIntervalChange = useCallback((nextInterval: '1m' | '5m' | '15m') => {
@@ -269,246 +534,94 @@ export default function DayTradeWorkspacePage() {
     }
   }, [addQuery, addSelected, addTypes, savedTickerBySymbol])
 
-  const toggleMembership = useCallback(async (item: MyTickerEntry, group: SidebarTickerGroupKey) => {
-    const current = new Set(item.trade_types || [])
-    const tradeType = TRADE_TYPE_VALUES[group]
-    const hasMembership = current.has(tradeType)
-    try {
-      const res = hasMembership
-        ? await removeMyTickerType(item.symbol, tradeType)
-        : await updateMyTicker(item.symbol, { trade_types: Array.from(new Set([...current, tradeType])) })
-      setMyTickers((res.data?.tickers ?? []).filter(next => next.symbol && (next.is_active ?? true)))
-      if (hasMembership && item.symbol.toUpperCase() === symbol) {
-        setNotice(`${item.symbol.toUpperCase()} removed from ${TRADE_TYPE_LABELS[group]}. The current workspace remains open.`)
-      }
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Unable to update ticker membership.')
-    }
-  }, [symbol])
+  const handleListScroll = useCallback((scrollTop: number) => {
+    setSidebarScrollTop(scrollTop)
+  }, [])
 
-  const removeTicker = useCallback(async (item: MyTickerEntry) => {
-    try {
-      const res = await removeMyTicker(item.symbol)
-      setMyTickers((res.data?.tickers ?? []).filter(next => next.symbol && (next.is_active ?? true)))
-      if (item.symbol.toUpperCase() === symbol) {
-        setNotice(`${item.symbol.toUpperCase()} removed from My Tickers. The current workspace remains open.`)
-      }
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Unable to remove ticker.')
-    }
-  }, [symbol])
+  const workspaceLoading = workspaceState.loading && !workspaceState.data
 
   return (
     <div className="day-trade-page min-h-screen bg-surface-page p-3 text-primary">
       <div className="mx-auto flex max-w-[1920px] gap-3">
 
-        {drawerOpen && (
-          <aside className="w-80 shrink-0 rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-label="My Tickers drawer">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Watchlists</div>
-                <div className="text-sm font-bold text-heading">My Tickers</div>
-              </div>
-              <button type="button" onClick={() => setAddDialogOpen(true)} className="mr-1 rounded-lg border border-violet-500/30 bg-violet-500/10 p-1.5 text-violet-700 dark:text-violet-200" aria-label="Add ticker">
-                <Plus size={14} />
-              </button>
-              <button type="button" onClick={() => setDrawerOpen(false)} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close watchlist drawer">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="grid grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="My Tickers lists">
-              {DRAWER_TABS.map(tab => {
-                const count = tab.key === 'all' ? allSavedTickers.length : sidebarTickerGroups.find(group => group.key === tab.key)?.items.length || 0
-                const active = drawerTab === tab.key
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setDrawerTab(tab.key)}
-                    className={`rounded-md px-1.5 py-1 text-[10px] font-black ${active ? 'bg-white text-violet-700 shadow-sm dark:bg-slate-800 dark:text-violet-200' : 'text-secondary'}`}
-                  >
-                    {tab.label} {count}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="relative mt-3">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
-              <input
-                value={drawerSearch}
-                onChange={event => setDrawerSearch(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-heading outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900"
-                placeholder="Search saved tickers..."
-                aria-label="Search saved tickers"
-              />
-            </div>
-            <div className="mt-3 max-h-[62vh] space-y-2 overflow-auto">
-              {tickersLoading ? (
-                <div className="rounded-lg border border-slate-200 p-3 text-sm text-secondary dark:border-white/[0.08]">Loading My Tickers...</div>
-              ) : tickersError ? (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-200">
-                  <div>{tickersError}</div>
-                  <button type="button" onClick={() => void refreshMyTickers()} className="mt-2 text-xs font-bold underline">Retry</button>
-                </div>
-              ) : drawerTickers.length ? drawerTickers.map(item => {
-                const sym = item.symbol.toUpperCase()
-                const selected = sym === symbol
-                const memberships = membershipsFor(item)
-                return (
-                  <div key={sym} className={`rounded-lg border p-2 ${selected ? 'border-violet-500 bg-violet-500/10' : 'border-slate-200 dark:border-white/[0.08]'}`}>
-                    <button type="button" onClick={() => loadTicker(sym)} className="flex w-full items-start justify-between gap-2 text-left">
-                      <span className="min-w-0">
-                        <span className="font-mono text-sm font-black text-heading">{sym}</span>
-                        <span className="ml-2 text-xs text-tertiary">{item.company_name}</span>
-                        <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-tertiary">
-                          {memberships.map(key => TRADE_TYPE_LABELS[key]).join(' · ') || 'Not categorized'}{heldTickers.has(sym) ? ' · Portfolio' : ''}
-                        </span>
-                      </span>
-                      <span className="text-right">
-                        <span className="block font-mono text-xs font-bold text-heading">{formatPrice(item)}</span>
-                        <span className={`block font-mono text-[11px] font-bold ${typeof item.price_change_pct === 'number' && item.price_change_pct >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>{formatChange(item)}</span>
-                      </span>
-                    </button>
-                    <div className="mt-2 flex flex-wrap items-center gap-1">
-                      {(Object.keys(TRADE_TYPE_LABELS) as SidebarTickerGroupKey[]).map(key => {
-                        const checked = memberships.includes(key)
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => void toggleMembership(item, key)}
-                            className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${checked ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200' : 'border-slate-200 text-tertiary dark:border-white/[0.08]'}`}
-                          >
-                            {TRADE_TYPE_LABELS[key]}
-                          </button>
-                        )
-                      })}
-                      <button type="button" onClick={() => void removeTicker(item)} className="ml-auto rounded-full p-1 text-tertiary hover:text-red-600" aria-label={`Remove ${sym}`}>
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-                )
-              }) : (
-                <div className="rounded-lg border border-slate-200 p-3 text-sm text-tertiary dark:border-white/[0.08]">No saved tickers in this list.</div>
-              )}
-            </div>
-            <button type="button" onClick={() => navigate(ROUTES.myTickers)} className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
-              Manage My Tickers
-            </button>
+        {sidebarCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed(false)}
+            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-secondary hover:border-violet-400 dark:border-white/[0.08] dark:bg-slate-950 lg:flex"
+            aria-label="Expand sidebar"
+          >
+            <ChevronRight size={18} />
+          </button>
+        ) : (
+          <aside className="hidden w-80 shrink-0 lg:block">
+            <DayTradeSidebarContent
+              tickerInput={tickerInput}
+              setTickerInput={setTickerInput}
+              sidebarSearch={sidebarSearch}
+              setSidebarSearch={setSidebarSearch}
+              sidebarTab={sidebarTab}
+              setSidebarTab={setSidebarTab}
+              filteredTickers={filteredTickers}
+              symbol={symbol}
+              tickersLoading={tickersLoading}
+              tickersError={tickersError}
+              refreshMyTickers={refreshMyTickers}
+              workspaceLoading={workspaceLoading}
+              listRef={listRef}
+              handleListScroll={handleListScroll}
+              loadTicker={loadTicker}
+              setAddDialogOpen={setAddDialogOpen}
+              navigate={navigate}
+              onCollapse={() => setSidebarCollapsed(true)}
+            />
           </aside>
         )}
 
-        <main className="min-w-0 flex-1">
-          <div className="relative mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.08] dark:bg-slate-950">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(cur => !cur)}
-                className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
-                title="My Tickers"
-                aria-label="My Tickers"
-              >
-                My Tickers
-              </button>
-              <button
-                type="button"
-                onClick={() => setSwitcherOpen(cur => !cur)}
-                className="inline-flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-slate-100 dark:hover:bg-slate-900"
-                aria-expanded={switcherOpen}
-                aria-haspopup="dialog"
-              >
-                <span className="min-w-0">
-                  <span className="font-mono text-lg font-black text-heading">{symbol}</span>
-                  <span className="ml-2 text-sm font-semibold text-secondary">{currentTickerItem?.company_name || workspaceState.data?.symbol.companyName || ''}</span>
-                </span>
-                <ChevronDown size={16} className="shrink-0 text-tertiary" />
-              </button>
-            </div>
-            {currentTickerItem ? (
-              <div className="flex flex-wrap gap-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">
-                {membershipsFor(currentTickerItem).map(key => <span key={key} className="rounded-full border border-slate-200 px-2 py-0.5 dark:border-white/[0.08]">{TRADE_TYPE_LABELS[key]}</span>)}
-              </div>
-            ) : (
-              <button type="button" onClick={() => setAddDialogOpen(true)} className="rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs font-bold text-violet-700 dark:text-violet-200">
-                Not in My Tickers · Add
-              </button>
-            )}
-            {switcherOpen && (
-              <div className="absolute left-3 top-14 z-30 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-label="Ticker switcher">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-tertiary" />
-                  <input
-                    autoFocus
-                    value={switcherSearch}
-                    onChange={event => setSwitcherSearch(event.target.value)}
-                    onKeyDown={event => {
-                      if (event.key === 'Escape') setSwitcherOpen(false)
-                      if (event.key === 'Enter' && switcherSearch.trim()) loadTicker(switcherSearch)
-                    }}
-                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-heading outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900"
-                    placeholder="Search My Tickers..."
-                    aria-label="Search My Tickers"
-                  />
-                </div>
-                {recentTickers.length > 0 && (
-                  <div className="mt-3">
-                    <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Recent</div>
-                    <div className="flex flex-wrap gap-1">
-                      {recentTickers.map(sym => (
-                        <button key={sym} type="button" onClick={() => loadTicker(sym)} className="rounded-full border border-slate-200 px-2 py-0.5 font-mono text-[11px] font-bold text-secondary dark:border-white/[0.08]">
-                          {sym}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="mt-3 max-h-80 overflow-auto">
-                  {allSavedTickers
-                    .filter(item => {
-                      const q = switcherSearch.trim().toUpperCase()
-                      if (!q) return true
-                      return item.symbol.toUpperCase().includes(q) || (item.company_name || '').toUpperCase().includes(q)
-                    })
-                    .slice(0, 16)
-                    .map(item => {
-                      const sym = item.symbol.toUpperCase()
-                      return (
-                        <button key={sym} type="button" onClick={() => loadTicker(sym)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-900">
-                          <span>
-                            <span className="font-mono text-sm font-black text-heading">{sym}</span>
-                            <span className="ml-2 text-xs text-secondary">{item.company_name}</span>
-                            <span className="block text-[10px] font-bold uppercase tracking-wide text-tertiary">{membershipsFor(item).map(key => TRADE_TYPE_LABELS[key]).join(' · ')}</span>
-                          </span>
-                          <span className="font-mono text-xs font-bold text-secondary">{formatPrice(item)}</span>
-                        </button>
-                      )
-                    })}
-                  {switcherSearch.trim() && !allSavedTickers.some(item => item.symbol.toUpperCase() === switcherSearch.trim().toUpperCase()) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAddQuery(switcherSearch.trim().toUpperCase())
-                        setAddSelected(null)
-                        setAddDialogOpen(true)
-                      }}
-                      className="mt-2 w-full rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-700 dark:text-violet-200"
-                    >
-                      Add {switcherSearch.trim().toUpperCase()} to My Tickers
-                    </button>
-                  )}
-                </div>
-                <button type="button" onClick={() => navigate(ROUTES.myTickers)} className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
-                  Manage My Tickers
-                </button>
-              </div>
-            )}
+        {mobileSidebarOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setMobileSidebarOpen(false)} />
+            <aside className="absolute left-0 top-0 h-full w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
+              <DayTradeSidebarContent
+                tickerInput={tickerInput}
+                setTickerInput={setTickerInput}
+                sidebarSearch={sidebarSearch}
+                setSidebarSearch={setSidebarSearch}
+                sidebarTab={sidebarTab}
+                setSidebarTab={setSidebarTab}
+                filteredTickers={filteredTickers}
+                symbol={symbol}
+                tickersLoading={tickersLoading}
+                tickersError={tickersError}
+                refreshMyTickers={refreshMyTickers}
+                workspaceLoading={workspaceLoading}
+                listRef={listRef}
+                handleListScroll={handleListScroll}
+                loadTicker={loadTicker}
+                setAddDialogOpen={setAddDialogOpen}
+                navigate={navigate}
+                onCollapse={() => setMobileSidebarOpen(false)}
+              />
+            </aside>
           </div>
+        )}
+
+        <main className="min-w-0 flex-1">
           {notice && (
             <div className="mb-3 rounded-xl border border-semantic-info-border bg-semantic-info-bg px-4 py-3 text-sm text-semantic-info">
               {notice}
             </div>
           )}
+
+          {currentTickerItem && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-tertiary">
+              {membershipsFor(currentTickerItem).map(key => (
+                <span key={key} className="rounded-full border border-slate-200 px-2 py-0.5 dark:border-white/[0.08]">{TRADE_TYPE_LABELS[key]}</span>
+              ))}
+              {heldTickers.has(symbol) && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-200">In Position</span>}
+            </div>
+          )}
+
           {workspaceState.loading && !workspaceState.data ? (
             <div className="flex min-h-[680px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -529,8 +642,19 @@ export default function DayTradeWorkspacePage() {
               Enter a ticker to load the backend Day Trade workspace.
             </div>
           )}
+
+          {/* Mobile sidebar trigger */}
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="fixed bottom-4 left-4 z-30 flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-xs font-black text-violet-700 shadow-xl dark:text-violet-200 lg:hidden"
+          >
+            <Activity size={16} />
+            My Tickers
+          </button>
         </main>
       </div>
+
       {addDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Add ticker">
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-white/[0.08] dark:bg-slate-950">
@@ -585,11 +709,11 @@ export default function DayTradeWorkspacePage() {
             </div>
             <div className="mt-4">
               <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-tertiary">Add to</div>
-              {addExistingTicker && (
+              {addSelected && savedTickerBySymbol.get(addSelected.symbol.toUpperCase()) && (
                 <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-secondary dark:border-white/[0.08] dark:bg-slate-900">
                   Existing memberships:{' '}
                   <span className="font-bold text-heading">
-                    {membershipsFor(addExistingTicker).map(key => TRADE_TYPE_LABELS[key]).join(' · ') || 'None'}
+                    {membershipsFor(savedTickerBySymbol.get(addSelected.symbol.toUpperCase())!).map(key => TRADE_TYPE_LABELS[key]).join(' · ') || 'None'}
                   </span>
                 </div>
               )}

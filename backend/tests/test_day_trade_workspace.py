@@ -70,6 +70,53 @@ def _workspace(final_decision: str = "READY", *, metric_overrides=None, resolved
     return build_day_trade_workspace_response(scan=scan, resolved=resolved, interval=interval)
 
 
+def _structure_workspace(points: list[tuple[str, float]], *, tolerance: float = 0.01, minimum_move: float = 0.01, interval: str = "1m"):
+    """Build bars whose confirmed 5m pivots match the requested sequence.
+
+    points are (HIGH|LOW, price). Extra neutral bars provide left/right
+    confirmation windows; this keeps tests focused on the backend structure
+    contract rather than frontend rendering.
+    """
+    bars = []
+
+    def add_bar(i: int, high: float, low: float) -> None:
+        close = (high + low) / 2
+        bars.append({
+            "t": f"2026-07-09T{9 + ((30 + i * 5) // 60):02d}:{(30 + i * 5) % 60:02d}:00-04:00",
+            "o": close,
+            "h": high,
+            "l": low,
+            "c": close,
+            "v": 1000 + i,
+            "vwap": close,
+        })
+
+    i = 0
+    anchor = points[0][1] if points else 100.0
+    add_bar(i, anchor - 2, anchor - 8); i += 1
+    add_bar(i, anchor - 1, anchor - 7); i += 1
+    for kind, price in points:
+        if kind == "HIGH":
+            add_bar(i, price, price - 4); i += 1
+            add_bar(i, price - 1, price - 3); i += 1
+            add_bar(i, price - 1.5, price - 2.5); i += 1
+        else:
+            add_bar(i, price + 4, price); i += 1
+            add_bar(i, price + 3, price + 1); i += 1
+            add_bar(i, price + 2.5, price + 1.5); i += 1
+
+    return _workspace(
+        "READY",
+        interval=interval,
+        metric_overrides={
+            "chart_bars": bars,
+            "day_structure_comparison_tolerance": tolerance,
+            "day_structure_minimum_move": minimum_move,
+            "confidence": 80,
+        },
+    )["chart"]["marketStructure"]
+
+
 class DayTradeWorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -258,6 +305,105 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual([candle["time"] for candle in candles], ["2026-07-09T09:30:00-04:00", "2026-07-09T09:45:00-04:00"])
         self.assertEqual([point["value"] for point in overlay["points"]], [102.25, 102.9833])
         self.assertEqual(overlay["latestAsOfUtc"], "2026-07-09T09:45:00-04:00")
+
+    def test_market_structure_contract_uses_backend_confirmed_5m_pivots(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 100), ("LOW", 95), ("HIGH", 105), ("LOW", 98), ("HIGH", 110),
+        ])
+        self.assertEqual(structure["sourceTimeframe"], "5m")
+        self.assertEqual(structure["trend"], "BULLISH")
+        self.assertEqual(structure["id"], "market-structure-5m")
+        self.assertGreaterEqual(len(structure["pivots"]), 3)
+        self.assertLessEqual(len(structure["pivots"]), 15)
+        self.assertTrue(all(pivot["confirmed"] for pivot in structure["pivots"]))
+        self.assertTrue(structure["pivots"][-1]["latest"])
+
+    def test_market_structure_bullish_continuation_compares_same_type_pivots(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 100), ("LOW", 95), ("HIGH", 105), ("LOW", 98), ("HIGH", 110),
+        ])
+
+        labels = [pivot["label"] for pivot in structure["pivots"]]
+        self.assertEqual(labels, ["HH", "HL", "HH", "HL", "HH"])
+        self.assertEqual(structure["trend"], "BULLISH")
+
+    def test_market_structure_bearish_continuation_compares_same_type_pivots(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 110), ("LOW", 100), ("HIGH", 106), ("LOW", 96), ("HIGH", 103),
+        ])
+
+        labels = [pivot["label"] for pivot in structure["pivots"]]
+        self.assertEqual(labels, ["HH", "HL", "LH", "LL", "LH"])
+        self.assertEqual(structure["trend"], "BEARISH")
+
+    def test_market_structure_transition_when_highs_rise_and_lows_fall(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 100), ("LOW", 90), ("HIGH", 105), ("LOW", 87),
+        ])
+
+        labels = [pivot["label"] for pivot in structure["pivots"]]
+        self.assertEqual(labels, ["HH", "HL", "HH", "LL"])
+        self.assertEqual(structure["trend"], "TRANSITION")
+
+    def test_market_structure_compression_is_transition_or_range(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 110), ("LOW", 90), ("HIGH", 106), ("LOW", 94),
+        ])
+
+        labels = [pivot["label"] for pivot in structure["pivots"]]
+        self.assertEqual(labels, ["HH", "HL", "LH", "HL"])
+        self.assertIn(structure["trend"], {"TRANSITION", "RANGE"})
+
+    def test_market_structure_consecutive_same_type_candidates_keep_extreme(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 100), ("HIGH", 102), ("HIGH", 101), ("LOW", 95), ("HIGH", 104),
+        ])
+
+        pivots = structure["pivots"]
+        self.assertEqual([pivot["pivotType"] for pivot in pivots], ["HIGH", "LOW", "HIGH"])
+        self.assertEqual(pivots[0]["price"], 102)
+
+    def test_market_structure_equal_highs_within_tolerance_are_not_hh(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 100.00), ("LOW", 95), ("HIGH", 100.02),
+        ], tolerance=0.05)
+
+        labels = [pivot["label"] for pivot in structure["pivots"]]
+        self.assertEqual(labels[-1], "EQH")
+        self.assertNotEqual(labels[-1], "HH")
+
+    def test_market_structure_unconfirmed_last_pivot_is_not_labeled(self) -> None:
+        structure = _structure_workspace([
+            ("HIGH", 100), ("LOW", 95), ("HIGH", 105),
+        ])
+        confirmed_count = len(structure["pivots"])
+
+        bars = [
+            {"t": "2026-07-09T09:30:00-04:00", "o": 99, "h": 100, "l": 98, "c": 99, "v": 1, "vwap": 99},
+            {"t": "2026-07-09T09:35:00-04:00", "o": 99, "h": 101, "l": 97, "c": 99, "v": 1, "vwap": 99},
+            {"t": "2026-07-09T09:40:00-04:00", "o": 99, "h": 100, "l": 98, "c": 99, "v": 1, "vwap": 99},
+            {"t": "2026-07-09T09:45:00-04:00", "o": 99, "h": 106, "l": 98, "c": 105, "v": 1, "vwap": 102},
+        ]
+        candidate = _workspace(
+            "READY",
+            metric_overrides={
+                "chart_bars": bars,
+                "day_structure_comparison_tolerance": 0.01,
+                "day_structure_minimum_move": 0.01,
+            },
+        )["chart"]["marketStructure"]
+
+        self.assertGreater(confirmed_count, 0)
+        self.assertEqual(candidate["pivots"], [])
+
+    def test_market_structure_is_5m_when_chart_interval_changes(self) -> None:
+        points = [("HIGH", 100), ("LOW", 95), ("HIGH", 105), ("LOW", 98), ("HIGH", 110)]
+        one_minute = _structure_workspace(points, interval="1m")
+        fifteen_minute = _structure_workspace(points, interval="15m")
+
+        self.assertEqual(one_minute["sourceTimeframe"], "5m")
+        self.assertEqual(fifteen_minute["sourceTimeframe"], "5m")
+        self.assertEqual(one_minute["sequence"], fifteen_minute["sequence"])
 
     def test_workspace_endpoint_is_exposed_in_openapi_contract(self) -> None:
         import main

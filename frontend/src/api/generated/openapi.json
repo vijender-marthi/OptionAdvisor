@@ -666,6 +666,132 @@
         "title": "AnalyzeResponse",
         "type": "object"
       },
+      "AuthActivateResponse": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "email",
+          "message"
+        ],
+        "title": "AuthActivateResponse",
+        "type": "object"
+      },
+      "AuthForgotPasswordResponse": {
+        "properties": {
+          "dev_reset_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dev Reset Token"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "message"
+        ],
+        "title": "AuthForgotPasswordResponse",
+        "type": "object"
+      },
+      "AuthRegisterResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "needs_activation": {
+            "title": "Needs Activation",
+            "type": "boolean"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "needs_activation",
+          "message"
+        ],
+        "title": "AuthRegisterResponse",
+        "type": "object"
+      },
+      "AuthResetPasswordResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "message"
+        ],
+        "title": "AuthResetPasswordResponse",
+        "type": "object"
+      },
+      "AuthSessionResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "token_type": {
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "email",
+          "name",
+          "role"
+        ],
+        "title": "AuthSessionResponse",
+        "type": "object"
+      },
       "BacktestRequest": {
         "properties": {
           "end_date": {
@@ -1532,6 +1658,16 @@
             "title": "Levels",
             "type": "array"
           },
+          "marketStructure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeMarketStructureView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tradeFocus": {
             "anyOf": [
               {
@@ -1776,6 +1912,185 @@
           "order"
         ],
         "title": "DayTradeEvidenceItemView",
+        "type": "object"
+      },
+      "DayTradeMarketStructureView": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "currentPivot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentpivot"
+          },
+          "currentPivotDetail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeStructurePivotView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "expectedNext": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectednext"
+          },
+          "expectedNextPivot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectednextpivot"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "invalidation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidation"
+          },
+          "invalidationLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidationlevel"
+          },
+          "pivots": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeStructurePivotView"
+            },
+            "title": "Pivots",
+            "type": "array"
+          },
+          "sequence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sequence",
+            "type": "array"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settings"
+          },
+          "showZigZagByDefault": {
+            "default": true,
+            "title": "Showzigzagbydefault",
+            "type": "boolean"
+          },
+          "sourceTimeframe": {
+            "title": "Sourcetimeframe",
+            "type": "string"
+          },
+          "structure": {
+            "title": "Structure",
+            "type": "string"
+          },
+          "structureStrength": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structurestrength"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          },
+          "visibleByDefault": {
+            "default": true,
+            "title": "Visiblebydefault",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "trend",
+          "structure",
+          "display",
+          "sourceTimeframe"
+        ],
+        "title": "DayTradeMarketStructureView",
         "type": "object"
       },
       "DayTradeRequest": {
@@ -2081,6 +2396,109 @@
           "isExecutionAllowed"
         ],
         "title": "DayTradeSessionView",
+        "type": "object"
+      },
+      "DayTradeStructurePivotView": {
+        "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest": {
+            "default": false,
+            "title": "Latest",
+            "type": "boolean"
+          },
+          "pivotType": {
+            "title": "Pivottype",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "sourceTimeframe": {
+            "title": "Sourcetimeframe",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "id",
+          "timestamp",
+          "label",
+          "pivotType",
+          "price",
+          "sourceTimeframe",
+          "confirmed"
+        ],
+        "title": "DayTradeStructurePivotView",
         "type": "object"
       },
       "DayTradeSymbolView": {
@@ -3027,6 +3445,181 @@
           "symbols"
         ],
         "title": "MyTickersReorderBody",
+        "type": "object"
+      },
+      "OptionChainLiquidityResponse": {
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/OptionChainLiquidityRow"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "current_iv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Iv"
+          },
+          "current_price": {
+            "title": "Current Price",
+            "type": "number"
+          },
+          "dte": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dte"
+          },
+          "expiries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expiries",
+            "type": "array"
+          },
+          "historical_volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historical Volatility"
+          },
+          "iv_percentile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv Percentile"
+          },
+          "iv_rank": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv Rank"
+          },
+          "price_fetched_at": {
+            "title": "Price Fetched At",
+            "type": "string"
+          },
+          "price_source": {
+            "title": "Price Source",
+            "type": "string"
+          },
+          "puts": {
+            "items": {
+              "$ref": "#/components/schemas/OptionChainLiquidityRow"
+            },
+            "title": "Puts",
+            "type": "array"
+          },
+          "selected_expiry": {
+            "title": "Selected Expiry",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "current_price",
+          "price_source",
+          "price_fetched_at",
+          "expiries",
+          "selected_expiry",
+          "calls",
+          "puts"
+        ],
+        "title": "OptionChainLiquidityResponse",
+        "type": "object"
+      },
+      "OptionChainLiquidityRow": {
+        "properties": {
+          "ask": {
+            "title": "Ask",
+            "type": "number"
+          },
+          "bid": {
+            "title": "Bid",
+            "type": "number"
+          },
+          "in_the_money": {
+            "title": "In The Money",
+            "type": "boolean"
+          },
+          "is_atm": {
+            "title": "Is Atm",
+            "type": "boolean"
+          },
+          "iv": {
+            "title": "Iv",
+            "type": "number"
+          },
+          "mid": {
+            "title": "Mid",
+            "type": "number"
+          },
+          "open_interest": {
+            "title": "Open Interest",
+            "type": "integer"
+          },
+          "spread": {
+            "title": "Spread",
+            "type": "number"
+          },
+          "spread_pct": {
+            "title": "Spread Pct",
+            "type": "number"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "number"
+          },
+          "volume": {
+            "title": "Volume",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strike",
+          "bid",
+          "ask",
+          "mid",
+          "spread",
+          "spread_pct",
+          "volume",
+          "open_interest",
+          "iv",
+          "in_the_money",
+          "is_atm"
+        ],
+        "title": "OptionChainLiquidityRow",
         "type": "object"
       },
       "OptionLegOut": {
@@ -6221,7 +6814,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthActivateResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6260,7 +6855,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthForgotPasswordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6299,7 +6896,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6338,7 +6937,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6377,7 +6978,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthRegisterResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -6416,7 +7019,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResetPasswordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -9627,7 +10232,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OptionChainLiquidityResponse"
+                }
               }
             },
             "description": "Successful Response"

@@ -40,7 +40,7 @@ DEFAULT_MAIL_FROM = os.getenv("OPTION_ADVISOR_DEFAULT_FROM_EMAIL", "adminzetayua
 
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
-    OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
+    OptionRowOut, OptionChainLiquidityResponse, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
     TestEmailRequest, BacktestRequest,
     DayTradeRequest, DayTradeResponse, CarryTradeRequest, CarryTradeResponse, TradeDashboardStoryRequest,
@@ -6111,7 +6111,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
     return response
 
 
-@app.get("/api/option-chain/{ticker}")
+@app.get("/api/option-chain/{ticker}", response_model=OptionChainLiquidityResponse)
 def option_chain_liquidity(
     ticker: str,
     expiry: Optional[str] = Query(default=None),

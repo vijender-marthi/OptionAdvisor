@@ -159,6 +159,37 @@ class ResetPasswordRequest(BaseModel):
     password: str = Field(..., min_length=8)
 
 
+class AuthSessionResponse(BaseModel):
+    access_token: str
+    token_type: str
+    email: str
+    name: str
+    role: str
+
+
+class AuthRegisterResponse(BaseModel):
+    ok: bool
+    needs_activation: bool
+    message: str
+
+
+class AuthActivateResponse(BaseModel):
+    ok: bool
+    email: str
+    message: str
+
+
+class AuthForgotPasswordResponse(BaseModel):
+    ok: bool
+    message: str
+    dev_reset_token: str | None = None
+
+
+class AuthResetPasswordResponse(BaseModel):
+    ok: bool
+    message: str
+
+
 def _login_payload(email: str) -> dict:
     state = get_user_state(email)
     auth = get_user_auth_row(email)
@@ -176,7 +207,7 @@ def _login_payload(email: str) -> dict:
     }
 
 
-@auth_router.post("/register")
+@auth_router.post("/register", response_model=AuthRegisterResponse)
 def auth_register(req: RegisterRequest, http_request: Request):
     _password_rules(req.password)
     normalized = normalize_email(req.email)
@@ -228,7 +259,7 @@ def auth_register(req: RegisterRequest, http_request: Request):
     }
 
 
-@auth_router.post("/login")
+@auth_router.post("/login", response_model=AuthSessionResponse)
 def auth_login(req: LoginRequest):
     normalized = normalize_email(req.email)
     if not normalized or not req.password:
@@ -265,7 +296,7 @@ def auth_login(req: LoginRequest):
     return _login_payload(normalized)
 
 
-@auth_router.post("/google")
+@auth_router.post("/google", response_model=AuthSessionResponse)
 def auth_google(req: GoogleAuthRequest):
     cid = _google_client_id()
     if not cid:
@@ -299,7 +330,7 @@ def auth_google(req: GoogleAuthRequest):
     return _login_payload(email)
 
 
-@auth_router.get("/activate")
+@auth_router.get("/activate", response_model=AuthActivateResponse)
 def auth_activate(token: str):
     email = activate_with_token(token)
     if not email:
@@ -307,7 +338,7 @@ def auth_activate(token: str):
     return {"ok": True, "email": email, "message": "Your account is active. You can sign in."}
 
 
-@auth_router.post("/forgot-password")
+@auth_router.post("/forgot-password", response_model=AuthForgotPasswordResponse)
 def auth_forgot_password(req: ForgotPasswordRequest, http_request: Request):
     normalized = normalize_email(req.email)
     generic = {"ok": True, "message": "If an account exists for that email, you will receive reset instructions."}
@@ -345,7 +376,7 @@ def auth_forgot_password(req: ForgotPasswordRequest, http_request: Request):
     return generic
 
 
-@auth_router.post("/reset-password")
+@auth_router.post("/reset-password", response_model=AuthResetPasswordResponse)
 def auth_reset_password(req: ResetPasswordRequest):
     _password_rules(req.password)
     em = consume_password_reset(req.token, _hash_password(req.password))

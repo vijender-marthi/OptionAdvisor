@@ -7,6 +7,7 @@ where Yahoo lags.
 
 Configuration (via environment variables):
   MASSIVE_API_KEY   — API key for api.massive.com  (required for auth)
+  POLYGON_API_KEY   — accepted alias for Polygon-compatible deployments
 
 API base: https://api.massive.com
 Endpoints used (Polygon-compatible paths):
@@ -22,6 +23,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date, datetime
+from datetime import timedelta
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -29,8 +31,8 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-MASSIVE_BASE    = "https://api.massive.com"
-MASSIVE_API_KEY = os.getenv("MASSIVE_API_KEY", "")
+MASSIVE_BASE    = os.getenv("MASSIVE_BASE_URL", "https://api.massive.com")
+MASSIVE_API_KEY = os.getenv("MASSIVE_API_KEY") or os.getenv("POLYGON_API_KEY", "")
 
 ET = ZoneInfo("America/New_York")
 PT = ZoneInfo("America/Los_Angeles")
@@ -87,6 +89,60 @@ def get_1min_bars(
     except Exception as exc:
         log.warning("backup_data.get_1min_bars(%s): %s", t, exc)
         return None
+
+
+def get_daily_bars(
+    ticker: str,
+    from_date: date,
+    to_date: date,
+    limit: int = 5000,
+) -> Optional[list[dict[str, Any]]]:
+    """
+    Fetch daily OHLCV bars from api.massive.com.
+
+    Returns Polygon-format aggregate bars:
+      { "t": <unix_ms>, "o": open, "h": high, "l": low, "c": close, "v": volume }
+    """
+    if not MASSIVE_API_KEY:
+        return None
+    t = ticker.upper().strip()
+    url = (
+        f"{MASSIVE_BASE}/v2/aggs/ticker/{t}"
+        f"/range/1/day/{from_date.isoformat()}/{to_date.isoformat()}"
+    )
+    try:
+        resp = httpx.get(
+            url,
+            params=_params(adjusted="true", sort="asc", limit=limit),
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results") or []
+        return results or None
+    except Exception as exc:
+        log.warning("backup_data.get_daily_bars(%s): %s", t, exc)
+        return None
+
+
+def period_to_dates(period: str, today: Optional[date] = None) -> tuple[date, date]:
+    """Convert common yfinance period strings into a conservative date range."""
+    end = today or datetime.now(ET).date()
+    p = (period or "1y").strip().lower()
+    try:
+        amount = int(p[:-1])
+        unit = p[-1]
+    except Exception:
+        amount, unit = 1, "y"
+    if unit == "d":
+        delta = timedelta(days=max(amount * 2, amount + 7))
+    elif unit == "mo":
+        delta = timedelta(days=amount * 31 + 10)
+    elif unit == "y":
+        delta = timedelta(days=amount * 366 + 10)
+    else:
+        delta = timedelta(days=376)
+    return end - delta, end
 
 
 def bars_to_dataframe(results: list[dict[str, Any]]):

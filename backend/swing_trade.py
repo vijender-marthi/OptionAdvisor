@@ -27,6 +27,8 @@ import pandas as pd
 
 import bar_cache
 from analysis import build_hv_series, compute_hv, compute_iv_rank
+from services.market_structure_service import classify_structure
+from services.pivot_detection_service import detect_confirmed_pivots
 
 log = logging.getLogger(__name__)
 
@@ -1904,6 +1906,39 @@ def build_swing_chart_series(
     return {"max_points": cap, "count": len(points), "points": points}
 
 
+def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> dict[str, Any]:
+    """
+    Backend-owned daily market-structure labels for the Swing chart.
+
+    Uses confirmed pivots only; the final right-side candles are never labeled
+    by detect_confirmed_pivots, so React does not infer HH/HL/LH/LL.
+    """
+    try:
+      clean = raw.dropna(subset=["High", "Low"]).copy()
+      if clean.empty or len(clean) < 10:
+          return classify_structure([])
+      pivots = detect_confirmed_pivots(clean["High"].astype(float), clean["Low"].astype(float), left=2, right=2)
+      structure = classify_structure(pivots)
+
+      def add_dates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+          out: list[dict[str, Any]] = []
+          for item in items:
+              idx = item.get("index")
+              dated = dict(item)
+              if isinstance(idx, int) and 0 <= idx < len(clean.index):
+                  ts = clean.index[idx]
+                  dated["date"] = str(ts.date()) if hasattr(ts, "date") else str(pd.Timestamp(ts).date())
+              out.append(dated)
+          return out
+
+      structure["pivots"] = add_dates(list(structure.get("pivots") or []))[-max_pivots:]
+      structure["all_pivots"] = add_dates(list(structure.get("all_pivots") or []))[-max_pivots:]
+      return structure
+    except Exception as exc:
+      log.warning("build_swing_market_structure failed: %s", exc)
+      return classify_structure([])
+
+
 # ── Option liquidity helper ───────────────────────────────────────────
 
 def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float]:
@@ -2543,6 +2578,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         raw["Volume"] if "Volume" in raw.columns else None,
         max_points=SWING_CHART_MAX_POINTS,
     )
+    market_structure = build_swing_market_structure(raw)
     implied_iv_pct = _implied_iv_pct_from_info(info)
     implied_iv_source = "quote_info" if implied_iv_pct is not None else None
     implied_iv_expiry: Optional[str] = None
@@ -2876,6 +2912,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "iv_rank_hv_proxy": iv_rank_opt,
         "earnings_calendar_days_until": earnings_within_days,
         "chart_series": chart_series,
+        "market_structure": market_structure,
         "weekly_range_used_pct": _weekly_range_used_pct,
         "weekly_range_phase":    _weekly_range_phase,
         "trend_direction": timing_layer["direction"],
