@@ -48,7 +48,7 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
   }, [workspace.session.marketTimeZone])
 
   return (
-    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full">
+    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-visible rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full md:overflow-hidden">
       <SessionStatusBar workspace={workspace} displayTimeZone={displayTimeZone} />
       <TradeDecisionHeader
         workspace={workspace}

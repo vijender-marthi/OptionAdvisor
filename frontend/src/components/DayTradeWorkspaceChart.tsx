@@ -167,6 +167,19 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     const yForPrice = (price: number) => PRICE_BOTTOM - ((price - minPrice) / priceRange) * (PRICE_BOTTOM - PRICE_TOP)
     const xForIndex = (index: number) => index * barWidth + barWidth * 0.5
     const visibleTimes = new Map(visibleCandles.map((candle, index) => [candle.time, xForIndex(index)]))
+    const xAxisTicks = (() => {
+      if (!visibleCandles.length) return []
+      const maxTicks = Math.min(8, visibleCandles.length)
+      const tickStep = Math.max(1, Math.floor((visibleCandles.length - 1) / Math.max(1, maxTicks - 1)))
+      const tickIndexes = new Set<number>()
+      for (let index = 0; index < visibleCandles.length; index += tickStep) tickIndexes.add(index)
+      tickIndexes.add(visibleCandles.length - 1)
+      return [...tickIndexes].sort((a, b) => a - b).map(index => ({
+        index,
+        x: xForIndex(index),
+        label: displayTime(visibleCandles[index]?.time || '', undefined),
+      }))
+    })()
     const points: Point[] = visibleCandles.map((candle, index) => {
       const volumeHeight = (safeNumber(candle.volume, 0) / maxVolume) * (VOLUME_BOTTOM - VOLUME_TOP)
       return {
@@ -214,6 +227,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
       barWidth,
       yForPrice,
       visibleTimes,
+      xAxisTicks,
       vwapSegments,
       structurePoints,
       minPrice,
@@ -566,14 +580,17 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             </text>
           </g>
         )}
-        {model.visibleCandles.length > 0 && (
+        {model.xAxisTicks.length > 0 && (
           <g>
-            <text x="10" y={HEIGHT - 8} className="fill-slate-500 text-[11px] dark:fill-slate-400">
-              {displayTime(model.visibleCandles[0].time, marketTimeZone)}
-            </text>
-            <text x={WIDTH - 10} y={HEIGHT - 8} textAnchor="end" className="fill-slate-500 text-[11px] dark:fill-slate-400">
-              {displayTime(model.visibleCandles[model.visibleCandles.length - 1].time, marketTimeZone)}
-            </text>
+            <line x1="0" x2={WIDTH} y1={VOLUME_BOTTOM + 4} y2={VOLUME_BOTTOM + 4} className="stroke-slate-200 dark:stroke-white/10" />
+            {model.xAxisTicks.map(tick => (
+              <g key={`${tick.index}-${tick.label}`}>
+                <line x1={tick.x} x2={tick.x} y1={VOLUME_BOTTOM + 1} y2={VOLUME_BOTTOM + 8} className="stroke-slate-300 dark:stroke-slate-700" />
+                <text x={tick.x} y={HEIGHT - 7} textAnchor="middle" className="fill-slate-500 text-[10px] font-mono dark:fill-slate-400">
+                  {displayTime(model.visibleCandles[tick.index]?.time || tick.label, marketTimeZone)}
+                </text>
+              </g>
+            ))}
           </g>
         )}
         {crosshair && (

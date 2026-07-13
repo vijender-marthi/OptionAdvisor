@@ -838,7 +838,7 @@ export default function DayTradeWorkspacePage() {
               </button>
             </div>
           ) : workspaceState.data ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 md:overflow-hidden">
               <DayTradeWorkspaceShell workspace={workspaceState.data} onAction={handleWorkspaceAction} onIntervalChange={handleIntervalChange} />
             </div>
           ) : (

@@ -67,7 +67,7 @@ export default function AppLayout({ children }: { children?: ReactNode }) {
       <Sidebar />
       <main className={`app-main-scroll h-full min-h-0 flex-1 overflow-x-hidden [-webkit-overflow-scrolling:touch] ${
         fixedWorkstation
-          ? 'flex flex-col overflow-hidden pb-0'
+          ? 'flex flex-col overflow-y-auto pb-[7rem] md:overflow-hidden md:pb-0'
           : 'overflow-y-auto pb-[7rem] xl:pb-0'
       }`}>
         <MarketStrip />

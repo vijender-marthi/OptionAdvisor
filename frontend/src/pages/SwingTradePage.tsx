@@ -159,6 +159,21 @@ function compactLabel(value: string | null | undefined): string {
   return String(value || '—').replace(/_/g, ' ')
 }
 
+function formatSwingAxisTime(value: string | null | undefined): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (!Number.isNaN(parsed.getTime())) {
+    const hasExplicitTime = /T\d{2}:\d{2}/.test(raw)
+    return parsed.toLocaleString([], hasExplicitTime
+      ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+      : { month: 'short', day: 'numeric' })
+  }
+  const parts = raw.split('-')
+  if (parts.length >= 3) return `${parts[1]}/${parts[2].slice(0, 2)}`
+  return raw
+}
+
 function levelFromUnified(unified: UnifiedAnalysis | null, type: 't1' | 't2'): string {
   const row = unified?.exit_rows.find(item => item.type === type)
   return row?.price || '—'
@@ -548,8 +563,8 @@ export default function SwingTradePage() {
   }, [])
 
   return (
-    <div className="swing-trade-page min-h-0 flex-1 overflow-hidden bg-surface-page p-3 text-primary">
-      <div className="mx-auto flex h-full max-w-[1920px] gap-3 overflow-hidden">
+    <div className="swing-trade-page min-h-screen bg-surface-page p-3 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden xl:pb-3">
+      <div className="mx-auto flex max-w-[1920px] gap-3 md:h-[calc(100%-5.5rem)] md:overflow-hidden xl:h-full">
         {watchlistOpen && (
           <SwingLeftSidebar
             ticker={ticker}
@@ -574,7 +589,7 @@ export default function SwingTradePage() {
           </button>
         )}
 
-        <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="flex min-w-0 flex-1 flex-col md:h-full md:overflow-hidden">
           <SwingMobileSearchBar
             ticker={ticker}
             loading={loading}
@@ -612,8 +627,8 @@ export default function SwingTradePage() {
             </div>
           )}
 
-          <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.07] dark:bg-slate-950">
+          <div className="grid min-h-0 flex-1 gap-3 md:overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="min-h-[560px] rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0 md:overflow-hidden">
               <SwingPrimaryChart
                 result={result}
                 unified={unified}
@@ -1120,6 +1135,16 @@ function SwingPrimaryChart({
   const candleWidth = Math.max(3, Math.min(18, xStep * 0.58))
   const yFor = (price: number) => priceBottom - ((price - minPrice) / priceRange) * (priceBottom - priceTop)
   const xFor = (index: number) => index * xStep + xStep * 0.5
+  const axisY = height - 22
+  const xAxisTicks = (() => {
+    if (!visible.length) return []
+    const maxTicks = Math.min(7, visible.length)
+    const tickStep = Math.max(1, Math.floor((visible.length - 1) / Math.max(1, maxTicks - 1)))
+    const tickIndexes = new Set<number>()
+    for (let index = 0; index < visible.length; index += tickStep) tickIndexes.add(index)
+    tickIndexes.add(visible.length - 1)
+    return [...tickIndexes].sort((a, b) => a - b).map(index => ({ index, label: formatSwingAxisTime(visible[index]?.d) })).filter(item => item.label)
+  })()
   const linePath = (key: 'c' | 'ma20' | 'ma50') => visible.reduce((path, point, index) => {
     const value = point[key]
     if (typeof value !== 'number' || !Number.isFinite(value)) return path
@@ -1185,7 +1210,7 @@ function SwingPrimaryChart({
   }
 
   return (
-    <div className={fullScreen ? 'fixed inset-3 z-50 flex flex-col overflow-hidden rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-950' : 'flex h-full min-h-0 flex-col overflow-hidden'}>
+    <div className={fullScreen ? 'fixed inset-3 z-50 flex flex-col overflow-hidden rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-950' : 'flex min-h-0 flex-col md:h-full md:overflow-hidden'}>
       <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
@@ -1374,6 +1399,20 @@ function SwingPrimaryChart({
               xFor={xFor}
             />
           ))}
+          <g>
+            <line x1="0" x2={width} y1={axisY - 10} y2={axisY - 10} stroke="currentColor" className="text-slate-200 dark:text-slate-800" />
+            {xAxisTicks.map(tick => {
+              const x = xFor(tick.index)
+              return (
+                <g key={`${tick.index}-${tick.label}`}>
+                  <line x1={x} x2={x} y1={axisY - 15} y2={axisY - 8} stroke="currentColor" className="text-slate-300 dark:text-slate-700" />
+                  <text x={x} y={axisY + 6} textAnchor="middle" className="fill-slate-500 text-[10px] font-mono">
+                    {tick.label}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
         </svg>
       </div>
       <div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] text-tertiary">
