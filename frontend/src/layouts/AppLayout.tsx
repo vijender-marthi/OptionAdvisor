@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import CopyrightFooter from '../components/CopyrightFooter'
 import AdvisoryDisclaimerModal from '../components/AdvisoryDisclaimerModal'
@@ -60,15 +60,21 @@ function CacheTimestamp() {
 }
 
 export default function AppLayout({ children }: { children?: ReactNode }) {
+  const location = useLocation()
+  const fixedWorkstation = location.pathname === '/day-trade' || location.pathname === '/swing-trade'
   return (
     <div className="app-shell font-sans flex h-[100svh] max-h-[100dvh] overflow-hidden" style={{ backgroundColor: 'var(--surface-page)', color: 'var(--text-primary)' }}>
       <Sidebar />
-      <main className="app-main-scroll h-full min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[7rem] xl:pb-0 [-webkit-overflow-scrolling:touch]">
+      <main className={`app-main-scroll h-full min-h-0 flex-1 overflow-x-hidden [-webkit-overflow-scrolling:touch] ${
+        fixedWorkstation
+          ? 'flex flex-col overflow-hidden pb-0'
+          : 'overflow-y-auto pb-[7rem] xl:pb-0'
+      }`}>
         <MarketStrip />
         <CacheTimestamp />
         <WatchlistNoticeBanner />
         {children ?? <Outlet />}
-        <CopyrightFooter />
+        {!fixedWorkstation && <CopyrightFooter />}
       </main>
       <AdvisoryDisclaimerModal />
       <FirstLoginHelpModal />

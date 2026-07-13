@@ -239,6 +239,7 @@ class DayTradeWorkspaceResponse(BaseModel):
     riskPlan: DayTradeRiskPlanView
     evidence: list[DayTradeEvidenceItemView] = Field(default_factory=list)
     selectedContract: DayTradeSelectedContractView | None = None
+    trapDetection: dict[str, Any] | None = None
     chart: DayTradeChartView
     tabs: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] | None = None

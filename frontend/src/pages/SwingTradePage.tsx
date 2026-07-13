@@ -14,6 +14,7 @@ import {
   FileText,
   Info,
   Layers,
+  LayoutList,
   Loader2,
   Lock,
   Maximize2,
@@ -339,12 +340,14 @@ export default function SwingTradePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [watchlistOpen, setWatchlistOpen] = useState(true)
+  const [mobileWatchlistOpen, setMobileWatchlistOpen] = useState(false)
   const [myTickers, setMyTickers] = useState<Array<{ symbol: string; company?: string; price?: number | null; changePct?: number | null }>>([])
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [fibTargets, setFibTargets] = useState<StockTargetData | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const [alertOpen, setAlertOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<WorkstationTab>('overview')
+  const [sectionsOpen, setSectionsOpen] = useState(false)
   const [timeframe, setTimeframe] = useState<Timeframe>('Daily')
   const [ocKey, setOcKey] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -545,8 +548,8 @@ export default function SwingTradePage() {
   }, [])
 
   return (
-    <div className="swing-trade-page min-h-screen bg-surface-page p-3 text-primary">
-      <div className="mx-auto flex max-w-[1920px] gap-3">
+    <div className="swing-trade-page min-h-0 flex-1 overflow-hidden bg-surface-page p-3 text-primary">
+      <div className="mx-auto flex h-full max-w-[1920px] gap-3 overflow-hidden">
         {watchlistOpen && (
           <SwingLeftSidebar
             ticker={ticker}
@@ -571,16 +574,24 @@ export default function SwingTradePage() {
           </button>
         )}
 
-        <main className="min-w-0 flex-1">
+        <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+          <SwingMobileSearchBar
+            ticker={ticker}
+            loading={loading}
+            onTickerChange={value => setUi(cur => ({ ...cur, ticker: value.toUpperCase() }))}
+            onRun={sym => void runScan(sym)}
+            onOpenWatchlist={() => setMobileWatchlistOpen(true)}
+          />
+
           <SwingTopBar
             result={result}
             unified={unified}
             loading={loading}
             onRefresh={() => void runScan()}
-            onOpenWatchlist={() => setWatchlistOpen(true)}
             onAddToPortfolio={handleAddToPortfolio}
             onOpenAlert={() => setAlertOpen(true)}
             onOpenPreTrade={() => navigate(preTradeRoute)}
+            onOpenSections={() => setSectionsOpen(true)}
             hasPosition={existingPositions.length > 0}
           />
 
@@ -601,8 +612,8 @@ export default function SwingTradePage() {
             </div>
           )}
 
-          <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-h-[660px] rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.07] dark:bg-slate-950">
+          <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.07] dark:bg-slate-950">
               <SwingPrimaryChart
                 result={result}
                 unified={unified}
@@ -620,7 +631,9 @@ export default function SwingTradePage() {
             />
           </div>
 
-          <SwingBottomTabs
+          <SwingSectionsDrawer
+            open={sectionsOpen}
+            onClose={() => setSectionsOpen(false)}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             result={result}
@@ -632,6 +645,26 @@ export default function SwingTradePage() {
           />
         </main>
       </div>
+
+      {mobileWatchlistOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileWatchlistOpen(false)} />
+          <SwingLeftSidebar
+            ticker={ticker}
+            result={result}
+            loading={loading}
+            inputRef={inputRef}
+            myTickers={myTickers}
+            onTickerChange={value => setUi(cur => ({ ...cur, ticker: value.toUpperCase() }))}
+            onRun={sym => {
+              setMobileWatchlistOpen(false)
+              void runScan(sym)
+            }}
+            onClose={() => setMobileWatchlistOpen(false)}
+            mobileOverlay
+          />
+        </div>
+      )}
 
       {loading && !result && (
         <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-secondary shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
@@ -661,6 +694,7 @@ function SwingLeftSidebar({
   onTickerChange,
   onRun,
   onClose,
+  mobileOverlay = false,
 }: {
   ticker: string
   result: SwingTradeScanResult | null
@@ -670,10 +704,14 @@ function SwingLeftSidebar({
   onTickerChange: (value: string) => void
   onRun: (ticker?: string) => void
   onClose: () => void
+  mobileOverlay?: boolean
 }) {
   return (
-    <aside className="hidden w-80 shrink-0 rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 lg:block">
-      <div className="mb-3 flex items-start justify-between">
+    <aside className={mobileOverlay
+      ? 'absolute left-0 top-0 flex h-full w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950'
+      : 'hidden h-full w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 lg:flex'
+    }>
+      <div className="mb-3 flex shrink-0 items-start justify-between">
         <div>
           <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Swing Workstation</div>
           <div className="mt-1 flex items-center gap-2">
@@ -686,7 +724,7 @@ function SwingLeftSidebar({
         </button>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+      <section className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
         <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Analyze</div>
         <div className="flex gap-2">
           <input
@@ -717,14 +755,14 @@ function SwingLeftSidebar({
         )}
       </section>
 
-      <section className="mt-3">
+      <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Watchlist</div>
           <button type="button" className="text-[10px] font-bold text-violet-600 dark:text-violet-300" onClick={() => window.location.assign(ROUTES.myTickers)}>
             Manage
           </button>
         </div>
-        <div className="max-h-[44vh] space-y-2 overflow-auto">
+        <div className="min-h-0 flex-1 space-y-2 overflow-auto overscroll-contain">
           {myTickers.length ? myTickers.map(item => {
             const selected = item.symbol === result?.ticker
             return (
@@ -758,7 +796,7 @@ function SwingLeftSidebar({
         </div>
       </section>
 
-      <section className="mt-3">
+      <section className="mt-3 shrink-0">
         <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Quick Tickers</div>
         <div className="flex flex-wrap gap-1.5">
           {['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMD', 'META'].map(sym => (
@@ -774,7 +812,7 @@ function SwingLeftSidebar({
         </div>
       </section>
 
-      <section className="mt-3 grid gap-2">
+      <section className="mt-3 grid shrink-0 gap-2">
         <button type="button" onClick={() => window.location.assign(ROUTES.dayTrade)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
           Day Trade Workspace
         </button>
@@ -786,37 +824,84 @@ function SwingLeftSidebar({
   )
 }
 
+function SwingMobileSearchBar({
+  ticker,
+  loading,
+  onTickerChange,
+  onRun,
+  onOpenWatchlist,
+}: {
+  ticker: string
+  loading: boolean
+  onTickerChange: (value: string) => void
+  onRun: (ticker?: string) => void
+  onOpenWatchlist: () => void
+}) {
+  return (
+    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 lg:hidden">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Swing Trade</div>
+          <div className="text-sm font-black text-heading">Analyze Ticker</div>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenWatchlist}
+          className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
+        >
+          <TrendingUp size={14} />
+          Watchlist
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={ticker}
+          onChange={event => onTickerChange(event.target.value)}
+          onKeyDown={event => { if (event.key === 'Enter') onRun() }}
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-base font-black uppercase text-heading outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900"
+          placeholder="AAPL"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label="Analyze ticker"
+        />
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => onRun()}
+          className="rounded-lg bg-violet-600 px-4 py-2 text-white hover:bg-violet-500 disabled:opacity-60"
+          aria-label="Analyze ticker"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search size={16} />}
+        </button>
+      </div>
+    </section>
+  )
+}
+
 function SwingTopBar({
   result,
   unified,
   loading,
   hasPosition,
   onRefresh,
-  onOpenWatchlist,
   onAddToPortfolio,
   onOpenAlert,
   onOpenPreTrade,
+  onOpenSections,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
   loading: boolean
   hasPosition: boolean
   onRefresh: () => void
-  onOpenWatchlist: () => void
   onAddToPortfolio: () => void
   onOpenAlert: () => void
   onOpenPreTrade: () => void
+  onOpenSections: () => void
 }) {
   return (
     <div className="relative mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.08] dark:bg-slate-950">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onOpenWatchlist}
-          className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200 lg:hidden"
-        >
-          Watchlist
-        </button>
         <span className="font-mono text-2xl font-black text-heading">{result?.ticker || '—'}</span>
         <span className="max-w-[340px] truncate text-sm font-semibold text-secondary">{result?.company_name || unified?.company || ''}</span>
         <span className="font-mono text-xl font-black text-heading">{money(latestPrice(result, unified))}</span>
@@ -826,7 +911,11 @@ function SwingTopBar({
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto pb-1">
+        <button type="button" onClick={onOpenSections} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+          <LayoutList size={14} />
+          Sections
+        </button>
         {hasPosition && (
           <button type="button" onClick={() => window.location.assign(ROUTES.positions)} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-700 dark:text-amber-200">
             In Position
@@ -866,7 +955,7 @@ function SwingRightRail({
   const signalQuality = unified?.verdict_presentation?.signal_quality?.label || result?.setup_quality || result?.entry_quality || '—'
   const confidence = unified?.confidence ?? result?.confidence ?? null
   return (
-    <aside className="grid content-start gap-3">
+    <aside className="hidden min-h-0 content-start gap-3 overflow-y-auto overscroll-contain pr-1 xl:grid">
       <RailCard title="Current Decision">
         <div className="flex items-center justify-between gap-2">
           <VerdictPill verdict={unified?.verdict || result?.final_action || result?.verdict} />
@@ -994,7 +1083,7 @@ function SwingPrimaryChart({
 
   if (!points?.length) {
     return (
-      <div className="flex h-[620px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-900/60">
+      <div className="flex h-full min-h-[320px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-900/60">
         Run a swing analysis to load the backend daily chart series.
       </div>
     )
@@ -1096,8 +1185,8 @@ function SwingPrimaryChart({
   }
 
   return (
-    <div className={fullScreen ? 'fixed inset-3 z-50 overflow-auto rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-950' : ''}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className={fullScreen ? 'fixed inset-3 z-50 flex flex-col overflow-hidden rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-950' : 'flex h-full min-h-0 flex-col overflow-hidden'}>
+      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
           <div className="mt-1 text-sm font-semibold text-secondary">
@@ -1160,7 +1249,7 @@ function SwingPrimaryChart({
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-white/[0.07] dark:bg-slate-900/60">
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-white/[0.07] dark:bg-slate-900/60">
         <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
           <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Active</span>
           {activeIndicators.length ? activeIndicators.map(item => (
@@ -1177,7 +1266,7 @@ function SwingPrimaryChart({
             </button>
           )) : <span className="text-[11px] text-tertiary">No optional indicators selected.</span>}
         </div>
-        <svg viewBox={`0 0 ${width} ${height}`} className="block w-full" style={{ height }} role="img" aria-label="Swing trade daily chart" onMouseMove={handleMouseMove} onMouseLeave={() => setCrosshair(null)}>
+        <svg viewBox={`0 0 ${width} ${height}`} className={`${fullScreen ? 'h-[calc(100vh-220px)]' : 'min-h-0 flex-1'} block w-full`} role="img" aria-label="Swing trade daily chart" onMouseMove={handleMouseMove} onMouseLeave={() => setCrosshair(null)}>
           <rect x="0" y="0" width={width} height={height} rx="8" fill="transparent" />
           {[0, 1, 2, 3, 4].map(i => {
             const y = priceTop + i * ((priceBottom - priceTop) / 4)
@@ -1287,7 +1376,7 @@ function SwingPrimaryChart({
           ))}
         </svg>
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-tertiary">
+      <div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] text-tertiary">
         <div className="flex flex-wrap gap-2">
           <span className="font-mono">{visible[0]?.d} → {visible[visible.length - 1]?.d}</span>
           <span>{visible.length} daily bars</span>
@@ -1559,7 +1648,9 @@ function SmallValue({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SwingBottomTabs({
+function SwingSectionsDrawer({
+  open,
+  onClose,
   activeTab,
   setActiveTab,
   result,
@@ -1569,6 +1660,8 @@ function SwingBottomTabs({
   onOpenAlert,
   onSaveJournal,
 }: {
+  open: boolean
+  onClose: () => void
   activeTab: WorkstationTab
   setActiveTab: (tab: WorkstationTab) => void
   result: SwingTradeScanResult | null
@@ -1579,25 +1672,48 @@ function SwingBottomTabs({
   onSaveJournal: () => void
 }) {
   return (
-    <section className="mt-3 rounded-xl border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950">
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07]">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black transition ${
-              activeTab === tab.id
-                ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
-                : 'border-slate-200 text-secondary hover:border-violet-400 dark:border-white/[0.08]'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
+    <div className={`fixed inset-0 z-40 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
+      <div className={`absolute inset-0 bg-slate-950/35 transition-opacity ${open ? 'opacity-100' : 'opacity-0'}`} onClick={onClose} />
+      <section
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[560px] transform flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform dark:border-white/[0.08] dark:bg-slate-950 sm:w-[88vw] ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Swing Trade sections"
+      >
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-4 dark:border-white/[0.08]">
+        <div>
+          <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+            <LayoutList size={14} />
+            Workspace Sections
+          </div>
+          <div className="mt-1 text-lg font-black text-heading">{result?.ticker || 'Swing'} Details</div>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg p-2 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close swing sections">
+          <X size={18} />
+        </button>
       </div>
-      <div className="p-3">
+      <div className="shrink-0 overflow-x-auto border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+        <div className="flex min-w-max gap-2">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black transition ${
+                activeTab === tab.id
+                  ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                  : 'border-slate-200 text-secondary hover:border-violet-400 dark:border-white/[0.08]'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'overview' && <OverviewTab result={result} unified={unified} fibTargets={fibTargets} />}
         {activeTab === 'fibonacci' && <FibonacciTab result={result} fibTargets={fibTargets} />}
         {activeTab === 'options' && <OptionsTab result={result} ocKey={ocKey} />}
@@ -1606,7 +1722,8 @@ function SwingBottomTabs({
         {activeTab === 'journal' && <JournalTab result={result} onSaveJournal={onSaveJournal} />}
         {activeTab === 'alerts' && <AlertsTab result={result} onOpenAlert={onOpenAlert} />}
       </div>
-    </section>
+      </section>
+    </div>
   )
 }
 

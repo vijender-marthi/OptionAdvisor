@@ -594,6 +594,46 @@ export type DayTradeWorkspaceResponse = Omit<
   evidence: ApiSchemas['DayTradeEvidenceItemView'][]
   chart: DayTradeWorkspaceChart
   tabs: Record<string, unknown>
+  trapDetection?: {
+    enabled?: boolean
+    type?: string | null
+    state?: string
+    severity?: string
+    score?: number
+    highestScore?: number
+    threshold?: number
+    criticalThreshold?: number
+    dataCompleteness?: number
+    missingInputs?: string[]
+    break?: Record<string, unknown> | null
+    factors?: Array<{
+      code?: string
+      label?: string
+      description?: string
+      points?: number
+      earnedPoints?: number
+      active?: boolean
+      available?: boolean
+      displayEvidence?: string
+      formula?: string
+      inputs?: Array<{ label?: string; value?: unknown; display?: string; source?: string }>
+      source?: string
+      freshness?: string
+    }>
+    summary?: string
+    positionRisk?: {
+      isHeld?: boolean
+      positionDirection?: string | null
+      isExposedToTrap?: boolean
+      actionLevel?: string
+      message?: string
+      protectiveLevel?: number | null
+      protectiveLevelStatus?: string
+      protectiveLevelBasis?: string | null
+    }
+    resolution?: Record<string, unknown>
+    notification?: Record<string, unknown>
+  } | null
 }
 
 export interface DayTradeWorkspaceQuery {
@@ -667,6 +707,13 @@ function validateDayTradeWorkspaceResponse(value: unknown): asserts value is Day
   requireWorkspaceString(value, 'riskPlan.positionSize.display', missing)
   requireWorkspaceString(value, 'riskPlan.riskReward.display', missing)
   requireWorkspaceArray(value, 'evidence', missing)
+  const trapDetection = readPath(value, 'trapDetection')
+  if (trapDetection !== null && trapDetection !== undefined) {
+    requireWorkspaceRecord(value, 'trapDetection', missing)
+    requireWorkspaceString(value, 'trapDetection.state', missing)
+    requireWorkspaceString(value, 'trapDetection.severity', missing)
+    requireWorkspaceArray(value, 'trapDetection.factors', missing)
+  }
   requireWorkspaceArray(value, 'chart.candles', missing)
   requireWorkspaceArray(value, 'chart.levels', missing)
   requireWorkspaceArray(value, 'chart.events', missing)

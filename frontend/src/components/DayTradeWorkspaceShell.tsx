@@ -1,5 +1,6 @@
 import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { LayoutList, PanelRightOpen, X } from 'lucide-react'
 import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse, DayTradeWorkspaceStatus } from '../api/client'
 import { workspaceToneBadgeClass, workspaceToneTextClass } from '../utils/workspaceTone'
 import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
@@ -12,6 +13,8 @@ type Props = {
 
 export default function DayTradeWorkspaceShell({ workspace, onAction, onIntervalChange }: Props) {
   const action = workspace.decision.primaryAction
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+  const [activeDetailTab, setActiveDetailTab] = useState<string | null>(null)
   const [displayTimeZone, setDisplayTimeZone] = useState(() => {
     try {
       return localStorage.getItem('oa_timezone') || workspace.session.marketTimeZone
@@ -38,14 +41,86 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
   }, [workspace.session.marketTimeZone])
 
   return (
-    <div className="day-trade-workspace-shell min-h-0 rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100">
+    <div className="day-trade-workspace-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100">
       <SessionStatusBar workspace={workspace} displayTimeZone={displayTimeZone} />
-      <TradeDecisionHeader workspace={workspace} action={action} onAction={onAction} />
-      <div className="grid min-h-0 gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <TradeDecisionHeader
+        workspace={workspace}
+        action={action}
+        onAction={onAction}
+        onOpenDetails={() => setDetailDrawerOpen(true)}
+      />
+      <TrapDetectionBanner workspace={workspace} />
+      <div className="grid min-h-0 flex-1 gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px]">
         <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} onIntervalChange={onIntervalChange} />
         <TradeDecisionPanel workspace={workspace} />
       </div>
-      <WorkspaceDetailTabs workspace={workspace} />
+      <WorkspaceDetailDrawer
+        workspace={workspace}
+        open={detailDrawerOpen}
+        activeTab={activeDetailTab}
+        onActiveTabChange={setActiveDetailTab}
+        onClose={() => setDetailDrawerOpen(false)}
+      />
+    </div>
+  )
+}
+
+function trapSeverityClass(severity?: string): string {
+  switch (String(severity || '').toUpperCase()) {
+    case 'CRITICAL':
+    case 'CONFIRMED':
+      return 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-200'
+    case 'WARNING':
+      return 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+    case 'CONTINUATION':
+      return 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+    default:
+      return 'border-slate-200 bg-slate-50 text-secondary dark:border-white/[0.08] dark:bg-slate-900'
+  }
+}
+
+function formatTrapState(value?: string | null): string {
+  return String(value || 'Unavailable').replace(/_/g, ' ')
+}
+
+function TrapDetectionBanner({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+  const trap = workspace.trapDetection
+  if (!trap?.enabled || !trap.state || trap.state === 'NONE') return null
+  const positionRisk = trap.positionRisk
+  const showPrimaryBanner = trap.severity && !['NONE', 'WATCH', 'NEUTRAL'].includes(String(trap.severity).toUpperCase())
+  const showPositionRisk = Boolean(positionRisk?.isExposedToTrap)
+  if (!showPrimaryBanner && !showPositionRisk) return null
+
+  return (
+    <div className="grid gap-2 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07]">
+      {showPrimaryBanner && (
+        <div className={`rounded-xl border px-3 py-2 ${trapSeverityClass(trap.severity)}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-black uppercase tracking-wide">
+              {formatTrapState(trap.type)} Risk {trap.score ?? '—'}
+            </div>
+            <div className="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide">
+              {formatTrapState(trap.state)}
+            </div>
+          </div>
+          {trap.summary && <div className="mt-1 text-xs font-semibold">{trap.summary}</div>}
+          {trap.factors?.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {trap.factors.filter(item => item.active).slice(0, 4).map(item => (
+                <span key={item.code || item.label} className="rounded-full border border-current/25 px-2 py-0.5 text-[10px] font-bold">
+                  {item.label} · +{item.earnedPoints ?? item.points ?? 0}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+      {showPositionRisk && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">
+          <div className="text-[11px] font-black uppercase tracking-widest">Position Exposed To {formatTrapState(trap.type)} Risk</div>
+          <div className="mt-1 font-semibold">{positionRisk?.message || 'Backend position-risk guidance unavailable.'}</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -79,7 +154,17 @@ export function SessionStatusBar({ workspace, displayTimeZone }: { workspace: Da
   )
 }
 
-export function TradeDecisionHeader({ workspace, action, onAction }: { workspace: DayTradeWorkspaceResponse; action: DayTradeWorkspaceAction; onAction?: (action: DayTradeWorkspaceAction) => void }) {
+export function TradeDecisionHeader({
+  workspace,
+  action,
+  onAction,
+  onOpenDetails,
+}: {
+  workspace: DayTradeWorkspaceResponse
+  action: DayTradeWorkspaceAction
+  onAction?: (action: DayTradeWorkspaceAction) => void
+  onOpenDetails?: () => void
+}) {
   const [moreOpen, setMoreOpen] = useState(false)
   const secondaryActions = workspace.decision.secondaryActions || []
   return (
@@ -112,7 +197,18 @@ export function TradeDecisionHeader({ workspace, action, onAction }: { workspace
           </div>
         )}
       </div>
-      <div className="relative flex items-start justify-end gap-2">
+      <div className="relative flex flex-wrap items-start justify-end gap-2">
+        {onOpenDetails && (
+          <button
+            type="button"
+            onClick={onOpenDetails}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+            aria-label="Open workspace sections"
+          >
+            <LayoutList size={16} />
+            Sections
+          </button>
+        )}
         <button
           type="button"
           disabled={!action.enabled}
@@ -171,7 +267,7 @@ export function TradeDecisionHeader({ workspace, action, onAction }: { workspace
 
 export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
   return (
-    <section className="min-h-[700px] rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-xs font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
@@ -183,7 +279,7 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalCh
           {workspace.chart.candles.length} candles · {workspace.chart.levels.length} levels · {workspace.chart.events.length} events
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 min-h-0 flex-1">
         <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} onIntervalChange={onIntervalChange} />
       </div>
     </section>
@@ -192,10 +288,11 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalCh
 
 export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const [trapOpen, setTrapOpen] = useState(false)
   const rrKey = 'risk' + 'Reward'
   const rrValue = workspace.riskPlan[rrKey as keyof typeof workspace.riskPlan] as DayTradeWorkspaceDisplayValue
   return (
-    <aside className="grid content-start gap-3">
+    <aside className="grid max-h-[70vh] content-start gap-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none">
       <Panel title="Current Decision">
         <StatusPill status={workspace.decision.permission} />
         <div className="mt-2 text-sm font-semibold text-heading">{workspace.decision.headline}</div>
@@ -208,11 +305,7 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
             <div className="text-[10px] font-black uppercase tracking-wide text-tertiary">Context</div>
             <StatusPill status={workspace.decision.context} />
           </div>
-          {workspace.decision.nextCondition && (
-            <div className="rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-secondary dark:bg-slate-900">
-              {workspace.decision.nextCondition}
-            </div>
-          )}
+          {/* Trigger requirement intentionally omitted here — shown once in the Trigger panel to avoid duplication. */}
         </div>
       </Panel>
       <Panel title="Market Structure">
@@ -247,12 +340,62 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
           ))}
         </div>
       </Panel>
+      {workspace.trapDetection?.enabled && (
+        <Panel title="Trap Detection">
+          <div className="flex items-center justify-between gap-2">
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${trapSeverityClass(workspace.trapDetection.severity)}`}>
+              {formatTrapState(workspace.trapDetection.state)}
+            </span>
+            <span className="font-mono text-sm font-black text-heading">{workspace.trapDetection.score ?? 0}</span>
+          </div>
+          {workspace.trapDetection.summary && <div className="mt-2 text-xs text-secondary">{workspace.trapDetection.summary}</div>}
+          {workspace.trapDetection.missingInputs?.length ? (
+            <div className="mt-2 rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">
+              Missing: {workspace.trapDetection.missingInputs.join(', ')}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setTrapOpen(cur => !cur)}
+            className="mt-2 flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+            aria-expanded={trapOpen}
+          >
+            <span>{workspace.trapDetection.factors?.length || 0} backend factor{(workspace.trapDetection.factors?.length || 0) === 1 ? '' : 's'}</span>
+            <span>{trapOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {trapOpen && (
+            <div className="mt-2 grid gap-1">
+              {(workspace.trapDetection.factors || []).map(item => (
+                <div key={item.code || item.label} className="rounded-md border border-slate-200 px-2 py-1 text-xs dark:border-white/[0.08]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-secondary">{item.label || item.code || 'Factor'}</span>
+                    <span className={item.active ? 'font-bold text-amber-700 dark:text-amber-200' : 'font-bold text-tertiary'}>
+                      {item.active ? `+${item.earnedPoints ?? item.points ?? 0}` : item.available === false ? 'Unavailable' : 'Inactive'}
+                    </span>
+                  </div>
+                  {item.displayEvidence && <div className="mt-1 text-tertiary">{item.displayEvidence}</div>}
+                  {item.inputs?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {item.inputs.map(input => (
+                        <span key={`${item.code}-${input.label}`} className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] text-tertiary dark:bg-slate-900">
+                          {input.label}: {input.display ?? String(input.value ?? 'unavailable')}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
       <Panel title="Entry / Stop / Targets">
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={workspace.riskPlan.entry.display} />
           <Value label="Stop" value={workspace.riskPlan.stop.display} />
           <Value label="T1" value={workspace.riskPlan.target1.display} />
           <Value label="T2" value={workspace.riskPlan.target2.display} />
+          <Value label="Invalidation" value={(workspace.riskPlan as { invalidation?: DayTradeWorkspaceDisplayValue }).invalidation?.display ?? workspace.riskPlan.stop.display} />
           <Value label="Size" value={workspace.riskPlan.positionSize.display} />
           <Value label="R/R" value={rrValue.display} />
         </div>
@@ -304,15 +447,98 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
   )
 }
 
-export function WorkspaceDetailTabs({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+function orderedWorkspaceTabs(workspace: DayTradeWorkspaceResponse): string[] {
+  const preferred = ['plan', 'options', 'events', 'alerts', 'position', 'journal']
+  const names = Object.keys(workspace.tabs || {})
+  return [
+    ...preferred.filter(name => names.includes(name)),
+    ...names.filter(name => !preferred.includes(name)),
+  ]
+}
+
+export function WorkspaceDetailDrawer({
+  workspace,
+  open,
+  activeTab,
+  onActiveTabChange,
+  onClose,
+}: {
+  workspace: DayTradeWorkspaceResponse
+  open: boolean
+  activeTab: string | null
+  onActiveTabChange: (tab: string | null) => void
+  onClose: () => void
+}) {
   const tabs = useMemo(() => {
-    const preferred = ['plan', 'options', 'events', 'alerts', 'position', 'journal']
-    const names = Object.keys(workspace.tabs || {})
-    return [
-      ...preferred.filter(name => names.includes(name)),
-      ...names.filter(name => !preferred.includes(name)),
-    ]
+    return orderedWorkspaceTabs(workspace)
   }, [workspace.tabs])
+  const resolvedActiveTab = activeTab && tabs.includes(activeTab) ? activeTab : tabs[0] || null
+  const active = resolvedActiveTab && workspace.tabs ? workspace.tabs[resolvedActiveTab] : null
+
+  useEffect(() => {
+    if (open && !activeTab && tabs.length) onActiveTabChange(tabs[0])
+  }, [activeTab, onActiveTabChange, open, tabs])
+
+  if (!tabs.length) {
+    return null
+  }
+
+  return (
+    <div className={`fixed inset-0 z-40 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
+      <div className={`absolute inset-0 bg-slate-950/35 transition-opacity ${open ? 'opacity-100' : 'opacity-0'}`} onClick={onClose} />
+      <aside
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[520px] transform flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform dark:border-white/[0.08] dark:bg-slate-950 sm:w-[88vw] ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Day Trade workspace sections"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-4 dark:border-white/[0.08]">
+          <div>
+            <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+              <PanelRightOpen size={14} />
+              Workspace Sections
+            </div>
+            <div className="mt-1 text-lg font-black text-heading">{workspace.symbol.ticker} Details</div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close workspace sections">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="shrink-0 overflow-x-auto border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+          <div className="flex min-w-max gap-2">
+            {tabs.map(name => {
+              const selected = name === resolvedActiveTab
+              const tab = workspace.tabs[name] as WorkspaceTabPayload | undefined
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => onActiveTabChange(name)}
+                  aria-pressed={selected}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold capitalize transition ${
+                    selected
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                      : 'border-slate-200 text-secondary hover:border-violet-400 dark:border-white/[0.08]'
+                  }`}
+                >
+                  {tab?.title || name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {resolvedActiveTab && <WorkspaceTabPanel name={resolvedActiveTab} payload={active} framed={false} />}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+export function WorkspaceDetailTabs({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+  const tabs = useMemo(() => orderedWorkspaceTabs(workspace), [workspace.tabs])
   const [activeTab, setActiveTab] = useState<string | null>(null)
   const active = activeTab && workspace.tabs ? workspace.tabs[activeTab] : null
 
@@ -368,10 +594,10 @@ function isWorkspaceTabPayload(value: unknown): value is WorkspaceTabPayload {
   return value != null && typeof value === 'object'
 }
 
-function WorkspaceTabPanel({ name, payload }: { name: string; payload: unknown }) {
+function WorkspaceTabPanel({ name, payload, framed = true }: { name: string; payload: unknown; framed?: boolean }) {
   if (!isWorkspaceTabPayload(payload)) {
     return (
-      <div className="px-3 pb-3">
+      <div className={framed ? 'px-3 pb-3' : ''}>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-tertiary dark:border-white/[0.08] dark:bg-slate-900">
           {name} is unavailable in the backend workspace response.
         </div>
@@ -380,7 +606,7 @@ function WorkspaceTabPanel({ name, payload }: { name: string; payload: unknown }
   }
   const items = Array.isArray(payload.items) ? payload.items : []
   return (
-    <div className="px-3 pb-3">
+    <div className={framed ? 'px-3 pb-3' : ''}>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.08] dark:bg-slate-900">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

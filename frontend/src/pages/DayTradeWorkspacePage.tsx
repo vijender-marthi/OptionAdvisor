@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Search, X, Activity } from 'lucide-react'
+import { Bell, BookOpen, BriefcaseBusiness, Loader2, RefreshCw, Search, X, Activity } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { DayTradeWorkspaceAction } from '../api/client'
 import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
@@ -269,20 +269,140 @@ function DayTradeSidebarContent({
         </div>
       </section>
 
-      <section className="mt-3 grid shrink-0 gap-2">
-        <button type="button" onClick={() => navigate(ROUTES.signals)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
-          Ticker Scanner
+    </div>
+  )
+}
+
+const DAY_TRADE_ACTION_LINKS = [
+  { label: 'Ticker Scanner', route: ROUTES.signals, icon: Activity },
+  { label: 'Alerts', route: ROUTES.alerts, icon: Bell },
+  { label: 'Positions', route: ROUTES.positions, icon: BriefcaseBusiness },
+  { label: 'Journal', route: ROUTES.journal, icon: BookOpen },
+]
+
+function DayTradeActionLinks({ navigate, compact = false }: { navigate: (path: string) => void; compact?: boolean }) {
+  return (
+    <div className={`flex ${compact ? 'overflow-x-auto pb-1' : 'flex-wrap justify-end'} gap-2`}>
+      {DAY_TRADE_ACTION_LINKS.map(action => {
+        const Icon = action.icon
+        return (
+          <button
+            key={action.route}
+            type="button"
+            onClick={() => navigate(action.route)}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+          >
+            <Icon size={14} />
+            {action.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function DayTradeMobileSearchBar({
+  tickerInput,
+  setTickerInput,
+  workspaceLoading,
+  loadTicker,
+  onRefresh,
+  onOpenTickers,
+  navigate,
+}: {
+  tickerInput: string
+  setTickerInput: (value: string) => void
+  workspaceLoading: boolean
+  loadTicker: (symbol?: string) => void
+  onRefresh: () => void
+  onOpenTickers: () => void
+  navigate: (path: string) => void
+}) {
+  return (
+    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 lg:hidden">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade</div>
+          <div className="text-sm font-black text-heading">Analyze Ticker</div>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenTickers}
+          className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
+        >
+          <Activity size={14} />
+          My Tickers
         </button>
-        <button type="button" onClick={() => navigate(ROUTES.alerts)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
-          Alerts
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={tickerInput}
+          onChange={event => setTickerInput(event.target.value.toUpperCase())}
+          onKeyDown={event => { if (event.key === 'Enter') loadTicker() }}
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-base font-black uppercase text-heading outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900"
+          placeholder="AAPL"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label="Analyze ticker"
+        />
+        <button
+          type="button"
+          disabled={workspaceLoading}
+          onClick={() => loadTicker()}
+          className="rounded-lg bg-violet-600 px-4 py-2 text-white hover:bg-violet-500 disabled:opacity-60"
+          aria-label="Analyze ticker"
+        >
+          {workspaceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search size={16} />}
         </button>
-        <button type="button" onClick={() => navigate(ROUTES.positions)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
-          Positions Center
+        <button
+          type="button"
+          disabled={workspaceLoading}
+          onClick={onRefresh}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-secondary hover:border-violet-400 disabled:opacity-60 dark:border-white/[0.08]"
+          aria-label="Refresh Day Trade workspace"
+          title="Refresh"
+        >
+          <RefreshCw size={16} className={workspaceLoading ? 'animate-spin' : ''} />
         </button>
-        <button type="button" onClick={() => navigate(ROUTES.journal)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
-          Journal
+      </div>
+      <div className="mt-3">
+        <DayTradeActionLinks navigate={navigate} compact />
+      </div>
+    </section>
+  )
+}
+
+function DayTradeWorkspaceToolbar({
+  symbol,
+  loading,
+  onRefresh,
+  navigate,
+}: {
+  symbol: string
+  loading: boolean
+  onRefresh: () => void
+  navigate: (path: string) => void
+}) {
+  return (
+    <div className="mb-3 hidden items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 lg:flex">
+      <div>
+        <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade Workspace</div>
+        <div className="font-mono text-lg font-black text-heading">{symbol}</div>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <DayTradeActionLinks navigate={navigate} />
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onRefresh}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 disabled:opacity-60 dark:border-white/[0.08]"
+          aria-label="Refresh Day Trade workspace"
+          title="Refresh Day Trade workspace"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          Refresh
         </button>
-      </section>
+      </div>
     </div>
   )
 }
@@ -535,9 +655,9 @@ export default function DayTradeWorkspacePage() {
   const workspaceLoading = workspaceState.loading && !workspaceState.data
 
   return (
-    <div className="day-trade-page min-h-screen bg-surface-page p-3 text-primary">
-      <div className="mx-auto flex max-w-[1920px] gap-3">
-        <aside className="hidden w-80 shrink-0 lg:block">
+    <div className="day-trade-page min-h-0 flex-1 overflow-hidden bg-surface-page p-3 text-primary">
+      <div className="mx-auto flex h-full max-w-[1920px] gap-3 overflow-hidden">
+        <aside className="hidden h-full w-80 shrink-0 overflow-y-auto overscroll-contain lg:block">
           <DayTradeSidebarContent
             tickerInput={tickerInput}
             setTickerInput={setTickerInput}
@@ -562,7 +682,7 @@ export default function DayTradeWorkspacePage() {
         {mobileSidebarOpen && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobileSidebarOpen(false)} />
-            <aside className="absolute left-0 top-0 h-full w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
+            <aside className="absolute left-0 top-0 h-full w-80 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
               <DayTradeSidebarContent
                 tickerInput={tickerInput}
                 setTickerInput={setTickerInput}
@@ -588,7 +708,24 @@ export default function DayTradeWorkspacePage() {
           </div>
         )}
 
-        <main className="min-w-0 flex-1">
+        <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+          <DayTradeMobileSearchBar
+            tickerInput={tickerInput}
+            setTickerInput={setTickerInput}
+            workspaceLoading={workspaceLoading}
+            loadTicker={loadTicker}
+            onRefresh={() => void workspaceState.reload()}
+            onOpenTickers={() => setMobileSidebarOpen(true)}
+            navigate={navigate}
+          />
+
+          <DayTradeWorkspaceToolbar
+            symbol={symbol}
+            loading={workspaceState.loading}
+            onRefresh={() => void workspaceState.reload()}
+            navigate={navigate}
+          />
+
           {notice && (
             <div className="mb-3 rounded-xl border border-semantic-info-border bg-semantic-info-bg px-4 py-3 text-sm text-semantic-info">
               {notice}
@@ -605,12 +742,12 @@ export default function DayTradeWorkspacePage() {
           )}
 
           {workspaceState.loading && !workspaceState.data ? (
-            <div className="flex min-h-[680px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading backend workspace...
             </div>
           ) : workspaceState.error ? (
-            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-700 dark:text-red-200">
+            <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-700 dark:text-red-200">
               <div className="font-bold">Workspace unavailable</div>
               <p className="mt-1">{workspaceState.error}</p>
               <button type="button" onClick={() => void workspaceState.reload()} className="mt-4 rounded-lg border border-red-500/30 px-3 py-2 text-xs font-semibold hover:bg-red-500/10">
@@ -618,22 +755,14 @@ export default function DayTradeWorkspacePage() {
               </button>
             </div>
           ) : workspaceState.data ? (
-            <DayTradeWorkspaceShell workspace={workspaceState.data} onAction={handleWorkspaceAction} onIntervalChange={handleIntervalChange} />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <DayTradeWorkspaceShell workspace={workspaceState.data} onAction={handleWorkspaceAction} onIntervalChange={handleIntervalChange} />
+            </div>
           ) : (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
+            <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white p-6 text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">
               Enter a ticker to load the backend Day Trade workspace.
             </div>
           )}
-
-          {/* Mobile sidebar trigger */}
-          <button
-            type="button"
-            onClick={() => setMobileSidebarOpen(true)}
-            className="fixed bottom-4 left-4 z-30 flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-xs font-black text-violet-700 shadow-xl dark:text-violet-200 lg:hidden"
-          >
-            <Activity size={16} />
-            My Tickers
-          </button>
         </main>
       </div>
 

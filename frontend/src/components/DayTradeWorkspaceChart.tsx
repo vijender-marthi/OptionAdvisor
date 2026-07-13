@@ -283,7 +283,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   if (!chart.candles.length) {
     const dataEvent = chart.events.find(event => event.eventType === 'data_error') || chart.events[0]
     return (
-      <div className="flex h-[620px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-6 text-center text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-950/50">
+      <div className="flex h-full min-h-[320px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-6 text-center text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-950/50">
         <div className="max-w-xl">
           <div className="text-xs font-black uppercase tracking-widest text-tertiary">Chart Data Unavailable</div>
           <div className="mt-2 text-base font-bold text-heading">{dataEvent?.title || 'No backend chart candles available'}</div>
@@ -296,8 +296,8 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   }
 
   return (
-    <div className={`${fullscreen ? 'fixed inset-3 z-50 overflow-auto bg-white p-3 dark:bg-slate-950' : ''}`}>
-    <div className="rounded-lg border border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950/50">
+    <div className={`${fullscreen ? 'fixed inset-3 z-50 overflow-auto bg-white p-3 dark:bg-slate-950' : 'h-full min-h-0'}`}>
+    <div className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950/50">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 text-xs dark:border-white/[0.08]">
         <div className="flex flex-wrap items-center gap-2 font-semibold text-secondary">
           <div className="flex overflow-hidden rounded-md border border-slate-200 dark:border-white/[0.08]" aria-label="Chart interval">
@@ -391,7 +391,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
         aria-label="Backend provided Day Trade workspace chart"
-        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'h-[620px]'} w-full`}
+        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'min-h-0 flex-1'} w-full`}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setCrosshair(null)}
       >

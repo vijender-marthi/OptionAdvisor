@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from day_trade_trap_detection import build_trap_detection_from_metrics
+
 
 DAY_TRADE_WORKSPACE_SCHEMA_VERSION = "day-trade-workspace.v1"
 
@@ -676,12 +678,96 @@ def _level(level_id: str, kind: str, price: Any, label: str, tone: str, priority
     }
 
 
-def _chart_levels(metrics: dict[str, Any], entry_guidance: dict[str, Any]) -> list[dict[str, Any]]:
+def _day_trade_risk_levels(
+    metrics: dict[str, Any],
+    entry_guidance: dict[str, Any],
+    resolved: dict[str, Any],
+    final_decision: str,
+) -> dict[str, Any]:
+    """Direction-aware structural trade levels for the opening-range Day Trade model.
+
+    Entry is the breakout/breakdown trigger (ORH/ORL) rather than the live price,
+    and the stop is the structural invalidation (VWAP reclaim, else OR Mid) rather
+    than the far opening-range extreme — keeping risk/reward sane. Explicit upstream
+    entry_guidance.entry_price is honoured when present.
+    """
+    or_high = _num(metrics.get("or_high"))
+    or_low = _num(metrics.get("or_low"))
+    vwap = _num(metrics.get("vwap"))
+    last = _num(metrics.get("last_price"))
+    or_mid = (or_high + or_low) / 2.0 if (or_high is not None and or_low is not None) else None
+    rng = (or_high - or_low) if (or_high is not None and or_low is not None and or_high >= or_low) else None
+
+    fd = str(final_decision or "").upper()
+    bias = str(resolved.get("market_bias") or metrics.get("market_bias") or "").upper()
+    setup = str(metrics.get("trigger_setup") or metrics.get("opening_playbook") or "").upper()
+    bearish = any(t in fd for t in ("PUT", "SHORT")) or "BEAR" in bias or "ORL" in setup or "BREAKDOWN" in setup
+    bullish = any(t in fd for t in ("CALL", "LONG")) or "BULL" in bias or "ORH" in setup or "BREAKOUT" in setup
+    if bullish and bearish:
+        bearish = bullish = False
+    if not bullish and not bearish and last is not None and vwap is not None:
+        bearish = last < vwap
+        bullish = not bearish
+
+    struct_entry = struct_stop = struct_t1 = struct_t2 = None
+    if bearish and or_low is not None:
+        struct_entry = or_low
+        struct_stop = or_mid if or_mid is not None else or_high
+        if vwap is not None and struct_stop is not None and struct_entry < vwap < struct_stop:
+            struct_stop = vwap  # VWAP reclaim is the tighter, thesis-aligned invalidation
+        if rng is not None:
+            struct_t1 = or_low - 0.5 * rng
+            struct_t2 = or_low - rng
+    elif bullish and or_high is not None:
+        struct_entry = or_high
+        struct_stop = or_mid if or_mid is not None else or_low
+        if vwap is not None and struct_stop is not None and struct_stop < vwap < struct_entry:
+            struct_stop = vwap
+        if rng is not None:
+            struct_t1 = or_high + 0.5 * rng
+            struct_t2 = or_high + rng
+
+    entry = _num(entry_guidance.get("entry_price")) or struct_entry or _num(entry_guidance.get("current_price")) or last
+    stop = struct_stop if struct_stop is not None else (_num(entry_guidance.get("stop_price")) or _num(entry_guidance.get("risk_below")))
+
+    def _directional_target(value: float | None, fallback: float | None) -> float | None:
+        # A valid target must sit beyond entry in the trade direction; a degenerate
+        # upstream target (equal to or on the wrong side of entry) is rejected in
+        # favour of the structural target so reward/R:R never collapses to zero.
+        if value is not None and entry is not None:
+            if (bearish and value < entry - 1e-6) or (bullish and value > entry + 1e-6):
+                return value
+        return fallback
+
+    t1 = _directional_target(_num(entry_guidance.get("scalp_target")) or _num(entry_guidance.get("target_1")), struct_t1)
+    t2 = _directional_target(_num(entry_guidance.get("target_2")), struct_t2)
+
+    rr: float | None = None
+    if entry is not None and stop is not None and t1 is not None:
+        risk = abs(entry - stop)
+        if risk > 1e-9:
+            rr = round(abs(t1 - entry) / risk, 2)
+
+    return {
+        "entry": round(entry, 4) if entry is not None else None,
+        "stop": round(stop, 4) if stop is not None else None,
+        "t1": round(t1, 4) if t1 is not None else None,
+        "t2": round(t2, 4) if t2 is not None else None,
+        "invalidation": round(stop, 4) if stop is not None else None,
+        "direction": "bearish" if bearish else "bullish" if bullish else "neutral",
+        "rr": rr,
+    }
+
+
+def _chart_levels(metrics: dict[str, Any], entry_guidance: dict[str, Any], risk_levels: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    risk_levels = risk_levels or {}
+    entry_val = risk_levels.get("entry") if risk_levels.get("entry") is not None else (entry_guidance.get("entry_price") or entry_guidance.get("current_price") or metrics.get("last_price"))
+    stop_val = risk_levels.get("stop") if risk_levels.get("stop") is not None else (entry_guidance.get("stop_price") or entry_guidance.get("risk_below"))
     levels = [
-        _level("entry", "entry", entry_guidance.get("entry_price") or entry_guidance.get("current_price") or metrics.get("last_price"), "Entry", "positive", 10),
-        _level("stop", "stop", entry_guidance.get("stop_price") or entry_guidance.get("risk_below"), "Stop", "danger", 20),
-        _level("target1", "target", entry_guidance.get("scalp_target") or entry_guidance.get("target_1"), "T1", "positive", 30),
-        _level("target2", "target", entry_guidance.get("target_2"), "T2", "positive", 40),
+        _level("entry", "entry", entry_val, "Entry", "positive", 10),
+        _level("stop", "stop", stop_val, "Stop", "danger", 20),
+        _level("target1", "target", risk_levels.get("t1") if risk_levels.get("t1") is not None else (entry_guidance.get("scalp_target") or entry_guidance.get("target_1")), "T1", "positive", 30),
+        _level("target2", "target", risk_levels.get("t2") if risk_levels.get("t2") is not None else entry_guidance.get("target_2"), "T2", "positive", 40),
         _level("or_high", "or_high", metrics.get("or_high"), "ORH", "info", 60),
         _level("or_low", "or_low", metrics.get("or_low"), "ORL", "info", 70),
     ]
@@ -829,16 +915,24 @@ def build_day_trade_workspace_response(
         resolved=resolved,
         entry_guidance=entry_guidance,
     )
-    entry = entry_guidance.get("entry_price") or entry_guidance.get("current_price") or metrics.get("last_price")
-    stop = entry_guidance.get("stop_price") or entry_guidance.get("risk_below")
-    target1 = entry_guidance.get("scalp_target") or entry_guidance.get("target_1")
-    target2 = entry_guidance.get("target_2")
+    risk_levels = _day_trade_risk_levels(metrics, entry_guidance, resolved, final_decision)
+    entry = risk_levels.get("entry")
+    stop = risk_levels.get("stop")
+    target1 = risk_levels.get("t1")
+    target2 = risk_levels.get("t2")
     raw_chart_bars = _as_list(metrics.get("chart_bars"))
     market_structure = _market_structure(raw_chart_bars, metrics)
+    five_minute_bars = _five_minute_bars_for_structure(raw_chart_bars)
+    trap_detection = build_trap_detection_from_metrics(
+        ticker=symbol,
+        metrics=metrics,
+        five_minute_bars=five_minute_bars,
+        market_structure=market_structure,
+    )
     chart_bars = _interval_chart_bars(raw_chart_bars, interval)
     candles = _chart_candles(chart_bars)
     vwap_overlay = _vwap_overlay(chart_bars, metrics, session_date)
-    levels = _chart_levels(metrics, entry_guidance)
+    levels = _chart_levels(metrics, entry_guidance, risk_levels)
     events: list[dict[str, Any]] = []
     scale_level_ids = [level["id"] for level in levels if level.get("affectsTradeFocusScale")]
     reason = str(resolved.get("reason") or trader_decision.get("decision_message") or (getattr(scan, "reasons", []) or [""])[0] or "Backend workspace assembled from the current Day Trade scan.")
@@ -850,13 +944,15 @@ def build_day_trade_workspace_response(
         "summary": str(metrics.get("trigger_requirement") or "Backend trigger requirement is pending."),
         "requirements": _requirements(metrics),
     }
+    computed_rr = f"{risk_levels['rr']:.2f}:1" if risk_levels.get("rr") else None
     risk_plan = {
         "entry": _display_money(entry),
         "stop": _display_money(stop),
         "target1": _display_money(target1),
         "target2": _display_money(target2),
+        "invalidation": _display_money(risk_levels.get("invalidation")),
         "positionSize": _display_text(option_risk.get("recommended_contracts") or "1 contract max"),
-        "riskReward": _display_text(entry_guidance.get("rr_ratio") or entry_guidance.get("risk_reward") or "—"),
+        "riskReward": _display_text(entry_guidance.get("rr_ratio") or entry_guidance.get("risk_reward") or computed_rr or "—"),
     }
 
     return {
@@ -894,6 +990,7 @@ def build_day_trade_workspace_response(
         "riskPlan": risk_plan,
         "evidence": _evidence(scan, resolved, metrics),
         "selectedContract": None,
+        "trapDetection": trap_detection,
         "chart": {
             "candles": candles,
             "levels": levels,
@@ -1057,6 +1154,27 @@ def build_day_trade_workspace_unavailable_response(
             }
         ],
         "selectedContract": None,
+        "trapDetection": {
+            "enabled": True,
+            "type": None,
+            "state": "NONE",
+            "severity": "NONE",
+            "score": 0,
+            "highestScore": 0,
+            "threshold": 60,
+            "criticalThreshold": 80,
+            "availablePoints": 0,
+            "earnedPoints": 0,
+            "normalizedScore": None,
+            "dataCompleteness": 0.0,
+            "missingInputs": ["market data"],
+            "break": None,
+            "factors": [],
+            "summary": f"Trap detection unavailable: {clean_reason}",
+            "positionRisk": {"isHeld": False, "isExposedToTrap": False, "actionLevel": "NONE"},
+            "resolution": {"status": "NONE", "deadlineBars": 6, "barsElapsed": 0, "resolvedAt": None, "resolutionType": None},
+            "notification": {"eligible": False, "reason": "DATA_UNAVAILABLE", "dedupeKey": None, "priority": "none"},
+        },
         "chart": {
             "candles": [],
             "levels": levels,
