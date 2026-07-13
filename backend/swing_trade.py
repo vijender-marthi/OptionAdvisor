@@ -1931,7 +1931,54 @@ def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> d
               out.append(dated)
           return out
 
+      def provisional_trailing_pivot(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+          if not items:
+              return None
+          last = items[-1]
+          last_index = last.get("index")
+          last_kind = last.get("kind")
+          if not isinstance(last_index, int) or last_index >= len(clean.index) - 1:
+              return None
+          next_kind = "L" if last_kind == "H" else "H"
+          trailing = clean.iloc[last_index + 1:]
+          if trailing.empty:
+              return None
+          if next_kind == "L":
+              idx_label = trailing["Low"].astype(float).idxmin()
+              price = float(trailing.loc[idx_label, "Low"])
+          else:
+              idx_label = trailing["High"].astype(float).idxmax()
+              price = float(trailing.loc[idx_label, "High"])
+          index = int(clean.index.get_loc(idx_label))
+          previous_same = next((item for item in reversed(items) if item.get("kind") == next_kind and isinstance(item.get("price"), (int, float))), None)
+          prior_price = float(previous_same["price"]) if previous_same else None
+          tolerance = max(0.01, abs(prior_price or price) * 0.0015)
+          if prior_price is None:
+              label = f"{next_kind}?"
+          elif abs(price - prior_price) <= tolerance:
+              label = "EQL?" if next_kind == "L" else "EQH?"
+          elif next_kind == "L":
+              label = "HL?" if price > prior_price else "LL?"
+          else:
+              label = "HH?" if price > prior_price else "LH?"
+          ts = clean.index[index]
+          return {
+              "type": "HIGH" if next_kind == "H" else "LOW",
+              "kind": next_kind,
+              "label": label,
+              "price": round(price, 2),
+              "index": index,
+              "confirmed": False,
+              "status": "PROVISIONAL",
+              "date": str(ts.date()) if hasattr(ts, "date") else str(pd.Timestamp(ts).date()),
+          }
+
       structure["pivots"] = add_dates(list(structure.get("pivots") or []))[-max_pivots:]
+      chart_pivots = add_dates(list(structure.get("chart_pivots") or structure.get("all_pivots") or []))
+      trailing_pivot = provisional_trailing_pivot(chart_pivots)
+      if trailing_pivot and (not chart_pivots or trailing_pivot.get("index") != chart_pivots[-1].get("index")):
+          chart_pivots.append(trailing_pivot)
+      structure["chart_pivots"] = chart_pivots[-max_pivots:]
       structure["all_pivots"] = add_dates(list(structure.get("all_pivots") or []))[-max_pivots:]
       return structure
     except Exception as exc:

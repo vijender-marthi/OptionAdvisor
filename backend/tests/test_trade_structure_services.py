@@ -34,6 +34,17 @@ class TradeStructureServiceTests(unittest.TestCase):
         self.assertEqual(result["state"], "Bearish Continuation")
         self.assertEqual(result["sequence"], ["LH", "LL", "LH", "LL"])
 
+    def test_chart_pivots_keep_backend_validated_h_l_context(self):
+        pivots = [
+            Pivot("H", 1, 100),
+            Pivot("L", 2, 95),
+            Pivot("H", 3, 100),
+            Pivot("L", 4, 96),
+        ]
+        result = classify_structure(pivots)
+        self.assertEqual(result["sequence"], ["LH", "HL"])
+        self.assertEqual([p["label"] for p in result["chart_pivots"]], ["H", "L", "LH", "HL"])
+
     def test_first_bounce_after_ll_is_not_hh(self):
         pivots = label_pivots([
             Pivot("H", 1, 14),

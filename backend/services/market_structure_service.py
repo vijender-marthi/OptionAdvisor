@@ -175,6 +175,7 @@ def classify_structure(pivots: list[Pivot]) -> dict[str, Any]:
         "bias": bias,
         "story": _story(state, seq, validated),
         "pivots": [_pivot_dict(p) for p in classified],
+        "chart_pivots": [_pivot_dict(p) for p in validated],
         "all_pivots": [_pivot_dict(p) for p in validated],
         "validation": validations,
         "debug": {

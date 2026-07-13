@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MouseEvent, ReactNode } from 'react'
+import type { MouseEvent, PointerEvent, ReactNode, WheelEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Activity,
@@ -89,6 +89,7 @@ type SwingStructurePivot = {
   price?: number | null
   date?: string | null
   confirmed?: boolean
+  status?: string | null
 }
 
 const TABS: Array<{ id: WorkstationTab; label: string; icon: ReactNode }> = [
@@ -201,7 +202,13 @@ function hasBackendValue(...values: unknown[]): boolean {
 
 function backendStructurePivots(metrics: Record<string, unknown> | undefined): SwingStructurePivot[] {
   const structure = isRecord(metrics?.market_structure) ? metrics.market_structure : null
-  const raw = Array.isArray(structure?.pivots) ? structure.pivots : []
+  const raw = Array.isArray(structure?.chart_pivots)
+    ? structure.chart_pivots
+    : Array.isArray(structure?.all_pivots)
+      ? structure.all_pivots
+      : Array.isArray(structure?.pivots)
+        ? structure.pivots
+        : []
   return raw
     .filter(isRecord)
     .map(pivot => ({
@@ -209,8 +216,9 @@ function backendStructurePivots(metrics: Record<string, unknown> | undefined): S
       price: num(pivot.price),
       date: text(pivot.date),
       confirmed: pivot.confirmed !== false,
+      status: text(pivot.status),
     }))
-    .filter(pivot => pivot.confirmed && pivot.price != null && pivot.date)
+    .filter(pivot => pivot.price != null && pivot.date && (pivot.confirmed || pivot.status === 'PROVISIONAL'))
 }
 
 function loadIndicatorSelection(defaultIds: string[]): { preset: IndicatorPresetId; ids: string[] } {
@@ -967,6 +975,10 @@ function SwingRightRail({
   const exec = getExec(result)
   const spread = getSpread(result, unified)
   const metrics = result?.metrics as Record<string, unknown> | undefined
+  const marketStructure = isRecord(metrics?.market_structure) ? metrics.market_structure : null
+  const marketStructureSequence = Array.isArray(marketStructure?.sequence)
+    ? marketStructure.sequence.map(item => String(item)).filter(Boolean).join(' -> ')
+    : ''
   const signalQuality = unified?.verdict_presentation?.signal_quality?.label || result?.setup_quality || result?.entry_quality || '—'
   const confidence = unified?.confidence ?? result?.confidence ?? null
   return (
@@ -988,7 +1000,7 @@ function SwingRightRail({
       <RailCard title="Market Structure">
         <div className="grid gap-2">
           <Value label="Trend" value={compactLabel(text(metrics?.trend_direction) || result?.swing_bias || result?.bias)} />
-          <Value label="Sequence" value="Confirmed pivot sequence not returned by backend" muted />
+          <Value label="Sequence" value={compactLabel(text(marketStructure?.display) || marketStructureSequence)} muted={!text(marketStructure?.display) && !marketStructureSequence} />
           <Value label="Current" value={compactLabel(unified?.structure || text(metrics?.trend_stage))} />
           <Value label="Expected Next" value={compactLabel(text(metrics?.preferred_entry_trigger) || text(metrics?.entry_quality_label) || result?.entry_quality)} />
           <Value label="Invalidation" value={money(exec.stop ?? unified?.stop_price)} />
@@ -1074,6 +1086,7 @@ function SwingPrimaryChart({
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelection.ids)
   const [fullScreen, setFullScreen] = useState(false)
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
+  const dragRef = useRef<{ pointerId: number; startX: number } | null>(null)
   const availableIds = useMemo(() => new Set(framework.catalog.filter(item => item.available).map(item => item.id)), [framework.catalog])
   const indicatorById = useMemo(() => new Map(framework.catalog.map(item => [item.id, item])), [framework.catalog])
   const activeIds = useMemo(() => new Set(selectedIds.filter(id => availableIds.has(id) || id === 'candles')), [selectedIds, availableIds])
@@ -1178,7 +1191,11 @@ function SwingPrimaryChart({
     ? visible[Math.max(0, Math.min(visible.length - 1, Math.round(crosshair.x / Math.max(1, xStep) - 0.5)))]
     : null
   const zoom = (dir: 'in' | 'out') => setVisibleBars(cur => Math.max(20, Math.min(points.length, cur + (dir === 'in' ? -16 : 16))))
-  const pan = (dir: 'left' | 'right') => setEndIndex(cur => Math.max(visibleBars, Math.min(points.length, (cur || points.length) + (dir === 'left' ? -12 : 12))))
+  const panByBars = (bars: number) => {
+    if (!bars) return
+    setEndIndex(cur => Math.max(visibleBars, Math.min(points.length, (cur || points.length) + bars)))
+  }
+  const pan = (dir: 'left' | 'right') => panByBars(dir === 'left' ? -12 : 12)
   const resetView = () => {
     setVisibleBars(Math.min(80, Math.max(20, points.length)))
     setEndIndex(points.length)
@@ -1207,6 +1224,38 @@ function SwingPrimaryChart({
       x: ((event.clientX - rect.left) / rect.width) * width,
       y: ((event.clientY - rect.top) / rect.height) * height,
     })
+  }
+  const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
+    const horizontalIntent = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    if (horizontalIntent) {
+      const wheelMove = event.deltaX || event.deltaY
+      const step = Math.max(1, Math.round(visibleBars * 0.08))
+      panByBars(Math.sign(wheelMove) * step)
+      return
+    }
+    zoom(event.deltaY < 0 ? 'in' : 'out')
+  }
+  const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (!rect.width) return
+    const pixelsPerBar = rect.width / Math.max(1, visibleBars)
+    const movedBars = Math.trunc((event.clientX - drag.startX) / Math.max(4, pixelsPerBar))
+    if (!movedBars) return
+    panByBars(-movedBars)
+    dragRef.current = { ...drag, startX: event.clientX }
+  }
+  const stopDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      dragRef.current = null
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    }
   }
 
   return (
@@ -1291,7 +1340,22 @@ function SwingPrimaryChart({
             </button>
           )) : <span className="text-[11px] text-tertiary">No optional indicators selected.</span>}
         </div>
-        <svg viewBox={`0 0 ${width} ${height}`} className={`${fullScreen ? 'h-[calc(100vh-220px)]' : 'min-h-0 flex-1'} block w-full`} role="img" aria-label="Swing trade daily chart" onMouseMove={handleMouseMove} onMouseLeave={() => setCrosshair(null)}>
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className={`${fullScreen ? 'h-[calc(100vh-220px)]' : 'min-h-0 flex-1'} block w-full cursor-grab select-none md:touch-none`}
+          role="img"
+          aria-label="Swing trade daily chart"
+          onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={stopDrag}
+          onPointerCancel={stopDrag}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => {
+            dragRef.current = null
+            setCrosshair(null)
+          }}
+        >
           <rect x="0" y="0" width={width} height={height} rx="8" fill="transparent" />
           {[0, 1, 2, 3, 4].map(i => {
             const y = priceTop + i * ((priceBottom - priceTop) / 4)
@@ -1361,13 +1425,14 @@ function SwingPrimaryChart({
               />
               {structurePivots.map((pivot, index) => {
                 const label = pivot.label || 'Pivot'
+                const provisional = pivot.status === 'PROVISIONAL' || pivot.confirmed === false || label.endsWith('?')
                 const labelWidth = label.length > 2 ? 54 : 32
                 const yOffset = label.includes('H') ? -18 : 18
                 const chipY = Math.max(8, Math.min(priceBottom - 26, pivot.y + yOffset))
                 return (
                   <g key={`${pivot.date}-${label}-${index}`}>
-                    <circle cx={pivot.x} cy={pivot.y} r="4.2" fill={structureColor} stroke="rgba(15,23,42,0.95)" strokeWidth="1.5" />
-                    <rect x={pivot.x - labelWidth / 2} y={chipY - 9} width={labelWidth} height="18" rx="6" fill="rgba(15,23,42,0.88)" stroke={structureColor} strokeWidth="1" />
+                    <circle cx={pivot.x} cy={pivot.y} r="4.2" fill={provisional ? 'transparent' : structureColor} stroke={structureColor} strokeWidth={provisional ? '2' : '1.5'} strokeDasharray={provisional ? '2 2' : undefined} />
+                    <rect x={pivot.x - labelWidth / 2} y={chipY - 9} width={labelWidth} height="18" rx="6" fill="rgba(15,23,42,0.88)" stroke={structureColor} strokeWidth="1" strokeDasharray={provisional ? '2 2' : undefined} />
                     <text x={pivot.x} y={chipY + 4} textAnchor="middle" fill={structureColor} className="text-[10px] font-black">
                       {index === structurePivots.length - 1 ? `Current ${label}` : label}
                     </text>
