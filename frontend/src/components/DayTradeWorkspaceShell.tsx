@@ -1,7 +1,14 @@
 import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { LayoutList, PanelRightOpen, X } from 'lucide-react'
-import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse, DayTradeWorkspaceStatus } from '../api/client'
+import type {
+  DayTradeRiskMonitorFactor,
+  DayTradeRiskMonitorItem,
+  DayTradeWorkspaceAction,
+  DayTradeWorkspaceDisplayValue,
+  DayTradeWorkspaceResponse,
+  DayTradeWorkspaceStatus,
+} from '../api/client'
 import { workspaceToneBadgeClass, workspaceToneTextClass } from '../utils/workspaceTone'
 import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
 
@@ -41,7 +48,7 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
   }, [workspace.session.marketTimeZone])
 
   return (
-    <div className="day-trade-workspace-shell relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100">
+    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full">
       <SessionStatusBar workspace={workspace} displayTimeZone={displayTimeZone} />
       <TradeDecisionHeader
         workspace={workspace}
@@ -49,8 +56,7 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
         onAction={onAction}
         onOpenDetails={() => setDetailDrawerOpen(true)}
       />
-      <TrapDetectionBanner workspace={workspace} />
-      <div className="grid min-h-0 flex-1 gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-h-0 flex-1 gap-3 p-3 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} onIntervalChange={onIntervalChange} />
         <TradeDecisionPanel workspace={workspace} />
       </div>
@@ -61,66 +67,6 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
         onActiveTabChange={setActiveDetailTab}
         onClose={() => setDetailDrawerOpen(false)}
       />
-    </div>
-  )
-}
-
-function trapSeverityClass(severity?: string): string {
-  switch (String(severity || '').toUpperCase()) {
-    case 'CRITICAL':
-    case 'CONFIRMED':
-      return 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-200'
-    case 'WARNING':
-      return 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200'
-    case 'CONTINUATION':
-      return 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200'
-    default:
-      return 'border-slate-200 bg-slate-50 text-secondary dark:border-white/[0.08] dark:bg-slate-900'
-  }
-}
-
-function formatTrapState(value?: string | null): string {
-  return String(value || 'Unavailable').replace(/_/g, ' ')
-}
-
-function TrapDetectionBanner({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
-  const trap = workspace.trapDetection
-  if (!trap?.enabled || !trap.state || trap.state === 'NONE') return null
-  const positionRisk = trap.positionRisk
-  const showPrimaryBanner = trap.severity && !['NONE', 'WATCH', 'NEUTRAL'].includes(String(trap.severity).toUpperCase())
-  const showPositionRisk = Boolean(positionRisk?.isExposedToTrap)
-  if (!showPrimaryBanner && !showPositionRisk) return null
-
-  return (
-    <div className="grid gap-2 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07]">
-      {showPrimaryBanner && (
-        <div className={`rounded-xl border px-3 py-2 ${trapSeverityClass(trap.severity)}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-black uppercase tracking-wide">
-              {formatTrapState(trap.type)} Risk {trap.score ?? '—'}
-            </div>
-            <div className="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide">
-              {formatTrapState(trap.state)}
-            </div>
-          </div>
-          {trap.summary && <div className="mt-1 text-xs font-semibold">{trap.summary}</div>}
-          {trap.factors?.length ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {trap.factors.filter(item => item.active).slice(0, 4).map(item => (
-                <span key={item.code || item.label} className="rounded-full border border-current/25 px-2 py-0.5 text-[10px] font-bold">
-                  {item.label} · +{item.earnedPoints ?? item.points ?? 0}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      )}
-      {showPositionRisk && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">
-          <div className="text-[11px] font-black uppercase tracking-widest">Position Exposed To {formatTrapState(trap.type)} Risk</div>
-          <div className="mt-1 font-semibold">{positionRisk?.message || 'Backend position-risk guidance unavailable.'}</div>
-        </div>
-      )}
     </div>
   )
 }
@@ -168,14 +114,12 @@ export function TradeDecisionHeader({
   const [moreOpen, setMoreOpen] = useState(false)
   const secondaryActions = workspace.decision.secondaryActions || []
   return (
-    <div className="grid gap-3 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07] lg:grid-cols-[minmax(220px,320px)_minmax(0,1fr)_auto]">
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-2xl font-black text-heading">{workspace.symbol.ticker}</span>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07]">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xl font-black text-heading">{workspace.symbol.ticker}</span>
           <span className="truncate text-sm font-semibold text-secondary">{workspace.symbol.companyName}</span>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xl font-black text-heading">{workspace.symbol.price.display}</span>
+          <span className="font-mono text-lg font-black text-heading">{workspace.symbol.price.display}</span>
           <span className={`font-mono text-sm font-bold ${workspaceToneTextClass(workspace.symbol.change.tone || 'neutral')}`}>{workspace.symbol.change.display}</span>
           {workspace.chart.marketStructure && (
             <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
@@ -184,25 +128,14 @@ export function TradeDecisionHeader({
           )}
         </div>
       </div>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill status={workspace.decision.context} />
-          <StatusPill status={workspace.decision.permission} />
-        </div>
-        <div className="mt-1 text-lg font-black text-heading">{workspace.decision.headline}</div>
-        <div className="mt-1 line-clamp-2 text-sm text-secondary">{workspace.decision.reason}</div>
-        {workspace.decision.nextCondition && (
-          <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-secondary dark:border-white/[0.07] dark:bg-slate-900">
-            {workspace.decision.nextCondition}
-          </div>
-        )}
-      </div>
-      <div className="relative flex flex-wrap items-start justify-end gap-2">
+      <div className="relative -mx-1 flex w-full flex-nowrap items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible sm:p-0">
+        <StatusPill status={workspace.decision.context} />
+        <StatusPill status={workspace.decision.permission} />
         {onOpenDetails && (
           <button
             type="button"
             onClick={onOpenDetails}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
             aria-label="Open workspace sections"
           >
             <LayoutList size={16} />
@@ -213,7 +146,7 @@ export function TradeDecisionHeader({
           type="button"
           disabled={!action.enabled}
           onClick={() => onAction?.(action)}
-          className={`rounded-lg px-4 py-2 text-sm font-black uppercase tracking-wide transition ${
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-black uppercase tracking-wide transition ${
             action.enabled
               ? 'bg-violet-600 text-white hover:bg-violet-500'
               : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-tertiary dark:border-white/[0.08] dark:bg-slate-900'
@@ -227,7 +160,7 @@ export function TradeDecisionHeader({
             <button
               type="button"
               onClick={() => setMoreOpen(cur => !cur)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
               aria-haspopup="menu"
               aria-expanded={moreOpen}
             >
@@ -267,7 +200,7 @@ export function TradeDecisionHeader({
 
 export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+    <section className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60 md:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-xs font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
@@ -288,7 +221,6 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalCh
 
 export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
-  const [trapOpen, setTrapOpen] = useState(false)
   const rrKey = 'risk' + 'Reward'
   const rrValue = workspace.riskPlan[rrKey as keyof typeof workspace.riskPlan] as DayTradeWorkspaceDisplayValue
   return (
@@ -340,55 +272,7 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
           ))}
         </div>
       </Panel>
-      {workspace.trapDetection?.enabled && (
-        <Panel title="Trap Detection">
-          <div className="flex items-center justify-between gap-2">
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${trapSeverityClass(workspace.trapDetection.severity)}`}>
-              {formatTrapState(workspace.trapDetection.state)}
-            </span>
-            <span className="font-mono text-sm font-black text-heading">{workspace.trapDetection.score ?? 0}</span>
-          </div>
-          {workspace.trapDetection.summary && <div className="mt-2 text-xs text-secondary">{workspace.trapDetection.summary}</div>}
-          {workspace.trapDetection.missingInputs?.length ? (
-            <div className="mt-2 rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">
-              Missing: {workspace.trapDetection.missingInputs.join(', ')}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setTrapOpen(cur => !cur)}
-            className="mt-2 flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-            aria-expanded={trapOpen}
-          >
-            <span>{workspace.trapDetection.factors?.length || 0} backend factor{(workspace.trapDetection.factors?.length || 0) === 1 ? '' : 's'}</span>
-            <span>{trapOpen ? 'Hide' : 'Show'}</span>
-          </button>
-          {trapOpen && (
-            <div className="mt-2 grid gap-1">
-              {(workspace.trapDetection.factors || []).map(item => (
-                <div key={item.code || item.label} className="rounded-md border border-slate-200 px-2 py-1 text-xs dark:border-white/[0.08]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-secondary">{item.label || item.code || 'Factor'}</span>
-                    <span className={item.active ? 'font-bold text-amber-700 dark:text-amber-200' : 'font-bold text-tertiary'}>
-                      {item.active ? `+${item.earnedPoints ?? item.points ?? 0}` : item.available === false ? 'Unavailable' : 'Inactive'}
-                    </span>
-                  </div>
-                  {item.displayEvidence && <div className="mt-1 text-tertiary">{item.displayEvidence}</div>}
-                  {item.inputs?.length ? (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {item.inputs.map(input => (
-                        <span key={`${item.code}-${input.label}`} className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] text-tertiary dark:bg-slate-900">
-                          {input.label}: {input.display ?? String(input.value ?? 'unavailable')}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
-      )}
+      <RiskMonitorPanel workspace={workspace} />
       <Panel title="Entry / Stop / Targets">
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={workspace.riskPlan.entry.display} />
@@ -444,6 +328,150 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
         )}
       </Panel>
     </aside>
+  )
+}
+
+function riskToneClass(tone?: string): string {
+  switch (String(tone || '').toLowerCase()) {
+    case 'red':
+      return 'border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-200'
+    case 'orange':
+      return 'border-orange-500/35 bg-orange-500/10 text-orange-800 dark:text-orange-200'
+    case 'yellow':
+      return 'border-amber-500/35 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+    case 'green':
+      return 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+    default:
+      return 'border-slate-200 bg-slate-50 text-secondary dark:border-white/[0.08] dark:bg-slate-900'
+  }
+}
+
+function riskBarClass(tone?: string): string {
+  switch (String(tone || '').toLowerCase()) {
+    case 'red':
+      return 'bg-red-500'
+    case 'orange':
+      return 'bg-orange-500'
+    case 'yellow':
+      return 'bg-amber-500'
+    case 'green':
+      return 'bg-emerald-500'
+    default:
+      return 'bg-slate-400 dark:bg-slate-600'
+  }
+}
+
+function displayBackendText(value?: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : value == null ? '' : String(value)
+  return text || 'Unavailable'
+}
+
+function RiskMonitorPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const monitor = workspace.trapDetection?.riskMonitor
+  const items = monitor?.items || []
+
+  if (!workspace.trapDetection?.enabled) return null
+
+  return (
+    <Panel title={monitor?.title || 'Risk Monitor'}>
+      {items.length ? (
+        <div className="grid gap-2">
+          {items.map((item, index) => {
+            const id = item.id || item.name || `risk-${index}`
+            const open = expandedId === id
+            return (
+              <div key={id} className="rounded-lg border border-slate-200 bg-white p-2 dark:border-white/[0.08] dark:bg-slate-950">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(cur => (cur === id ? null : id))}
+                  className="w-full text-left"
+                  aria-expanded={open}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-heading">{displayBackendText(item.name)}</div>
+                      <div className="mt-1 line-clamp-2 text-[11px] text-tertiary">{displayBackendText(item.explanation)}</div>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${riskToneClass(item.tone)}`}>
+                      {displayBackendText(item.status)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div className={`h-full rounded-full ${riskBarClass(item.tone)}`} style={{ width: item.progressPercent || '0%' }} />
+                    </div>
+                    <span className="font-mono text-[11px] font-black text-heading">{displayBackendText(item.scoreDisplay)}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-tertiary">
+                    <span>{displayBackendText(item.confidenceDisplay)}</span>
+                    <span>{displayBackendText(item.stage)}</span>
+                  </div>
+                </button>
+                {open && <RiskMonitorDetails item={item} />}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-tertiary dark:border-white/[0.08] dark:bg-slate-900">
+          Risk Monitor Unavailable. Backend did not return monitor items.
+        </div>
+      )}
+      {workspace.trapDetection.positionRisk?.isExposedToTrap && (
+        <div className="mt-2 rounded-lg border border-orange-500/35 bg-orange-500/10 px-3 py-2 text-xs text-orange-800 dark:text-orange-200">
+          <div className="font-black uppercase tracking-wide">Position Risk</div>
+          <div className="mt-1 font-semibold">{displayBackendText(workspace.trapDetection.positionRisk.message)}</div>
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function RiskMonitorDetails({ item }: { item: DayTradeRiskMonitorItem }) {
+  return (
+    <div className="mt-2 grid gap-2 border-t border-slate-200 pt-2 dark:border-white/[0.08]">
+      <div className="grid gap-1 text-[11px]">
+        <Value label="Next Confirmation" value={displayBackendText(item.nextConfirmation)} />
+        <Value label="Next Invalidation" value={displayBackendText(item.nextInvalidation)} />
+      </div>
+      <RiskFactorGroup title="Triggered Factors" factors={item.triggeredFactors} empty="No backend-triggered factors." />
+      <RiskFactorGroup title="Passed Factors" factors={item.passedFactors} empty="No backend-passed factors." />
+      <RiskFactorGroup title="Missing Data" factors={item.missingFactors} empty="No missing backend data." />
+      <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">
+        <span className="font-bold text-secondary">Backend formula:</span> {displayBackendText(item.formula)}
+      </div>
+    </div>
+  )
+}
+
+function RiskFactorGroup({ title, factors, empty }: { title: string; factors?: DayTradeRiskMonitorFactor[]; empty: string }) {
+  return (
+    <div>
+      <div className="text-[10px] font-black uppercase tracking-wide text-tertiary">{title}</div>
+      <div className="mt-1 grid gap-1">
+        {factors?.length ? factors.map((factor, index) => (
+          <div key={factor.code || `${title}-${index}`} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] dark:border-white/[0.08]">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-secondary">{displayBackendText(factor.label)}</span>
+              <span className="font-bold text-tertiary">{displayBackendText(factor.status)}</span>
+            </div>
+            <div className="mt-1 text-tertiary">{displayBackendText(factor.explanation || factor.displayEvidence)}</div>
+            {factor.inputs?.length ? (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {factor.inputs.map(input => (
+                  <span key={`${factor.code || factor.label}-${input.label}`} className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] text-tertiary dark:bg-slate-900">
+                    {displayBackendText(input.label)}: {displayBackendText(input.display ?? input.value)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )) : (
+          <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">{empty}</div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -634,7 +662,7 @@ function WorkspaceTabPanel({ name, payload, framed = true }: { name: string; pay
 
 function StatusPill({ status }: { status: DayTradeWorkspaceStatus }) {
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-xs font-black uppercase tracking-wide ${workspaceToneBadgeClass(status.tone)}`} title={status.description || status.label}>
+    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-black uppercase tracking-wide ${workspaceToneBadgeClass(status.tone)}`} title={status.description || status.label}>
       {status.label}
     </span>
   )

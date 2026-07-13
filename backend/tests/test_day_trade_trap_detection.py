@@ -128,17 +128,33 @@ class DayTradeTrapDetectionTests(unittest.TestCase):
         warning = engine.evaluate(_bull_snapshot(sectorChangePct=0.1, putCallRatio=0.8, intradaySigma=10))
         self.assertEqual(warning["score"], 60)
         self.assertEqual(warning["state"], "BULL_TRAP_WARNING")
+        self.assertEqual(warning["bullTrap"]["stage"], "WARNING")
+        self.assertEqual(warning["bullTrap"]["tone"], "orange")
 
         critical = engine.evaluate(_bull_snapshot())
-        self.assertEqual(critical["state"], "BULL_TRAP_CRITICAL")
+        self.assertEqual(critical["score"], 95)
+        self.assertEqual(critical["state"], "BULL_TRAP_WARNING")
+        self.assertEqual(critical["bullTrap"]["stage"], "WARNING")
+        self.assertEqual(critical["bullTrap"]["tone"], "orange")
 
-    def test_close_back_inside_or_confirms_trap(self):
+    def test_close_back_inside_or_enters_warning_not_confirmed(self):
         bars = _bars_for_bull(after=[
             {"t": "2026-07-13T09:45:00-04:00", "o": 104, "h": 104.5, "l": 101, "c": 102, "v": 900},
         ])
         result = DayTradeTrapDetectionEngine().evaluate(_bull_snapshot(bars=bars))
+        self.assertEqual(result["resolution"]["status"], "RETURNED_INSIDE_RANGE")
+        self.assertEqual(result["state"], "BULL_TRAP_WARNING")
+        self.assertEqual(result["bullTrap"]["stage"], "WARNING")
+
+    def test_explicit_backend_confirmation_can_mark_confirmed(self):
+        bars = _bars_for_bull(after=[
+            {"t": "2026-07-13T09:45:00-04:00", "o": 104, "h": 104.5, "l": 101, "c": 102, "v": 900},
+        ])
+        result = DayTradeTrapDetectionEngine().evaluate(_bull_snapshot(bars=bars, bullTrapConfirmed=True))
         self.assertEqual(result["resolution"]["status"], "TRAP_CONFIRMED")
         self.assertEqual(result["state"], "BULL_TRAP_CONFIRMED")
+        self.assertEqual(result["bullTrap"]["stage"], "CONFIRMED")
+        self.assertEqual(result["bullTrap"]["tone"], "red")
 
     def test_two_qualifying_closes_confirm_continuation(self):
         bars = _bars_for_bull(after=[
@@ -166,6 +182,18 @@ class DayTradeTrapDetectionTests(unittest.TestCase):
 
         untracked = DayTradeTrapDetectionEngine().evaluate(_bull_snapshot(isWatched=False, isHeld=False))
         self.assertFalse(untracked["notification"]["eligible"])
+
+    def test_risk_monitor_contract_is_backend_supplied(self):
+        result = DayTradeTrapDetectionEngine().evaluate(_bull_snapshot())
+        self.assertIn("riskMonitor", result)
+        self.assertIn("bullTrap", result)
+        self.assertIn("bearTrap", result)
+        names = [item["name"] for item in result["riskMonitor"]["items"]]
+        self.assertIn("Bull Trap", names)
+        self.assertIn("Bear Trap", names)
+        self.assertIn("VWAP Failure", names)
+        self.assertIn("Market Divergence", names)
+        self.assertTrue(result["bullTrap"]["triggeredFactors"])
 
 
 if __name__ == "__main__":

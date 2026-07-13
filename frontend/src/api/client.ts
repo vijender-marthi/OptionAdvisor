@@ -585,6 +585,42 @@ type DayTradeWorkspaceTrigger = Omit<ApiSchemas['DayTradeTriggerView'], 'require
   requirements: ApiSchemas['DayTradeTriggerRequirementView'][]
 }
 
+export type DayTradeRiskMonitorFactor = {
+  code?: string
+  label?: string
+  status?: string
+  points?: number
+  earnedPoints?: number
+  explanation?: string
+  displayEvidence?: string
+  formula?: string
+  inputs?: Array<{ label?: string; value?: unknown; display?: string; source?: string }>
+  source?: string
+  freshness?: string
+}
+
+export type DayTradeRiskMonitorItem = {
+  id?: string
+  name?: string
+  status?: string
+  stage?: string
+  tone?: string
+  score?: number
+  scoreDisplay?: string
+  progressPercent?: string
+  confidence?: number
+  confidenceDisplay?: string
+  explanation?: string
+  nextConfirmation?: string
+  nextInvalidation?: string
+  sparkline?: number[]
+  triggeredFactors?: DayTradeRiskMonitorFactor[]
+  passedFactors?: DayTradeRiskMonitorFactor[]
+  missingFactors?: DayTradeRiskMonitorFactor[]
+  formula?: string
+  evidence?: DayTradeRiskMonitorFactor[]
+}
+
 export type DayTradeWorkspaceResponse = Omit<
   ApiSchemas['DayTradeWorkspaceResponse'],
   'chart' | 'decision' | 'evidence' | 'tabs' | 'trigger'
@@ -633,6 +669,12 @@ export type DayTradeWorkspaceResponse = Omit<
     }
     resolution?: Record<string, unknown>
     notification?: Record<string, unknown>
+    bullTrap?: DayTradeRiskMonitorItem
+    bearTrap?: DayTradeRiskMonitorItem
+    riskMonitor?: {
+      title?: string
+      items?: DayTradeRiskMonitorItem[]
+    }
   } | null
 }
 

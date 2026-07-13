@@ -159,25 +159,34 @@ class DayTradeTrapDetectionEngine:
             dto["summary"] = f"Trap detection unavailable: missing {', '.join(missing_inputs)}."
             return dto
 
-        break_event = self._find_break(bars, or_high or 0.0, or_low or 0.0)
-        if break_event is None:
+        bull_break = self._find_directional_break(bars, or_high or 0.0, "UP")
+        bear_break = self._find_directional_break(bars, or_low or 0.0, "DOWN")
+        bull_profile = self._direction_profile(snapshot, bars, bull_break, "BULL_TRAP")
+        bear_profile = self._direction_profile(snapshot, bars, bear_break, "BEAR_TRAP")
+        risk_monitor = self._risk_monitor(snapshot, bull_profile, bear_profile)
+        active_profile = self._active_profile(bull_profile, bear_profile)
+        if active_profile.get("break") is None:
             dto = self._empty(enabled=True, missing_inputs=[])
             dto["summary"] = "No confirmed ORH breakout or ORL breakdown is active."
             dto["dataCompleteness"] = 1.0
+            dto["bullTrap"] = bull_profile
+            dto["bearTrap"] = bear_profile
+            dto["riskMonitor"] = risk_monitor
             return dto
 
-        trap_type = "BULL_TRAP" if break_event["direction"] == "UP" else "BEAR_TRAP"
-        factors = self._score_factors(snapshot, bars, break_event, trap_type)
+        trap_type = str(active_profile["type"])
+        break_event = _as_dict(active_profile.get("break"))
+        factors = _as_list(active_profile.get("factors"))
         available_points = sum(int(item["points"]) for item in factors if item.get("available"))
         earned_points = sum(int(item["earnedPoints"]) for item in factors)
-        score = min(100, earned_points)
+        score = int(active_profile.get("score") or min(100, earned_points))
         data_completeness = round(available_points / 100.0, 2)
         missing_inputs = self._missing_inputs(factors)
-        resolution = self._resolution(bars, break_event, trap_type)
-        state, severity = self._state(trap_type, score, resolution)
+        resolution = _as_dict(active_profile.get("resolution"))
+        state, severity = self._legacy_state(trap_type, active_profile)
         protective = self._protective_level(bars, break_event, trap_type)
         position_risk = self._position_risk(snapshot, trap_type, state, protective)
-        summary = self._summary(ticker, trap_type, factors, break_event, score, resolution)
+        summary = str(active_profile.get("explanation") or self._summary(ticker, trap_type, factors, break_event, score, resolution))
 
         return {
             "enabled": True,
@@ -204,6 +213,9 @@ class DayTradeTrapDetectionEngine:
             "positionRisk": position_risk,
             "resolution": resolution,
             "notification": self._notification(ticker, snapshot, trap_type, score, state, break_event),
+            "bullTrap": bull_profile,
+            "bearTrap": bear_profile,
+            "riskMonitor": risk_monitor,
         }
 
     def _empty(self, *, enabled: bool, missing_inputs: list[str]) -> dict[str, Any]:
@@ -231,6 +243,9 @@ class DayTradeTrapDetectionEngine:
             "positionRisk": {"isHeld": False, "isExposedToTrap": False, "actionLevel": "NONE"},
             "resolution": {"status": "NONE", "deadlineBars": self.config.resolutionWindowBars, "barsElapsed": 0, "resolvedAt": None, "resolutionType": None},
             "notification": {"eligible": False, "reason": "NO_ACTIVE_TRAP", "dedupeKey": None, "priority": "none"},
+            "bullTrap": self._empty_direction_profile("BULL_TRAP", missing_inputs=missing_inputs),
+            "bearTrap": self._empty_direction_profile("BEAR_TRAP", missing_inputs=missing_inputs),
+            "riskMonitor": self._risk_monitor({}, self._empty_direction_profile("BULL_TRAP", missing_inputs=missing_inputs), self._empty_direction_profile("BEAR_TRAP", missing_inputs=missing_inputs)),
         }
 
     def _find_break(self, bars: list[dict[str, Any]], or_high: float, or_low: float) -> dict[str, Any] | None:
@@ -272,6 +287,109 @@ class DayTradeTrapDetectionEngine:
                     "barIndex": index,
                 }
         return None
+
+    def _find_directional_break(self, bars: list[dict[str, Any]], level: float, direction: str) -> dict[str, Any] | None:
+        tolerance = max(0.01, abs(level) * 0.0001)
+        for index, bar in enumerate(bars):
+            high = _bar_price(bar, "h", "high")
+            low = _bar_price(bar, "l", "low")
+            close = _bar_price(bar, "c", "close")
+            ts = _bar_time(bar)
+            minutes = _minutes_since_open(bar, index)
+            if direction == "UP" and high is not None and high > level + tolerance:
+                return {
+                    "levelType": "ORH",
+                    "direction": "UP",
+                    "level": round(level, 4),
+                    "price": round(high, 4),
+                    "close": round(close, 4) if close is not None else None,
+                    "timestamp": ts,
+                    "barTimestamp": ts,
+                    "minutesSinceOpen": minutes,
+                    "openingRangeComplete": minutes >= self.config.openingRangeMinutes,
+                    "barsSinceBreak": max(0, len(bars) - index - 1),
+                    "distanceBeyondLevel": round(high - level, 4),
+                    "barIndex": index,
+                }
+            if direction == "DOWN" and low is not None and low < level - tolerance:
+                return {
+                    "levelType": "ORL",
+                    "direction": "DOWN",
+                    "level": round(level, 4),
+                    "price": round(low, 4),
+                    "close": round(close, 4) if close is not None else None,
+                    "timestamp": ts,
+                    "barTimestamp": ts,
+                    "minutesSinceOpen": minutes,
+                    "openingRangeComplete": minutes >= self.config.openingRangeMinutes,
+                    "barsSinceBreak": max(0, len(bars) - index - 1),
+                    "distanceBeyondLevel": round(level - low, 4),
+                    "barIndex": index,
+                }
+        return None
+
+    def _direction_profile(self, snapshot: dict[str, Any], bars: list[dict[str, Any]], break_event: dict[str, Any] | None, trap_type: str) -> dict[str, Any]:
+        if break_event is None:
+            return self._empty_direction_profile(trap_type, missing_inputs=[])
+        factors = self._score_factors(snapshot, bars, break_event, trap_type)
+        earned_points = min(100, sum(int(item["earnedPoints"]) for item in factors))
+        resolution = self._resolution(bars, break_event, trap_type, snapshot)
+        stage = self._stage(trap_type, earned_points, resolution, factors, snapshot)
+        score = self._stage_score(earned_points, stage)
+        status, tone = self._status_for_stage(score, stage)
+        explanation = self._profile_explanation(snapshot, trap_type, score, stage, factors, resolution, break_event)
+        return {
+            "type": trap_type,
+            "name": "Bull Trap" if trap_type == "BULL_TRAP" else "Bear Trap",
+            "score": score,
+            "scoreDisplay": f"{score} /100",
+            "progressPercent": f"{max(0, min(100, score))}%",
+            "stage": stage,
+            "status": status,
+            "tone": tone,
+            "confidence": self._confidence(factors),
+            "confidenceDisplay": f"Confidence {self._confidence(factors)}%",
+            "explanation": explanation,
+            "nextConfirmation": self._next_confirmation(trap_type, stage, resolution),
+            "nextInvalidation": self._next_invalidation(trap_type, stage, resolution),
+            "sparkline": self._sparkline(score, stage),
+            "triggeredFactors": [self._monitor_factor(item, "Triggered") for item in factors if item.get("active")],
+            "passedFactors": [self._monitor_factor(item, "Passed") for item in factors if item.get("available") and not item.get("active")],
+            "missingFactors": [self._monitor_factor(item, "Missing Data") for item in factors if not item.get("available")],
+            "formula": "Backend staged risk model using opening range, VWAP, volume, market divergence, sector context, options sentiment, and confirmed 5-minute structure.",
+            "evidence": [self._monitor_factor(item, "Triggered" if item.get("active") else "Passed") for item in factors if item.get("available")],
+            "factors": factors,
+            "break": break_event,
+            "resolution": resolution,
+        }
+
+    def _empty_direction_profile(self, trap_type: str, *, missing_inputs: list[str]) -> dict[str, Any]:
+        status = "Missing Data" if missing_inputs else "Not Triggered"
+        explanation = "Waiting for backend inputs." if missing_inputs else "No active opening-range break for this risk."
+        return {
+            "type": trap_type,
+            "name": "Bull Trap" if trap_type == "BULL_TRAP" else "Bear Trap",
+            "score": 0,
+            "scoreDisplay": "0 /100",
+            "progressPercent": "0%",
+            "stage": "NONE",
+            "status": status,
+            "tone": "gray",
+            "confidence": 0 if missing_inputs else 100,
+            "confidenceDisplay": "Confidence 0%" if missing_inputs else "Confidence 100%",
+            "explanation": explanation,
+            "nextConfirmation": "Unavailable" if missing_inputs else "Opening-range break required.",
+            "nextInvalidation": "Unavailable" if missing_inputs else "No active trap thesis.",
+            "sparkline": [0],
+            "triggeredFactors": [],
+            "passedFactors": [],
+            "missingFactors": [{"label": item, "status": "Missing Data", "explanation": "Backend input is unavailable.", "displayEvidence": "Unavailable"} for item in missing_inputs],
+            "formula": "Unavailable until backend inputs are present.",
+            "evidence": [],
+            "factors": [],
+            "break": None,
+            "resolution": {"status": "NONE", "deadlineBars": self.config.resolutionWindowBars, "barsElapsed": 0, "resolvedAt": None, "resolutionType": None},
+        }
 
     def _score_factors(self, snapshot: dict[str, Any], bars: list[dict[str, Any]], break_event: dict[str, Any], trap_type: str) -> list[dict[str, Any]]:
         bullish = trap_type == "BULL_TRAP"
@@ -425,8 +543,12 @@ class DayTradeTrapDetectionEngine:
             "display": f"Maximum extension reached {_format_price(extreme)}, {units:.2f}σ beyond {break_event['levelType']}.",
         }
 
-    def _resolution(self, bars: list[dict[str, Any]], break_event: dict[str, Any], trap_type: str) -> dict[str, Any]:
+    def _resolution(self, bars: list[dict[str, Any]], break_event: dict[str, Any], trap_type: str, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
         bullish = trap_type == "BULL_TRAP"
+        snapshot = snapshot or {}
+        explicit_confirmed = bool(
+            snapshot.get("bullTrapConfirmed") if bullish else snapshot.get("bearTrapConfirmed")
+        ) or bool(snapshot.get("trapConfirmed"))
         index = int(break_event["barIndex"])
         level = float(break_event["level"])
         after = bars[index + 1:index + 1 + self.config.resolutionWindowBars]
@@ -438,9 +560,19 @@ class DayTradeTrapDetectionEngine:
             if close is None:
                 continue
             if bullish and close <= level:
-                return self._resolved("TRAP_CONFIRMED", "BULL_TRAP_CONFIRMED", bar, offset)
+                return self._resolved(
+                    "TRAP_CONFIRMED" if explicit_confirmed else "RETURNED_INSIDE_RANGE",
+                    "BULL_TRAP_CONFIRMED" if explicit_confirmed else "BULL_ORH_REENTRY_PENDING_CONFIRMATION",
+                    bar,
+                    offset,
+                )
             if not bullish and close >= level:
-                return self._resolved("TRAP_CONFIRMED", "BEAR_TRAP_CONFIRMED", bar, offset)
+                return self._resolved(
+                    "TRAP_CONFIRMED" if explicit_confirmed else "RETURNED_INSIDE_RANGE",
+                    "BEAR_TRAP_CONFIRMED" if explicit_confirmed else "BEAR_ORL_REENTRY_PENDING_CONFIRMATION",
+                    bar,
+                    offset,
+                )
             beyond = close > level if bullish else close < level
             volume_ok = volume is not None and avg_volume is not None and avg_volume > 0 and (volume / avg_volume) >= self.config.volumeParticipationThreshold
             qualifying_continuation = qualifying_continuation + 1 if beyond and volume_ok else 0
@@ -460,6 +592,210 @@ class DayTradeTrapDetectionEngine:
             "barsElapsed": len(after),
             "resolvedAt": None,
             "resolutionType": None,
+        }
+
+    def _stage(self, trap_type: str, score: int, resolution: dict[str, Any], factors: list[dict[str, Any]], snapshot: dict[str, Any]) -> str:
+        if resolution.get("status") == "TRAP_CONFIRMED":
+            return "CONFIRMED"
+        if resolution.get("status") == "CONTINUATION_CONFIRMED":
+            return "NONE"
+        if resolution.get("status") == "EXPIRED":
+            return "NONE"
+        explicit_warning = bool(snapshot.get("bullTrapWarning") if trap_type == "BULL_TRAP" else snapshot.get("bearTrapWarning"))
+        active_codes = {str(item.get("code")) for item in factors if item.get("active")}
+        has_range_reentry = resolution.get("status") == "RETURNED_INSIDE_RANGE"
+        has_market_or_sector_divergence = any("DIVERGENCE" in code for code in active_codes)
+        has_low_participation = any("LOW_BREAK" in code for code in active_codes)
+        if explicit_warning or score >= 50 or (has_range_reentry and (has_market_or_sector_divergence or has_low_participation)):
+            return "WARNING"
+        if score >= 25 or has_range_reentry or has_low_participation or has_market_or_sector_divergence:
+            return "WATCH"
+        return "POTENTIAL"
+
+    def _stage_score(self, score: int, stage: str) -> int:
+        if stage == "NONE":
+            return 0
+        if stage == "CONFIRMED":
+            return max(75, min(100, score))
+        return max(1, min(100, score))
+
+    def _status_for_stage(self, score: int, stage: str) -> tuple[str, str]:
+        if stage == "CONFIRMED":
+            return "Confirmed", "red"
+        if stage == "NONE":
+            return ("None", "gray") if score == 0 else ("Low", "green")
+        if score >= 50:
+            return "Warning", "orange"
+        if score >= 25:
+            return "Watch", "yellow"
+        return "Low", "green"
+
+    def _confidence(self, factors: list[dict[str, Any]]) -> int:
+        available = sum(1 for item in factors if item.get("available"))
+        if not factors:
+            return 0
+        return int(round((available / len(factors)) * 100))
+
+    def _monitor_factor(self, factor: dict[str, Any], status: str) -> dict[str, Any]:
+        label = self._clean_factor_label(str(factor.get("code") or ""), str(factor.get("label") or "Factor"))
+        explanation = str(factor.get("displayEvidence") or factor.get("description") or "Unavailable")
+        if status == "Missing Data":
+            explanation = self._missing_factor_message(label)
+        return {
+            "code": factor.get("code"),
+            "label": label,
+            "status": status,
+            "points": factor.get("points"),
+            "earnedPoints": factor.get("earnedPoints"),
+            "explanation": explanation,
+            "displayEvidence": factor.get("displayEvidence") or explanation,
+            "formula": factor.get("formula") or "",
+            "inputs": factor.get("inputs") or [],
+            "source": factor.get("source"),
+            "freshness": factor.get("freshness"),
+        }
+
+    def _clean_factor_label(self, code: str, fallback: str) -> str:
+        if "INDEX_DIVERGENCE" in code:
+            return "Market Confirmation"
+        if "SECTOR_DIVERGENCE" in code:
+            return "Sector Confirmation"
+        if "LOW_BREAK" in code:
+            return "Volume Analysis"
+        if "BLOW_OFF" in code:
+            return "ATR Exhaustion"
+        if "CROWDED" in code:
+            return "Options Sentiment"
+        if "REVERSION_HOURS" in code:
+            return "Time Window"
+        if "EARLY_ORH" in code:
+            return "ORH Break Timing"
+        if "EARLY_ORL" in code:
+            return "ORL Break Timing"
+        return fallback
+
+    def _missing_factor_message(self, label: str) -> str:
+        if label == "Volume Analysis":
+            return "Waiting for sufficient history. 20-bar average volume is not yet available."
+        if label in {"Market Confirmation", "Sector Confirmation"}:
+            return "Waiting for fresh market or sector comparison data."
+        if label == "Options Sentiment":
+            return "Waiting for fresh intraday put/call data."
+        return "Backend evidence is unavailable for this factor."
+
+    def _profile_explanation(
+        self,
+        snapshot: dict[str, Any],
+        trap_type: str,
+        score: int,
+        stage: str,
+        factors: list[dict[str, Any]],
+        resolution: dict[str, Any],
+        break_event: dict[str, Any],
+    ) -> str:
+        if stage == "CONFIRMED":
+            return "Backend confirmed the staged trap sequence with final confirmation evidence."
+        if resolution.get("status") == "RETURNED_INSIDE_RANGE":
+            return f"{break_event['levelType']} break returned inside the range. Waiting for final backend confirmation before marking confirmed."
+        active = [self._clean_factor_label(str(item.get("code") or ""), str(item.get("label") or "")) for item in factors if item.get("active")]
+        if active:
+            return f"{trap_type.replace('_', ' ').title()} risk is {score}/100 from backend factors: {', '.join(active[:3])}."
+        return f"{break_event['levelType']} break is being monitored. No additional backend risk factors are currently triggered."
+
+    def _next_confirmation(self, trap_type: str, stage: str, resolution: dict[str, Any]) -> str:
+        if stage == "CONFIRMED":
+            return "Confirmed by backend."
+        if resolution.get("status") == "CONTINUATION_CONFIRMED":
+            return "Continuation confirmed; trap monitor reset."
+        if trap_type == "BULL_TRAP":
+            return "Backend confirmation requires VWAP loss, failed ORH retest, lower-low structure, and seller participation."
+        return "Backend confirmation requires VWAP reclaim failure, failed ORL retest, higher-high structure, and buyer participation."
+
+    def _next_invalidation(self, trap_type: str, stage: str, resolution: dict[str, Any]) -> str:
+        if resolution.get("status") == "CONTINUATION_CONFIRMED":
+            return "Trap thesis invalidated by continuation."
+        if stage == "NONE":
+            return "No active trap thesis."
+        return "Continuation beyond the broken opening-range level with participation."
+
+    def _sparkline(self, score: int, stage: str) -> list[int]:
+        if stage == "NONE":
+            return [0]
+        if score <= 1:
+            return [0, score]
+        start = max(0, score - 24)
+        midpoint = max(start, score - 10)
+        return [start, midpoint, score]
+
+    def _active_profile(self, bull_profile: dict[str, Any], bear_profile: dict[str, Any]) -> dict[str, Any]:
+        if int(bear_profile.get("score") or 0) > int(bull_profile.get("score") or 0):
+            return bear_profile
+        if bull_profile.get("break") is not None:
+            return bull_profile
+        return bear_profile
+
+    def _risk_monitor(self, snapshot: dict[str, Any], bull_profile: dict[str, Any], bear_profile: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "title": "Risk Monitor",
+            "items": [
+                self._monitor_item_from_profile(bull_profile),
+                self._monitor_item_from_profile(bear_profile),
+                self._context_risk("VWAP Failure", snapshot.get("vwapFailureStatus"), snapshot.get("vwapFailureExplanation")),
+                self._context_risk("Trend Failure", snapshot.get("trendFailureStatus"), snapshot.get("trendFailureExplanation")),
+                self._context_risk("Momentum Failure", snapshot.get("momentumFailureStatus"), snapshot.get("momentumFailureExplanation")),
+                self._context_risk("Market Divergence", snapshot.get("marketDivergenceStatus"), snapshot.get("marketDivergenceExplanation")),
+                self._context_risk("Exhaustion", snapshot.get("exhaustionStatus"), snapshot.get("exhaustionExplanation")),
+            ],
+        }
+
+    def _monitor_item_from_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": str(profile.get("type") or profile.get("name") or "risk").lower(),
+            "name": profile.get("name"),
+            "status": profile.get("status"),
+            "stage": profile.get("stage"),
+            "tone": profile.get("tone"),
+            "score": profile.get("score"),
+            "scoreDisplay": profile.get("scoreDisplay"),
+            "progressPercent": profile.get("progressPercent"),
+            "confidence": profile.get("confidence"),
+            "confidenceDisplay": profile.get("confidenceDisplay"),
+            "explanation": profile.get("explanation"),
+            "nextConfirmation": profile.get("nextConfirmation"),
+            "nextInvalidation": profile.get("nextInvalidation"),
+            "sparkline": profile.get("sparkline"),
+            "triggeredFactors": profile.get("triggeredFactors") or [],
+            "passedFactors": profile.get("passedFactors") or [],
+            "missingFactors": profile.get("missingFactors") or [],
+            "formula": profile.get("formula"),
+            "evidence": profile.get("evidence") or [],
+        }
+
+    def _context_risk(self, name: str, status_value: Any, explanation_value: Any) -> dict[str, Any]:
+        status = str(status_value or "Not Triggered")
+        explanation = str(explanation_value or "No backend trigger is active.")
+        missing = status.upper() in {"MISSING", "UNAVAILABLE", "MISSING_DATA"}
+        display_status = "Missing Data" if missing else status.replace("_", " ").title()
+        return {
+            "id": name.lower().replace(" ", "_"),
+            "name": name,
+            "status": display_status,
+            "stage": "NONE",
+            "tone": "gray" if missing or display_status == "Not Triggered" else "yellow",
+            "score": 0,
+            "scoreDisplay": "0 /100",
+            "progressPercent": "0%",
+            "confidence": 0 if missing else 100,
+            "confidenceDisplay": "Confidence 0%" if missing else "Confidence 100%",
+            "explanation": explanation,
+            "nextConfirmation": "Unavailable" if missing else "Backend will update when evidence changes.",
+            "nextInvalidation": "Unavailable" if missing else "No active risk thesis.",
+            "sparkline": [0],
+            "triggeredFactors": [],
+            "passedFactors": [] if missing else [{"label": name, "status": "Passed", "explanation": explanation}],
+            "missingFactors": [{"label": name, "status": "Missing Data", "explanation": explanation}] if missing else [],
+            "formula": "Backend-owned risk monitor item.",
+            "evidence": [],
         }
 
     def _resolved(self, status: str, resolution_type: str, bar: dict[str, Any], bars_elapsed: int) -> dict[str, Any]:
@@ -485,6 +821,24 @@ class DayTradeTrapDetectionEngine:
         if score >= self.config.warningThreshold:
             return f"{prefix}_WARNING", "WARNING"
         return f"{prefix}_WATCH", "WATCH"
+
+    def _legacy_state(self, trap_type: str, profile: dict[str, Any]) -> tuple[str, str]:
+        resolution = _as_dict(profile.get("resolution"))
+        if resolution.get("status") == "CONTINUATION_CONFIRMED":
+            return ("BULL_CONTINUATION_CONFIRMED" if trap_type == "BULL_TRAP" else "BEAR_CONTINUATION_CONFIRMED", "CONTINUATION")
+        stage = str(profile.get("stage") or "NONE").upper()
+        if stage == "CONFIRMED":
+            return ("BULL_TRAP_CONFIRMED" if trap_type == "BULL_TRAP" else "BEAR_TRAP_CONFIRMED", "CONFIRMED")
+        if resolution.get("status") == "EXPIRED":
+            return "EXPIRED", "NEUTRAL"
+        prefix = "BULL_TRAP" if trap_type == "BULL_TRAP" else "BEAR_TRAP"
+        if stage == "WARNING":
+            return f"{prefix}_WARNING", "WARNING"
+        if stage == "WATCH":
+            return f"{prefix}_WATCH", "WATCH"
+        if stage == "POTENTIAL":
+            return f"{prefix}_POTENTIAL", "WATCH"
+        return "NONE", "NONE"
 
     def _protective_level(self, bars: list[dict[str, Any]], break_event: dict[str, Any], trap_type: str) -> dict[str, Any]:
         bullish = trap_type == "BULL_TRAP"
@@ -587,6 +941,21 @@ def build_trap_detection_from_metrics(
         "isWatched": metrics.get("is_watched") or metrics.get("watchlist_match"),
         "isHeld": metrics.get("is_held") or metrics.get("position_held"),
         "positionDirection": metrics.get("position_direction"),
+        "bullTrapConfirmed": metrics.get("bull_trap_confirmed"),
+        "bearTrapConfirmed": metrics.get("bear_trap_confirmed"),
+        "trapConfirmed": metrics.get("trap_confirmed"),
+        "bullTrapWarning": metrics.get("bull_trap_warning"),
+        "bearTrapWarning": metrics.get("bear_trap_warning"),
+        "vwapFailureStatus": metrics.get("vwap_failure_status"),
+        "vwapFailureExplanation": metrics.get("vwap_failure_explanation"),
+        "trendFailureStatus": metrics.get("trend_failure_status"),
+        "trendFailureExplanation": metrics.get("trend_failure_explanation"),
+        "momentumFailureStatus": metrics.get("momentum_failure_status"),
+        "momentumFailureExplanation": metrics.get("momentum_failure_explanation"),
+        "marketDivergenceStatus": metrics.get("market_divergence_status"),
+        "marketDivergenceExplanation": metrics.get("market_divergence_explanation"),
+        "exhaustionStatus": metrics.get("exhaustion_status"),
+        "exhaustionExplanation": metrics.get("exhaustion_explanation"),
         "structureContext": {
             "timeframe": "5m",
             "structure": (market_structure or {}).get("structure") or (market_structure or {}).get("trend") or "UNKNOWN",
@@ -594,3 +963,9 @@ def build_trap_detection_from_metrics(
         },
     }
     return DayTradeTrapDetectionEngine().evaluate(snapshot)
+
+
+def build_unavailable_trap_detection(reason: str) -> dict[str, Any]:
+    dto = DayTradeTrapDetectionEngine()._empty(enabled=True, missing_inputs=["market data"])
+    dto["summary"] = f"Trap detection unavailable: {reason}"
+    return dto

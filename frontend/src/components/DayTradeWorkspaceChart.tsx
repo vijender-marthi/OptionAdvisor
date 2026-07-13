@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { MouseEvent } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
+import { ArrowLeft, ArrowRight, Focus, Layers, Maximize2, Minimize2, RotateCcw, SlidersHorizontal, ZoomIn, ZoomOut } from 'lucide-react'
 import type { DayTradeSemanticTone, DayTradeWorkspaceResponse } from '../api/client'
 
 type WorkspaceChart = DayTradeWorkspaceResponse['chart']
@@ -22,6 +23,12 @@ type VwapRenderPoint = {
   y: number
   value: number
   time: string
+}
+
+type ChartIconButtonProps = {
+  label: string
+  onClick: () => void
+  children: ReactNode
 }
 
 const WIDTH = 1000
@@ -67,6 +74,20 @@ function formatVolume(value: number): string {
   return Math.round(value).toLocaleString()
 }
 
+function ChartIconButton({ label, onClick, children }: ChartIconButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-secondary transition hover:border-violet-400 hover:bg-slate-50 hover:text-heading dark:border-white/[0.08] dark:hover:bg-slate-900"
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onIntervalChange }: { chart: WorkspaceChart; marketTimeZone?: string; onIntervalChange?: (interval: WorkspaceInterval) => void }) {
   const firstCandleTime = chart.candles[0]?.time || ''
   const defaultVisibleBars = clamp(safeNumber(chart.defaults.initialVisibleBars, 100), 10, Math.max(10, chart.candles.length || 10))
@@ -96,13 +117,24 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     const visibleCandles = candles.slice(startIndex, safeEndIndex)
     const visibleTimeSet = new Set(visibleCandles.map(candle => candle.time))
     const barWidth = visibleCandles.length > 0 ? WIDTH / (visibleCandles.length + safeNumber(chart.defaults.rightOffsetBars, 4)) : WIDTH
+    const visibleCandlePrices = visibleCandles.flatMap(candle => [candle.high, candle.low]).filter(isFiniteNumber)
+    const candleMin = visibleCandlePrices.length ? Math.min(...visibleCandlePrices) : 0
+    const candleMax = visibleCandlePrices.length ? Math.max(...visibleCandlePrices) : 1
+    const latestClose = visibleCandles[visibleCandles.length - 1]?.close
+    const candleRange = Math.max(candleMax - candleMin, 0.01)
+    const focusBand = Math.max(candleRange * 1.75, safeNumber(latestClose, candleMax) * 0.008, 0.25)
+    const affectsTradeFocusScale = (price: number) => {
+      if (chart.defaults.scaleMode === 'full_context') return true
+      return price >= candleMin - focusBand && price <= candleMax + focusBand
+    }
     const levelScaleIds = new Set(chart.tradeFocus?.levelIdsAllowedToAffectScale || [])
     const scaleLevels = chart.defaults.scaleMode === 'full_context'
       ? chart.levels
-      : chart.levels.filter(level => levelScaleIds.has(level.id))
+      : chart.levels.filter(level => levelScaleIds.has(level.id) && affectsTradeFocusScale(level.price))
     const scaleVwapValues = chart.vwapOverlay && (chart.defaults.scaleMode === 'full_context' || chart.vwapOverlay.affectsTradeFocusScale)
       ? chart.vwapOverlay.points
           .filter(point => chart.defaults.scaleMode === 'full_context' || visibleTimeSet.has(point.barStartUtc))
+          .filter(point => typeof point.value === 'number' && affectsTradeFocusScale(point.value))
           .map(point => point.value)
       : []
     const confirmedStructurePivots = (chart.marketStructure?.pivots || [])
@@ -113,11 +145,12 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     const scaleStructureValues = chart.marketStructure && visibleOverlayIds.has(chart.marketStructure.id)
       ? confirmedStructurePivots
           .filter(pivot => visibleTimeSet.has(pivot.timestamp))
+          .filter(pivot => affectsTradeFocusScale(pivot.price))
           .map(pivot => pivot.price)
       : []
 
     const prices = [
-      ...visibleCandles.flatMap(candle => [candle.high, candle.low]),
+      ...visibleCandlePrices,
       ...scaleLevels.map(level => level.price),
       ...scaleVwapValues,
       ...scaleStructureValues,
@@ -125,9 +158,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     const rawMin = prices.length ? Math.min(...prices) : 0
     const rawMax = prices.length ? Math.max(...prices) : 1
     const rawRange = rawMax - rawMin || 1
-    const padding = rawRange * safeNumber(chart.tradeFocus?.scalePaddingPercent ?? 8, 8) / 100
-    const minPrice = rawMin - padding
-    const maxPrice = rawMax + padding
+    const basePadding = rawRange * safeNumber(chart.tradeFocus?.scalePaddingPercent ?? 8, 8) / 100
+    const minPrice = rawMin - basePadding * 1.25
+    const maxPrice = rawMax + basePadding * 0.55
     const priceRange = maxPrice - minPrice || 1
     const maxVolume = Math.max(1, ...visibleCandles.map(candle => safeNumber(candle.volume, 0)))
 
@@ -216,8 +249,12 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   }, [chart.vwapOverlay?.points, crosshair, model.barWidth, model.visibleCandles])
 
   const zoom = (direction: 'in' | 'out') => {
-    const barChange = direction === 'in' ? -15 : 15
-    setVisibleBars(cur => clamp(cur + barChange, 10, Math.max(10, chart.candles.length)))
+    setVisibleBars(cur => {
+      const next = direction === 'in'
+        ? Math.round(cur * 0.72)
+        : Math.round(cur * 1.32)
+      return clamp(next, 10, Math.max(10, chart.candles.length))
+    })
     if (!followLive) setEndIndex(cur => clamp(cur, 0, chart.candles.length))
   }
 
@@ -330,22 +367,34 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             </button>
           )}
         </div>
-        <div className="relative flex flex-wrap gap-1">
-          <button type="button" onClick={() => zoom('in')} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]" aria-label="Zoom in">+</button>
-          <button type="button" onClick={() => zoom('out')} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]" aria-label="Zoom out">-</button>
-          <button type="button" onClick={() => pan('left')} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]" aria-label="Pan left">←</button>
-          <button type="button" onClick={() => pan('right')} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]" aria-label="Pan right">→</button>
-          <button type="button" onClick={fitSession} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">Fit</button>
-          <button type="button" onClick={resetView} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">Reset</button>
-          <button type="button" onClick={() => setFullscreen(cur => !cur)} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">
-            {fullscreen ? 'Exit' : 'Full'}
-          </button>
-          <button type="button" onClick={() => setOverlayMenuOpen(cur => !cur)} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">
-            Indicators
-          </button>
-          <button type="button" onClick={() => setOverlayMenuOpen(cur => !cur)} className="rounded-md border border-slate-200 px-2 py-1 font-bold text-secondary hover:text-heading dark:border-white/[0.08]">
-            Overlays
-          </button>
+        <div className="relative flex flex-wrap justify-end gap-1">
+          <ChartIconButton label="Zoom in" onClick={() => zoom('in')}>
+            <ZoomIn size={15} />
+          </ChartIconButton>
+          <ChartIconButton label="Zoom out" onClick={() => zoom('out')}>
+            <ZoomOut size={15} />
+          </ChartIconButton>
+          <ChartIconButton label="Pan left" onClick={() => pan('left')}>
+            <ArrowLeft size={15} />
+          </ChartIconButton>
+          <ChartIconButton label="Pan right" onClick={() => pan('right')}>
+            <ArrowRight size={15} />
+          </ChartIconButton>
+          <ChartIconButton label="Fit session" onClick={fitSession}>
+            <Focus size={15} />
+          </ChartIconButton>
+          <ChartIconButton label="Reset chart view" onClick={resetView}>
+            <RotateCcw size={15} />
+          </ChartIconButton>
+          <ChartIconButton label={fullscreen ? 'Exit fullscreen' : 'Expand chart'} onClick={() => setFullscreen(cur => !cur)}>
+            {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </ChartIconButton>
+          <ChartIconButton label="Indicators" onClick={() => setOverlayMenuOpen(cur => !cur)}>
+            <SlidersHorizontal size={15} />
+          </ChartIconButton>
+          <ChartIconButton label="Overlays" onClick={() => setOverlayMenuOpen(cur => !cur)}>
+            <Layers size={15} />
+          </ChartIconButton>
           {overlayMenuOpen && (
             <div className="absolute right-0 top-8 z-20 w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-white/[0.08] dark:bg-slate-900">
               <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Backend overlays</div>
@@ -410,13 +459,13 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         })}
         <line x1="0" x2={WIDTH} y1={VOLUME_TOP} y2={VOLUME_TOP} className="stroke-slate-200 dark:stroke-white/10" />
         {model.points.map((point, index) => {
-          const candleWidth = Math.max(3, Math.min(model.barWidth * 0.58, 12))
+          const candleWidth = Math.max(3.5, Math.min(model.barWidth * 0.76, 20))
           const bodyTop = Math.min(point.openY, point.closeY)
           const bodyHeight = Math.max(1, Math.abs(point.closeY - point.openY))
           const candleClass = point.up ? 'fill-emerald-500 stroke-emerald-500' : 'fill-rose-500 stroke-rose-500'
           return (
             <g key={`${model.visibleCandles[index].time}-${index}`}>
-              <line x1={point.x} x2={point.x} y1={point.highY} y2={point.lowY} className={candleClass} strokeWidth="1.5" />
+              <line x1={point.x} x2={point.x} y1={point.highY} y2={point.lowY} className={candleClass} strokeWidth={Math.max(1.5, Math.min(candleWidth * 0.22, 3))} />
               <rect x={point.x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1" className={candleClass} />
               <rect
                 x={point.x - candleWidth / 2}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, BookOpen, BriefcaseBusiness, Loader2, RefreshCw, Search, X, Activity } from 'lucide-react'
+import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, X, Activity } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { DayTradeWorkspaceAction } from '../api/client'
 import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
@@ -79,6 +79,7 @@ function DayTradeSidebarContent({
   loadTicker,
   setAddDialogOpen,
   navigate,
+  onCollapse,
   onClose,
   closeable = false,
 }: {
@@ -99,6 +100,7 @@ function DayTradeSidebarContent({
   loadTicker: (symbol?: string) => void
   setAddDialogOpen: (open: boolean) => void
   navigate: (path: string) => void
+  onCollapse?: () => void
   onClose?: () => void
   closeable?: boolean
 }) {
@@ -112,11 +114,18 @@ function DayTradeSidebarContent({
             <span className="text-lg font-black text-heading">Day Trade</span>
           </div>
         </div>
-        {closeable && onClose && (
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close sidebar">
-            <X size={16} />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {onCollapse && (
+            <button type="button" onClick={onCollapse} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Collapse ticker rail">
+              <ChevronLeft size={16} />
+            </button>
+          )}
+          {closeable && onClose && (
+            <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close sidebar">
+              <X size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
@@ -273,6 +282,56 @@ function DayTradeSidebarContent({
   )
 }
 
+function DayTradeCollapsedSidebar({
+  symbol,
+  filteredTickers,
+  loadTicker,
+  onExpand,
+}: {
+  symbol: string
+  filteredTickers: Array<{ item: MyTickerEntry; groups: Set<SidebarTickerGroupKey> }>
+  loadTicker: (symbol?: string) => void
+  onExpand: () => void
+}) {
+  const compactTickers = filteredTickers.slice(0, 8)
+  return (
+    <div className="flex h-full flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/[0.08] dark:bg-slate-950">
+      <button
+        type="button"
+        onClick={onExpand}
+        className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-2 text-violet-700 hover:bg-violet-500/15 dark:text-violet-200"
+        aria-label="Expand ticker rail"
+        title="Expand ticker rail"
+      >
+        <ChevronRight size={18} />
+      </button>
+      <div className="h-px w-full bg-slate-200 dark:bg-white/[0.08]" />
+      {compactTickers.map(({ item }) => {
+        const sym = item.symbol.toUpperCase()
+        const selected = sym === symbol
+        return (
+          <button
+            key={sym}
+            type="button"
+            onClick={() => loadTicker(sym)}
+            className={`flex h-10 w-10 items-center justify-center rounded-lg border font-mono text-[10px] font-black ${
+              selected
+                ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                : 'border-slate-200 text-secondary hover:border-violet-300 dark:border-white/[0.08]'
+            }`}
+            title={`${sym} ${item.company_name || ''}`.trim()}
+          >
+            {sym.slice(0, 4)}
+          </button>
+        )
+      })}
+      <div className="mt-auto text-center text-[9px] font-black uppercase tracking-wider text-tertiary [writing-mode:vertical-rl]">
+        Tickers
+      </div>
+    </div>
+  )
+}
+
 const DAY_TRADE_ACTION_LINKS = [
   { label: 'Ticker Scanner', route: ROUTES.signals, icon: Activity },
   { label: 'Alerts', route: ROUTES.alerts, icon: Bell },
@@ -319,7 +378,7 @@ function DayTradeMobileSearchBar({
   navigate: (path: string) => void
 }) {
   return (
-    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 lg:hidden">
+    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:hidden">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade</div>
@@ -365,7 +424,7 @@ function DayTradeMobileSearchBar({
           <RefreshCw size={16} className={workspaceLoading ? 'animate-spin' : ''} />
         </button>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 hidden sm:block">
         <DayTradeActionLinks navigate={navigate} compact />
       </div>
     </section>
@@ -384,7 +443,7 @@ function DayTradeWorkspaceToolbar({
   navigate: (path: string) => void
 }) {
   return (
-    <div className="mb-3 hidden items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 lg:flex">
+    <div className="mb-3 hidden items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:flex">
       <div>
         <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade Workspace</div>
         <div className="font-mono text-lg font-black text-heading">{symbol}</div>
@@ -424,6 +483,16 @@ export default function DayTradeWorkspacePage() {
   const { portfolio } = useApp()
   const [notice, setNotice] = useState('')
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('day_trade_workspace_sidebar_collapsed')
+      if (saved === '1') return true
+      if (saved === '0') return false
+      return typeof window !== 'undefined' ? window.innerWidth < 1280 : false
+    } catch {
+      return false
+    }
+  })
 
   const [tickerInput, setTickerInput] = useState((searchParams.get('symbol') || searchParams.get('ticker') || 'AAPL').trim().toUpperCase())
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
@@ -472,6 +541,10 @@ export default function DayTradeWorkspacePage() {
   useEffect(() => {
     try { localStorage.setItem('day_trade_workspace_sidebar_scroll_top', String(sidebarScrollTop)) } catch { /* quota */ }
   }, [sidebarScrollTop])
+
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_sidebar_collapsed', sidebarCollapsed ? '1' : '0') } catch { /* quota */ }
+  }, [sidebarCollapsed])
 
   const symbol = (searchParams.get('symbol') || searchParams.get('ticker') || tickerInput || 'AAPL').trim().toUpperCase()
   const sessionDate = searchParams.get('sessionDate')
@@ -655,32 +728,42 @@ export default function DayTradeWorkspacePage() {
   const workspaceLoading = workspaceState.loading && !workspaceState.data
 
   return (
-    <div className="day-trade-page min-h-0 flex-1 overflow-hidden bg-surface-page p-3 text-primary">
-      <div className="mx-auto flex h-full max-w-[1920px] gap-3 overflow-hidden">
-        <aside className="hidden h-full w-80 shrink-0 overflow-y-auto overscroll-contain lg:block">
-          <DayTradeSidebarContent
-            tickerInput={tickerInput}
-            setTickerInput={setTickerInput}
-            sidebarSearch={sidebarSearch}
-            setSidebarSearch={setSidebarSearch}
-            sidebarTab={sidebarTab}
-            setSidebarTab={setSidebarTab}
-            filteredTickers={filteredTickers}
-            symbol={symbol}
-            tickersLoading={tickersLoading}
-            tickersError={tickersError}
-            refreshMyTickers={refreshMyTickers}
-            workspaceLoading={workspaceLoading}
-            listRef={listRef}
-            handleListScroll={handleListScroll}
-            loadTicker={loadTicker}
-            setAddDialogOpen={setAddDialogOpen}
-            navigate={navigate}
-          />
+    <div className="day-trade-page min-h-screen bg-surface-page p-3 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden xl:pb-3">
+      <div className="mx-auto flex max-w-[1920px] gap-3 md:h-[calc(100%-5.5rem)] md:overflow-hidden xl:h-full">
+        <aside className={`hidden h-full shrink-0 overflow-y-auto overscroll-contain md:block ${sidebarCollapsed ? 'w-16' : 'w-80'}`}>
+          {sidebarCollapsed ? (
+            <DayTradeCollapsedSidebar
+              symbol={symbol}
+              filteredTickers={filteredTickers}
+              loadTicker={loadTicker}
+              onExpand={() => setSidebarCollapsed(false)}
+            />
+          ) : (
+            <DayTradeSidebarContent
+              tickerInput={tickerInput}
+              setTickerInput={setTickerInput}
+              sidebarSearch={sidebarSearch}
+              setSidebarSearch={setSidebarSearch}
+              sidebarTab={sidebarTab}
+              setSidebarTab={setSidebarTab}
+              filteredTickers={filteredTickers}
+              symbol={symbol}
+              tickersLoading={tickersLoading}
+              tickersError={tickersError}
+              refreshMyTickers={refreshMyTickers}
+              workspaceLoading={workspaceLoading}
+              listRef={listRef}
+              handleListScroll={handleListScroll}
+              loadTicker={loadTicker}
+              setAddDialogOpen={setAddDialogOpen}
+              navigate={navigate}
+              onCollapse={() => setSidebarCollapsed(true)}
+            />
+          )}
         </aside>
 
         {mobileSidebarOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="fixed inset-0 z-40 md:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobileSidebarOpen(false)} />
             <aside className="absolute left-0 top-0 h-full w-80 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
               <DayTradeSidebarContent
@@ -708,7 +791,7 @@ export default function DayTradeWorkspacePage() {
           </div>
         )}
 
-        <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="flex min-w-0 flex-1 flex-col md:h-full md:overflow-hidden">
           <DayTradeMobileSearchBar
             tickerInput={tickerInput}
             setTickerInput={setTickerInput}

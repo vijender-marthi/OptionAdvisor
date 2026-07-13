@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from day_trade_trap_detection import build_trap_detection_from_metrics
+from day_trade_trap_detection import build_trap_detection_from_metrics, build_unavailable_trap_detection
 
 
 DAY_TRADE_WORKSPACE_SCHEMA_VERSION = "day-trade-workspace.v1"
@@ -1154,27 +1154,7 @@ def build_day_trade_workspace_unavailable_response(
             }
         ],
         "selectedContract": None,
-        "trapDetection": {
-            "enabled": True,
-            "type": None,
-            "state": "NONE",
-            "severity": "NONE",
-            "score": 0,
-            "highestScore": 0,
-            "threshold": 60,
-            "criticalThreshold": 80,
-            "availablePoints": 0,
-            "earnedPoints": 0,
-            "normalizedScore": None,
-            "dataCompleteness": 0.0,
-            "missingInputs": ["market data"],
-            "break": None,
-            "factors": [],
-            "summary": f"Trap detection unavailable: {clean_reason}",
-            "positionRisk": {"isHeld": False, "isExposedToTrap": False, "actionLevel": "NONE"},
-            "resolution": {"status": "NONE", "deadlineBars": 6, "barsElapsed": 0, "resolvedAt": None, "resolutionType": None},
-            "notification": {"eligible": False, "reason": "DATA_UNAVAILABLE", "dedupeKey": None, "priority": "none"},
-        },
+        "trapDetection": build_unavailable_trap_detection(clean_reason),
         "chart": {
             "candles": [],
             "levels": levels,
