@@ -371,20 +371,32 @@ def _classify_pivots(pivots: list[dict[str, Any]], tolerance: float) -> list[dic
     for item in pivots:
         price = float(item["price"])
         ptype = str(item["pivotType"])
+        # Seed pivots have no prior same-type pivot to compare against, so they
+        # are labelled neutrally ("H"/"L") rather than asserting a "higher"/"lower"
+        # relationship that cannot exist yet. HH/HL/LH/LL/EQH/EQL only apply once a
+        # prior confirmed high/low exists.
+        is_seed = False
         if ptype == "HIGH":
             if previous_high is None:
-                label = "HH"
+                label = "H"
+                is_seed = True
             else:
                 diff = price - previous_high
                 label = "HH" if diff > tolerance else "LH" if diff < -tolerance else "EQH"
             previous_high = price
         else:
             if previous_low is None:
-                label = "HL"
+                label = "L"
+                is_seed = True
             else:
                 diff = price - previous_low
                 label = "HL" if diff > tolerance else "LL" if diff < -tolerance else "EQL"
             previous_low = price
+        explanation = (
+            f"First confirmed backend 5-minute swing {ptype.lower()} — no prior confirmed {ptype.lower()} to compare against yet."
+            if is_seed
+            else f"Confirmed backend 5-minute swing {ptype.lower()} compared against the prior confirmed {ptype.lower()}."
+        )
         out.append({
             "id": f"structure-{ptype.lower()}-{int(item['_index'])}",
             "timestamp": item["timestamp"],
@@ -398,7 +410,7 @@ def _classify_pivots(pivots: list[dict[str, Any]], tolerance: float) -> list[dic
             "confirmed": True,
             "status": "CONFIRMED",
             "latest": False,
-            "explanation": f"Confirmed backend 5-minute swing {ptype.lower()} compared against the prior confirmed {ptype.lower()}.",
+            "explanation": explanation,
             "_index": int(item["_index"]),
         })
     return out
@@ -425,11 +437,92 @@ def _trend_from_pivots(pivots: list[dict[str, Any]]) -> tuple[str, str, str, flo
 def _expected_next_pivot(trend: str, current: dict[str, Any] | None) -> str:
     if current is None:
         return "UNKNOWN"
+    is_high = current.get("pivotType") == "HIGH"
     if trend == "BULLISH":
-        return "CONTINUATION_LOW" if current.get("pivotType") == "HIGH" else "CONTINUATION_HIGH"
+        # Uptrend: after a high expect a higher-low pullback; after a low expect a higher high.
+        return "PULLBACK_HIGHER_LOW" if is_high else "CONTINUATION_HIGHER_HIGH"
     if trend == "BEARISH":
-        return "CONTINUATION_LOW" if current.get("pivotType") == "HIGH" else "CONTINUATION_HIGH"
+        # Downtrend: after a high expect a lower-low continuation; after a low expect a lower-high bounce.
+        return "CONTINUATION_LOWER_LOW" if is_high else "BOUNCE_LOWER_HIGH"
     return "UNCONFIRMED"
+
+
+def _provisional_pivot(
+    bars: list[dict[str, Any]],
+    confirmed: list[dict[str, Any]],
+    settings: dict[str, Any],
+    tolerance: float,
+) -> dict[str, Any] | None:
+    """Return the developing (not-yet-confirmed) pivot on the trailing edge.
+
+    A confirmed pivot needs ``rightBars`` bars to its right, so a fresh reversal
+    leg (e.g. a sell-off right after a peak HH) has no confirmed label yet and
+    would otherwise show nothing on the chart. We surface that developing swing
+    as a PROVISIONAL pivot — clearly marked as unconfirmed — computed only from
+    bars *beyond* the last confirmed pivot's confirmation window, so the normal
+    trailing confirmation bars never spuriously produce one.
+    """
+    if not confirmed or not bars:
+        return None
+    last = confirmed[-1]
+    try:
+        last_index = int(last.get("_index", -1))
+    except (TypeError, ValueError):
+        return None
+    right_bars = int(settings["rightBars"])
+    start = last_index + right_bars + 1
+    tail = bars[start:] if 0 <= last_index else []
+    if not tail:
+        return None
+    minimum_move = float(settings["minimumMove"])
+    last_price = float(last["price"])
+    developing_low = str(last.get("pivotType")) == "HIGH"
+
+    ext_val: float | None = None
+    ext_offset = 0
+    for offset, bar in enumerate(tail):
+        value = _num(bar.get("l", bar.get("low"))) if developing_low else _num(bar.get("h", bar.get("high")))
+        if value is None:
+            continue
+        if ext_val is None or (value < ext_val if developing_low else value > ext_val):
+            ext_val = value
+            ext_offset = offset
+    if ext_val is None or abs(ext_val - last_price) < minimum_move:
+        return None
+
+    ptype = "LOW" if developing_low else "HIGH"
+    prior = [float(p["price"]) for p in confirmed if str(p.get("pivotType")) == ptype]
+    prev = prior[-1] if prior else None
+    if prev is None:
+        label = "L" if developing_low else "H"
+    else:
+        diff = ext_val - prev
+        if developing_low:
+            label = "HL" if diff > tolerance else "LL" if diff < -tolerance else "EQL"
+        else:
+            label = "HH" if diff > tolerance else "LH" if diff < -tolerance else "EQH"
+
+    index = start + ext_offset
+    ts = str(bars[index].get("t") or bars[index].get("time") or "")
+    return {
+        "id": f"structure-{ptype.lower()}-provisional-{index}",
+        "timestamp": ts,
+        "label": label,
+        "classification": label,
+        "pivotType": ptype,
+        "type": ptype,
+        "price": round(float(ext_val), 4),
+        "sourceTimeframe": "5m",
+        "timeframe": "5m",
+        "confirmed": False,
+        "status": "PROVISIONAL",
+        "provisional": True,
+        "latest": True,
+        "explanation": (
+            f"Developing {ptype.lower()} forming since the last confirmed pivot — not yet confirmed "
+            f"(needs up to {right_bars} more completed 5-minute bars to its right)."
+        ),
+    }
 
 
 def _market_structure(chart_bars: list[Any], metrics: dict[str, Any]) -> dict[str, Any]:
@@ -437,26 +530,55 @@ def _market_structure(chart_bars: list[Any], metrics: dict[str, Any]) -> dict[st
     settings = _structure_settings(bars, metrics)
     candidates = _candidate_pivots(bars, settings)
     normalized = _normalize_pivots(candidates, float(settings["minimumMove"]))
-    pivots = _classify_pivots(normalized, float(settings["comparisonTolerance"]))[-15:]
-    if pivots:
-        pivots[-1]["latest"] = True
-    trend, structure, display, derived_confidence = _trend_from_pivots(pivots)
-    for item in pivots:
-        item.pop("_index", None)
+    confirmed_pivots = _classify_pivots(normalized, float(settings["comparisonTolerance"]))[-15:]
+    # Trend / sequence / current pivot are derived from CONFIRMED pivots only, so a
+    # not-yet-confirmed reversal never flips the trend prematurely.
+    trend, structure, display, derived_confidence = _trend_from_pivots(confirmed_pivots)
 
-    sequence = [str(item["label"]) for item in pivots[-8:]]
-    current_pivot = pivots[-1] if pivots else None
+    sequence = [str(item["label"]) for item in confirmed_pivots[-8:]]
+    current_pivot = confirmed_pivots[-1] if confirmed_pivots else None
     current_label = str(current_pivot["label"]) if current_pivot else None
+
     invalidation: float | None = None
     if trend == "BULLISH":
-        lows = [float(item["price"]) for item in pivots if item.get("pivotType") == "LOW" and item.get("label") == "HL"]
+        lows = [float(item["price"]) for item in confirmed_pivots if item.get("pivotType") == "LOW" and item.get("label") == "HL"]
         invalidation = lows[-1] if lows else _num(metrics.get("or_low"))
     elif trend == "BEARISH":
-        highs = [float(item["price"]) for item in pivots if item.get("pivotType") == "HIGH" and item.get("label") == "LH"]
+        highs = [float(item["price"]) for item in confirmed_pivots if item.get("pivotType") == "HIGH" and item.get("label") == "LH"]
         invalidation = highs[-1] if highs else _num(metrics.get("or_high"))
+
+    # Developing trailing pivot (unconfirmed) so the chart reflects a fresh reversal leg.
+    provisional = _provisional_pivot(bars, confirmed_pivots, settings, float(settings["comparisonTolerance"]))
+
+    # Live invalidation breach: price has already traded through the last confirmed
+    # structural stop even though a new pivot has not confirmed yet (the "lag" case).
+    last_price = _num(metrics.get("last_price"))
+    invalidation_breached = bool(
+        invalidation is not None and last_price is not None and (
+            (trend == "BULLISH" and last_price < invalidation)
+            or (trend == "BEARISH" and last_price > invalidation)
+        )
+    )
+
+    render_pivots: list[dict[str, Any]] = []
+    for item in confirmed_pivots:
+        clean = {k: v for k, v in item.items() if k != "_index"}
+        clean["latest"] = False
+        render_pivots.append(clean)
+    if provisional is not None:
+        render_pivots.append(provisional)
+    if render_pivots:
+        render_pivots[-1]["latest"] = True
+
+    current_detail = {k: v for k, v in current_pivot.items() if k != "_index"} if current_pivot else None
 
     strength = _num(metrics.get("confidence"))
     confidence = derived_confidence if strength is None else min(1.0, max(0.0, float(strength) / 100.0))
+
+    expected_next = _expected_next_pivot(trend, current_pivot)
+    if invalidation_breached:
+        expected_next = "REVERSAL_PENDING"
+
     return {
         "id": "market-structure-5m",
         "timeframe": "5m",
@@ -466,24 +588,27 @@ def _market_structure(chart_bars: list[Any], metrics: dict[str, Any]) -> dict[st
         "confidence": round(confidence, 2),
         "sequence": sequence,
         "currentPivot": current_label,
-        "currentPivotDetail": current_pivot,
-        "expectedNext": _expected_next_pivot(trend, current_pivot),
-        "expectedNextPivot": _expected_next_pivot(trend, current_pivot),
+        "currentPivotDetail": current_detail,
+        "expectedNext": expected_next,
+        "expectedNextPivot": expected_next,
+        "provisionalPivot": provisional,
+        "invalidationBreached": invalidation_breached,
         "invalidationLevel": round(invalidation, 4) if invalidation is not None else None,
         "invalidation": (
             {
                 "price": round(invalidation, 4),
                 "basedOn": "LAST_CONFIRMED_HL" if trend == "BULLISH" else "LAST_CONFIRMED_LH",
+                "breached": invalidation_breached,
             }
             if invalidation is not None else None
         ),
         "structureStrength": round(strength, 2) if strength is not None else None,
         "sourceTimeframe": "5m",
-        "pivots": pivots,
+        "pivots": render_pivots,
         "settings": settings,
         "visibleByDefault": True,
         "showZigZagByDefault": True,
-        "explanation": "Day Trade structure uses backend-confirmed 5-minute pivots; 1-minute candles remain execution-only.",
+        "explanation": "Day Trade structure uses backend-confirmed 5-minute pivots; the trailing developing pivot is shown provisionally until it confirms.",
     }
 
 

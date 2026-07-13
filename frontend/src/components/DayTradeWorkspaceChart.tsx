@@ -106,7 +106,10 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           .map(point => point.value)
       : []
     const confirmedStructurePivots = (chart.marketStructure?.pivots || [])
-      .filter(pivot => pivot.confirmed && String(pivot.status || 'CONFIRMED').toUpperCase() === 'CONFIRMED' && Boolean(pivot.label))
+      .filter(pivot => Boolean(pivot.label) && (
+        (pivot.confirmed && String(pivot.status || 'CONFIRMED').toUpperCase() === 'CONFIRMED') ||
+        String(pivot.status || '').toUpperCase() === 'PROVISIONAL'
+      ))
     const scaleStructureValues = chart.marketStructure && visibleOverlayIds.has(chart.marketStructure.id)
       ? confirmedStructurePivots
           .filter(pivot => visibleTimeSet.has(pivot.timestamp))
@@ -167,7 +170,8 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
       .map(pivot => {
         const x = visibleTimes.get(pivot.timestamp)
         if (x == null || !Number.isFinite(pivot.price)) return null
-        return { ...pivot, x, y: yForPrice(pivot.price) }
+        const provisional = String(pivot.status || '').toUpperCase() === 'PROVISIONAL'
+        return { ...pivot, x, y: yForPrice(pivot.price), provisional }
       })
       .filter((point): point is NonNullable<typeof point> => point != null)
 
@@ -454,13 +458,24 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             {model.structurePoints.map(point => {
               const isHigh = point.pivotType === 'HIGH'
               const labelY = point.y + (isHigh ? -12 : 20)
-              const fill = point.latest ? '#8b5cf6' : isHigh ? '#f59e0b' : '#22c55e'
+              const typeColor = isHigh ? '#f59e0b' : '#22c55e'
+              // Provisional (developing, unconfirmed) pivots render hollow + dashed and read "LH?"/"LL?".
+              const fill = point.provisional ? 'white' : point.latest ? '#8b5cf6' : typeColor
+              const stroke = point.provisional ? typeColor : 'white'
               return (
-                <g key={point.id}>
-                  <circle cx={point.x} cy={point.y} r={point.latest ? 5.5 : 4} fill={fill} stroke="white" strokeWidth="1.5" />
-                  <rect x={point.x - 14} y={labelY - 13} width="28" height="16" rx="5" className="fill-white/95 stroke-slate-200 dark:fill-slate-950/95 dark:stroke-white/10" />
-                  <text x={point.x} y={labelY - 2} textAnchor="middle" className="fill-violet-700 text-[10px] font-black dark:fill-violet-200">
-                    {point.label}
+                <g key={point.id} opacity={point.provisional ? 0.85 : 1}>
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={point.latest ? 5.5 : 4}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth="1.5"
+                    strokeDasharray={point.provisional ? '2 2' : undefined}
+                  />
+                  <rect x={point.x - 15} y={labelY - 13} width={point.provisional ? 32 : 28} height="16" rx="5" className="fill-white/95 stroke-slate-200 dark:fill-slate-950/95 dark:stroke-white/10" />
+                  <text x={point.x} y={labelY - 2} textAnchor="middle" className={point.provisional ? 'fill-slate-400 text-[10px] font-black dark:fill-slate-500' : 'fill-violet-700 text-[10px] font-black dark:fill-violet-200'}>
+                    {point.provisional ? `${point.label}?` : point.label}
                   </text>
                 </g>
               )

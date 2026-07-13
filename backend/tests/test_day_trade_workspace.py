@@ -324,7 +324,8 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         ])
 
         labels = [pivot["label"] for pivot in structure["pivots"]]
-        self.assertEqual(labels, ["HH", "HL", "HH", "HL", "HH"])
+        # Seed high/low are neutral ("H"/"L"); HH/HL only assert once a prior same-type pivot exists.
+        self.assertEqual(labels, ["H", "L", "HH", "HL", "HH"])
         self.assertEqual(structure["trend"], "BULLISH")
 
     def test_market_structure_bearish_continuation_compares_same_type_pivots(self) -> None:
@@ -333,7 +334,7 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         ])
 
         labels = [pivot["label"] for pivot in structure["pivots"]]
-        self.assertEqual(labels, ["HH", "HL", "LH", "LL", "LH"])
+        self.assertEqual(labels, ["H", "L", "LH", "LL", "LH"])
         self.assertEqual(structure["trend"], "BEARISH")
 
     def test_market_structure_transition_when_highs_rise_and_lows_fall(self) -> None:
@@ -342,7 +343,7 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         ])
 
         labels = [pivot["label"] for pivot in structure["pivots"]]
-        self.assertEqual(labels, ["HH", "HL", "HH", "LL"])
+        self.assertEqual(labels, ["H", "L", "HH", "LL"])
         self.assertEqual(structure["trend"], "TRANSITION")
 
     def test_market_structure_compression_is_transition_or_range(self) -> None:
@@ -351,7 +352,7 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         ])
 
         labels = [pivot["label"] for pivot in structure["pivots"]]
-        self.assertEqual(labels, ["HH", "HL", "LH", "HL"])
+        self.assertEqual(labels, ["H", "L", "LH", "HL"])
         self.assertIn(structure["trend"], {"TRANSITION", "RANGE"})
 
     def test_market_structure_consecutive_same_type_candidates_keep_extreme(self) -> None:

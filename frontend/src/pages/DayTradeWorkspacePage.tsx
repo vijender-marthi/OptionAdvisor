@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2, Search, X, Activity } from 'lucide-react'
+import { Loader2, Search, X, Activity } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { DayTradeWorkspaceAction } from '../api/client'
 import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
@@ -79,7 +79,8 @@ function DayTradeSidebarContent({
   loadTicker,
   setAddDialogOpen,
   navigate,
-  onCollapse,
+  onClose,
+  closeable = false,
 }: {
   tickerInput: string
   setTickerInput: (value: string) => void
@@ -98,7 +99,8 @@ function DayTradeSidebarContent({
   loadTicker: (symbol?: string) => void
   setAddDialogOpen: (open: boolean) => void
   navigate: (path: string) => void
-  onCollapse: () => void
+  onClose?: () => void
+  closeable?: boolean
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -110,9 +112,11 @@ function DayTradeSidebarContent({
             <span className="text-lg font-black text-heading">Day Trade</span>
           </div>
         </div>
-        <button type="button" onClick={onCollapse} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Collapse sidebar">
-          <ChevronLeft size={16} />
-        </button>
+        {closeable && onClose && (
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Close sidebar">
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
@@ -299,18 +303,8 @@ export default function DayTradeWorkspacePage() {
   const navigate = useNavigate()
   const { portfolio } = useApp()
   const [notice, setNotice] = useState('')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('day_trade_workspace_sidebar_collapsed') === '1'
-    } catch {
-      return false
-    }
-  })
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
-  useEffect(() => {
-    try { localStorage.setItem('day_trade_workspace_sidebar_collapsed', sidebarCollapsed ? '1' : '0') } catch { /* quota */ }
-  }, [sidebarCollapsed])
   const [tickerInput, setTickerInput] = useState((searchParams.get('symbol') || searchParams.get('ticker') || 'AAPL').trim().toUpperCase())
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [tickersLoading, setTickersLoading] = useState(false)
@@ -333,7 +327,7 @@ export default function DayTradeWorkspacePage() {
   const [sidebarScrollTop, setSidebarScrollTop] = useState(() => {
     try {
       const saved = Number(localStorage.getItem('day_trade_workspace_sidebar_scroll_top'))
-      return Number.isFinite(saved) ? Math.max(0, saved) : 0
+      return Number.isFinite(saved) && saved > 0 ? saved : 0
     } catch {
       return 0
     }
@@ -543,40 +537,27 @@ export default function DayTradeWorkspacePage() {
   return (
     <div className="day-trade-page min-h-screen bg-surface-page p-3 text-primary">
       <div className="mx-auto flex max-w-[1920px] gap-3">
-
-        {sidebarCollapsed ? (
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed(false)}
-            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-secondary hover:border-violet-400 dark:border-white/[0.08] dark:bg-slate-950 lg:flex"
-            aria-label="Expand sidebar"
-          >
-            <ChevronRight size={18} />
-          </button>
-        ) : (
-          <aside className="hidden w-80 shrink-0 lg:block">
-            <DayTradeSidebarContent
-              tickerInput={tickerInput}
-              setTickerInput={setTickerInput}
-              sidebarSearch={sidebarSearch}
-              setSidebarSearch={setSidebarSearch}
-              sidebarTab={sidebarTab}
-              setSidebarTab={setSidebarTab}
-              filteredTickers={filteredTickers}
-              symbol={symbol}
-              tickersLoading={tickersLoading}
-              tickersError={tickersError}
-              refreshMyTickers={refreshMyTickers}
-              workspaceLoading={workspaceLoading}
-              listRef={listRef}
-              handleListScroll={handleListScroll}
-              loadTicker={loadTicker}
-              setAddDialogOpen={setAddDialogOpen}
-              navigate={navigate}
-              onCollapse={() => setSidebarCollapsed(true)}
-            />
-          </aside>
-        )}
+        <aside className="hidden w-80 shrink-0 lg:block">
+          <DayTradeSidebarContent
+            tickerInput={tickerInput}
+            setTickerInput={setTickerInput}
+            sidebarSearch={sidebarSearch}
+            setSidebarSearch={setSidebarSearch}
+            sidebarTab={sidebarTab}
+            setSidebarTab={setSidebarTab}
+            filteredTickers={filteredTickers}
+            symbol={symbol}
+            tickersLoading={tickersLoading}
+            tickersError={tickersError}
+            refreshMyTickers={refreshMyTickers}
+            workspaceLoading={workspaceLoading}
+            listRef={listRef}
+            handleListScroll={handleListScroll}
+            loadTicker={loadTicker}
+            setAddDialogOpen={setAddDialogOpen}
+            navigate={navigate}
+          />
+        </aside>
 
         {mobileSidebarOpen && (
           <div className="fixed inset-0 z-40 lg:hidden">
@@ -600,7 +581,8 @@ export default function DayTradeWorkspacePage() {
                 loadTicker={loadTicker}
                 setAddDialogOpen={setAddDialogOpen}
                 navigate={navigate}
-                onCollapse={() => setMobileSidebarOpen(false)}
+                onClose={() => setMobileSidebarOpen(false)}
+                closeable
               />
             </aside>
           </div>
