@@ -124,7 +124,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     const candleMax = visibleCandlePrices.length ? Math.max(...visibleCandlePrices) : 1
     const latestClose = visibleCandles[visibleCandles.length - 1]?.close
     const candleRange = Math.max(candleMax - candleMin, 0.01)
-    const focusBand = Math.max(candleRange * 1.75, safeNumber(latestClose, candleMax) * 0.008, 0.25)
+    // Keep the price scale hugging the visible candles so distant trade levels
+    // (T1/T2/Stop) can't stretch the axis and squash the candles into a thin band.
+    const focusBand = Math.max(candleRange * 0.4, safeNumber(latestClose, candleMax) * 0.004, 0.15)
     const affectsTradeFocusScale = (price: number) => {
       if (chart.defaults.scaleMode === 'full_context') return true
       return price >= candleMin - focusBand && price <= candleMax + focusBand
@@ -216,10 +218,31 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     if (currentSegment.length) vwapSegments.push(currentSegment)
     const structurePoints = confirmedStructurePivots
       .map(pivot => {
-        const x = visibleTimes.get(pivot.timestamp)
-        if (x == null || !Number.isFinite(pivot.price)) return null
+        // Structure pivots are computed on 5m bars; on a 1m/other chart the pivot's
+        // timestamp maps to the bar's first candle, not the candle that made the
+        // extreme. Snap the marker onto the real candle wick within the pivot's 5m
+        // window so it sits on the candle instead of floating.
+        const pivotMs = Date.parse(pivot.timestamp)
+        const isHigh = pivot.pivotType === 'HIGH'
+        let anchorIndex: number | null = null
+        let anchorExtreme = isHigh ? -Infinity : Infinity
+        if (Number.isFinite(pivotMs)) {
+          const windowMs = 5 * 60 * 1000
+          visibleCandles.forEach((candle, index) => {
+            const t = Date.parse(candle.time)
+            if (!Number.isFinite(t) || t < pivotMs || t >= pivotMs + windowMs) return
+            const extreme = isHigh ? candle.high : candle.low
+            if (anchorIndex == null || (isHigh ? extreme > anchorExtreme : extreme < anchorExtreme)) {
+              anchorIndex = index
+              anchorExtreme = extreme
+            }
+          })
+        }
+        const anchorPrice = anchorIndex != null ? anchorExtreme : pivot.price
+        const x = anchorIndex != null ? xForIndex(anchorIndex) : visibleTimes.get(pivot.timestamp)
+        if (x == null || !Number.isFinite(anchorPrice)) return null
         const provisional = String(pivot.status || '').toUpperCase() === 'PROVISIONAL'
-        return { ...pivot, x, y: yForPrice(pivot.price), provisional }
+        return { ...pivot, x, y: yForPrice(anchorPrice), provisional }
       })
       .filter((point): point is NonNullable<typeof point> => point != null)
 
@@ -612,14 +635,19 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           </g>
         )}
         {chart.levels.filter(level => visibleOverlayIds.has(level.id)).sort((a, b) => a.priority - b.priority).map(level => {
-          const y = model.yForPrice(level.price)
+          const rawY = model.yForPrice(level.price)
+          // Off-scale levels (e.g. far T1/T2 when zoomed in) are pinned to the pane
+          // edge with a ↑/↓ marker instead of drawing a misleading line off-chart.
+          const offscreen = rawY < PRICE_TOP || rawY > PRICE_BOTTOM
+          const y = clamp(rawY, PRICE_TOP + 11, PRICE_BOTTOM - 11)
           const color = toneStroke(level.tone)
+          const arrow = offscreen ? (rawY < PRICE_TOP ? ' ↑' : ' ↓') : ''
           return (
-            <g key={level.id} opacity={level.active ? 1 : 0.46}>
-              <line x1="0" x2={WIDTH} y1={y} y2={y} stroke={color} strokeWidth="1.7" strokeDasharray={level.lineStyleToken.includes('dash') ? '6 5' : undefined} />
+            <g key={level.id} opacity={level.active ? (offscreen ? 0.6 : 1) : 0.46}>
+              {!offscreen && <line x1="0" x2={WIDTH} y1={y} y2={y} stroke={color} strokeWidth="1.7" strokeDasharray={level.lineStyleToken.includes('dash') ? '6 5' : undefined} />}
               <rect x="8" y={y - 11} width="172" height="22" rx="6" className="fill-white/90 dark:fill-slate-950/90" />
               <text x="16" y={y + 4} className="fill-slate-700 text-[11px] font-bold dark:fill-slate-200">
-                {level.label} ${level.price.toFixed(2)}
+                {level.label} ${level.price.toFixed(2)}{arrow}
               </text>
             </g>
           )
