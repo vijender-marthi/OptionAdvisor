@@ -332,6 +332,7 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalCh
 
 export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTradeWorkspaceResponse; onAction?: (action: DayTradeWorkspaceAction) => void }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const engine = workspace.decisionEngine
   const rrKey = 'risk' + 'Reward'
   const rrValue = workspace.riskPlan[rrKey as keyof typeof workspace.riskPlan] as DayTradeWorkspaceDisplayValue
   const entry = rawNumber(workspace.riskPlan.entry)
@@ -344,58 +345,98 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
   return (
     <aside className="grid max-h-[70vh] content-start gap-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none">
       <Panel title="Current Decision">
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <TrendingUp size={16} className={marketStructureBadgeClass(formatTrendLabel(workspace)).includes('emerald') ? 'text-emerald-600 dark:text-emerald-300' : marketStructureBadgeClass(formatTrendLabel(workspace)).includes('rose') ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'} />
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">Trend</div>
-                <div className={`text-sm font-semibold ${inferredValueTextClass('Trend', formatTrendLabel(workspace))}`}>{formatTrendLabel(workspace)}</div>
-              </div>
-            </div>
-            <StatusPill status={workspace.decision.permission} />
-          </div>
-
-          <div>
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Reason Blocked</div>
-            <div className="grid gap-1">
-              {(decisionChecks.length ? decisionChecks : [workspace.decision.context.label, workspace.trigger.status.label]).map(item => (
-                <div key={item} className="flex items-center gap-2 text-xs text-secondary">
-                  <CheckCircle2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-300" />
-                  <span>{item}</span>
+        {engine ? (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <TrendingUp size={16} className={marketStructureBadgeClass(engine.currentState.state).includes('emerald') ? 'text-emerald-600 dark:text-emerald-300' : marketStructureBadgeClass(engine.currentState.state).includes('rose') ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'} />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">Current State</div>
+                  <div className={`text-sm font-semibold ${inferredValueTextClass('Trend', engine.currentState.state)}`}>{engine.currentState.state}</div>
                 </div>
-              ))}
+              </div>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-black uppercase tracking-wide ${workspaceToneBadgeClass(engine.currentAction.action === 'WAIT' ? 'warning' : engine.currentAction.action.includes('EXIT') ? 'danger' : 'positive')}`}>
+                {engine.currentAction.action}
+              </span>
             </div>
-          </div>
-
-          {decisionWarnings.length > 0 && (
             <div>
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">But</div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Reason</div>
+              <div className="text-xs leading-relaxed text-secondary">{engine.currentAction.reason}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Backend Reasoning</div>
               <div className="grid gap-1">
-                {decisionWarnings.map(item => (
-                  <div key={item} className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-200">
-                    <AlertTriangle size={13} className="shrink-0" />
+                {engine.reasoning.slice(0, 4).map(item => (
+                  <div key={item} className="flex items-center gap-2 text-xs text-secondary">
+                    <CheckCircle2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-300" />
                     <span>{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
-
-          <div>
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Risk / Reward</div>
-            <div className="grid grid-cols-3 gap-1.5">
-              <MiniMetric label="Risk" value={moneyValue(risk)} tone="danger" />
-              <MiniMetric label="Reward" value={moneyValue(reward)} tone="positive" />
-              <MiniMetric label="R:R" value={rrValue.display} tone={rrValue.tone || 'warning'} />
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Reward / Risk</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <MiniMetric label="Risk" value={engine.rewardRisk.risk.display} tone="danger" />
+                <MiniMetric label="Reward" value={engine.rewardRisk.reward.display} tone="positive" />
+                <MiniMetric label="R:R" value={engine.rewardRisk.display} tone={engine.rewardRisk.ratio != null && engine.rewardRisk.ratio >= 1.2 ? 'positive' : 'warning'} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">Recommendation</div>
+              <div className="mt-1 text-xs leading-relaxed text-secondary">{engine.currentAction.recommendation}</div>
             </div>
           </div>
-
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">Action</div>
-            <div className="mt-1 text-xs leading-relaxed text-secondary">{buildActionCopy(workspace)}</div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <TrendingUp size={16} className={marketStructureBadgeClass(formatTrendLabel(workspace)).includes('emerald') ? 'text-emerald-600 dark:text-emerald-300' : marketStructureBadgeClass(formatTrendLabel(workspace)).includes('rose') ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'} />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">Trend</div>
+                  <div className={`text-sm font-semibold ${inferredValueTextClass('Trend', formatTrendLabel(workspace))}`}>{formatTrendLabel(workspace)}</div>
+                </div>
+              </div>
+              <StatusPill status={workspace.decision.permission} />
+            </div>
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Reason Blocked</div>
+              <div className="grid gap-1">
+                {(decisionChecks.length ? decisionChecks : [workspace.decision.context.label, workspace.trigger.status.label]).map(item => (
+                  <div key={item} className="flex items-center gap-2 text-xs text-secondary">
+                    <CheckCircle2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-300" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {decisionWarnings.length > 0 && (
+              <div>
+                <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">But</div>
+                <div className="grid gap-1">
+                  {decisionWarnings.map(item => (
+                    <div key={item} className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-200">
+                      <AlertTriangle size={13} className="shrink-0" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Risk / Reward</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <MiniMetric label="Risk" value={moneyValue(risk)} tone="danger" />
+                <MiniMetric label="Reward" value={moneyValue(reward)} tone="positive" />
+                <MiniMetric label="R:R" value={rrValue.display} tone={rrValue.tone || 'warning'} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">Action</div>
+              <div className="mt-1 text-xs leading-relaxed text-secondary">{buildActionCopy(workspace)}</div>
+            </div>
           </div>
-        </div>
+        )}
       </Panel>
       <Panel title="Entry / Stop / Targets">
         <div className="grid grid-cols-2 gap-2">
@@ -426,14 +467,24 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
         </div>
       </Panel>
       <Panel title="Setup">
-        <div className="grid gap-2">
-          <Value label="Setup" value={workspace.decision.setupName || '—'} />
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-wide text-tertiary">Context</div>
-            <StatusPill status={workspace.decision.context} />
+        {engine ? (
+          <div className="grid gap-2">
+            <Value label="Today's Setup" value={engine.setup.setupType} />
+            <Value label="Status" value={engine.setup.status} />
+            <Value label="Triggered" value={engine.setup.triggerTime || '—'} />
+            <Value label="Entry" value={engine.setup.triggerPrice == null ? '—' : `$${engine.setup.triggerPrice.toFixed(2)}`} />
+            <Value label="Valid Window" value={engine.setup.validFrom && engine.setup.validUntil ? `${engine.setup.validFrom} - ${engine.setup.validUntil}` : '—'} />
+            <Value label={engine.setup.result || 'Current Result'} value={engine.setup.currentGainPct == null ? '—' : `${engine.setup.currentGainPct >= 0 ? '+' : ''}${engine.setup.currentGainPct.toFixed(2)}%`} />
           </div>
-          {/* Trigger requirement intentionally omitted here — shown once in the Trigger panel to avoid duplication. */}
-        </div>
+        ) : (
+          <div className="grid gap-2">
+            <Value label="Setup" value={workspace.decision.setupName || '—'} />
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-wide text-tertiary">Context</div>
+              <StatusPill status={workspace.decision.context} />
+            </div>
+          </div>
+        )}
       </Panel>
       <Panel title="Market Structure">
         {workspace.chart.marketStructure ? (
@@ -447,6 +498,12 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
             <Value label="Expected Next" value={workspace.chart.marketStructure.expectedNextPivot || '—'} />
             <Value label="Invalidation" value={workspace.chart.marketStructure.invalidationLevel == null ? '—' : `$${workspace.chart.marketStructure.invalidationLevel.toFixed(2)}`} />
             <Value label="Strength" value={workspace.chart.marketStructure.structureStrength == null ? '—' : `${workspace.chart.marketStructure.structureStrength.toFixed(0)}%`} />
+            {engine && (
+              <>
+                <Value label="Trend Health" value={`${engine.trendHealth.score.toFixed(0)}/100 · ${engine.trendHealth.label}`} />
+                <Value label="Expected" value={engine.expectedStructure.expected.map(item => `${item.label} ${item.probability.toFixed(0)}%`).join(' · ')} />
+              </>
+            )}
             <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">
               {workspace.chart.marketStructure.explanation || 'Backend-confirmed 5m structure.'}
             </div>
@@ -458,6 +515,14 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
       <Panel title="Trigger">
         <StatusPill status={workspace.trigger.status} />
         <div className="mt-2 text-xs text-secondary">{workspace.trigger.summary}</div>
+        {engine && (
+          <div className="mt-2 rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+            <div className="text-[10px] font-black uppercase tracking-wide text-sky-700 dark:text-sky-200">Next Opportunity</div>
+            <div className="mt-1 text-sm font-semibold text-heading">{engine.nextOpportunity.nextOpportunity}</div>
+            <div className="mt-1 text-xs text-secondary">{engine.nextOpportunity.trigger}</div>
+            <div className="mt-1 font-mono text-xs font-bold text-sky-700 dark:text-sky-200">{engine.nextOpportunity.probability.toFixed(0)}%</div>
+          </div>
+        )}
         <div className="mt-2 grid gap-1">
           {workspace.trigger.requirements.map(item => (
             <div key={item.id} className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-xs dark:bg-slate-900">
@@ -806,6 +871,20 @@ function isWorkspaceTabPayload(value: unknown): value is WorkspaceTabPayload {
   return value != null && typeof value === 'object'
 }
 
+function workspaceSectionCardClass(tone?: string): string {
+  const raw = String(tone || '').toLowerCase()
+  if (raw.includes('positive') || raw.includes('success') || raw.includes('green') || raw.includes('bull') || raw.includes('pass')) {
+    return 'border-emerald-500/25 bg-emerald-500/10'
+  }
+  if (raw.includes('negative') || raw.includes('danger') || raw.includes('red') || raw.includes('bear') || raw.includes('fail')) {
+    return 'border-rose-500/25 bg-rose-500/10'
+  }
+  if (raw.includes('warning') || raw.includes('amber') || raw.includes('wait') || raw.includes('yellow')) {
+    return 'border-amber-500/25 bg-amber-500/10'
+  }
+  return 'border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950'
+}
+
 function WorkspaceTabPanel({ name, payload, framed = true }: { name: string; payload: unknown; framed?: boolean }) {
   if (!isWorkspaceTabPayload(payload)) {
     return (
@@ -819,22 +898,37 @@ function WorkspaceTabPanel({ name, payload, framed = true }: { name: string; pay
   const items = Array.isArray(payload.items) ? payload.items : []
   return (
     <div className={framed ? 'px-3 pb-3' : ''}>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.08] dark:bg-slate-900">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">{payload.title || name}</div>
-            {payload.summary && <div className="mt-1 max-w-4xl text-sm text-secondary">{payload.summary}</div>}
+      <div className="grid gap-3">
+        <section className="rounded-xl border border-violet-500/25 bg-violet-500/10 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-violet-700 dark:text-violet-200">
+                <LayoutList size={13} />
+                {payload.title || name}
+              </div>
+              {payload.summary && <div className="mt-2 max-w-4xl text-sm leading-relaxed text-secondary">{payload.summary}</div>}
+            </div>
+            <span className="rounded-full border border-violet-500/30 bg-white/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:bg-slate-950/40 dark:text-violet-200">
+              {items.length} item{items.length === 1 ? '' : 's'}
+            </span>
           </div>
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        </section>
+        <div className="grid gap-2">
           {items.length ? items.map((item, index) => (
-            <div key={`${item.label || 'item'}-${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.08] dark:bg-slate-950">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">{item.label || 'Item'}</div>
-              <div className={`mt-1 text-sm font-bold ${workspaceToneTextClass(item.tone || 'neutral')}`}>{item.value || '—'}</div>
-              {item.detail && <div className="mt-1 text-xs text-tertiary">{item.detail}</div>}
+            <div key={`${item.label || 'item'}-${index}`} className={`rounded-xl border p-3 ${workspaceSectionCardClass(item.tone)}`}>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">{item.label || `Item ${index + 1}`}</div>
+                  <div className={`mt-1 break-words font-mono text-base font-semibold tabular-nums ${workspaceToneTextClass(item.tone || 'neutral')}`}>{item.value || '—'}</div>
+                </div>
+                <span className={`w-fit rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${workspaceToneBadgeClass(item.tone || 'neutral')}`}>
+                  {item.tone || 'neutral'}
+                </span>
+              </div>
+              {item.detail && <div className="mt-2 rounded-lg border border-slate-200/80 bg-white/65 px-3 py-2 text-xs leading-relaxed text-secondary dark:border-white/[0.08] dark:bg-slate-950/45">{item.detail}</div>}
             </div>
           )) : (
-            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-tertiary dark:border-white/[0.08] dark:bg-slate-950">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-tertiary dark:border-white/[0.08] dark:bg-slate-950">
               No backend items for this tab.
             </div>
           )}

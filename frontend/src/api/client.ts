@@ -621,6 +621,57 @@ export type DayTradeRiskMonitorItem = {
   evidence?: DayTradeRiskMonitorFactor[]
 }
 
+export type DayTradeDecisionEngine = {
+  setup: {
+    setupType: string
+    triggerTime?: string | null
+    triggerPrice?: number | null
+    status: string
+    result?: string | null
+    validFrom?: string | null
+    validUntil?: string | null
+    currentGainPct?: number | null
+  }
+  currentState: {
+    state: string
+    score: number
+    explanation: string
+  }
+  currentAction: {
+    action: string
+    reason: string
+    recommendation: string
+    confidence: number
+  }
+  nextOpportunity: {
+    nextOpportunity: string
+    trigger: string
+    explanation: string
+    probability: number
+  }
+  expectedStructure: {
+    current: string[]
+    expected: Array<{ label: string; probability: number }>
+    explanation: string
+  }
+  trendHealth: {
+    score: number
+    label: string
+    explanation: string
+    inputs: Record<string, number>
+  }
+  rewardRisk: {
+    risk: DayTradeWorkspaceDisplayValue
+    reward: DayTradeWorkspaceDisplayValue
+    ratio?: number | null
+    display: string
+    targetUsed?: string | null
+  }
+  explanation: string
+  confidence: number
+  reasoning: string[]
+}
+
 export type DayTradeWorkspaceResponse = Omit<
   ApiSchemas['DayTradeWorkspaceResponse'],
   'chart' | 'decision' | 'evidence' | 'tabs' | 'trigger'
@@ -630,6 +681,7 @@ export type DayTradeWorkspaceResponse = Omit<
   evidence: ApiSchemas['DayTradeEvidenceItemView'][]
   chart: DayTradeWorkspaceChart
   tabs: Record<string, unknown>
+  decisionEngine?: DayTradeDecisionEngine | null
   trapDetection?: {
     enabled?: boolean
     type?: string | null

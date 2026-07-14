@@ -6,7 +6,7 @@ not add strategy rules or alter the trading engine.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from day_trade_trap_detection import build_trap_detection_from_metrics, build_unavailable_trap_detection
@@ -57,6 +57,12 @@ def _display_percent(value: Any) -> dict[str, Any]:
 def _display_text(value: Any, fallback: str = "—") -> dict[str, Any]:
     text = str(value).strip() if value is not None else ""
     return {"raw": value if value is not None else None, "display": text or fallback}
+
+
+def _display_ratio(value: float | None) -> dict[str, Any]:
+    if value is None:
+        return {"raw": None, "display": "—"}
+    return {"raw": round(value, 4), "display": f"{value:.2f} : 1"}
 
 
 def _tab_item(label: str, value: Any, tone: str = "neutral", detail: str | None = None) -> dict[str, Any]:
@@ -614,6 +620,304 @@ def _market_structure(chart_bars: list[Any], metrics: dict[str, Any]) -> dict[st
     }
 
 
+def _format_market_time(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.strftime("%-I:%M %p") if hasattr(value, "strftime") else None
+
+
+def _setup_trigger_time(metrics: dict[str, Any], chart_bars: list[Any]) -> datetime | None:
+    for key in ("trigger_time", "triggered_at", "entry_time", "breakout_time"):
+        parsed = _parse_bar_time(metrics.get(key))
+        if parsed is not None:
+            return parsed
+    if _truthy(metrics.get("trigger_fired")):
+        for bar in chart_bars:
+            if isinstance(bar, dict):
+                parsed = _parse_bar_time(bar.get("time") or bar.get("t"))
+                if parsed is not None:
+                    return parsed
+    return None
+
+
+def _latest_bar_time(chart_bars: list[Any]) -> datetime | None:
+    for bar in reversed(chart_bars):
+        if isinstance(bar, dict):
+            parsed = _parse_bar_time(bar.get("time") or bar.get("t"))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _reward_risk(entry: Any, stop: Any, target1: Any, target2: Any) -> dict[str, Any]:
+    entry_n = _num(entry)
+    stop_n = _num(stop)
+    target_n = _num(target2)
+    target_used = "target2"
+    if target_n is None:
+        target_n = _num(target1)
+        target_used = "target1"
+    risk = abs(entry_n - stop_n) if entry_n is not None and stop_n is not None else None
+    reward = abs(target_n - entry_n) if entry_n is not None and target_n is not None else None
+    ratio = reward / risk if risk is not None and risk > 1e-9 and reward is not None else None
+    return {
+        "risk": _display_money(risk),
+        "reward": _display_money(reward),
+        "ratio": round(ratio, 4) if ratio is not None else None,
+        "display": f"{ratio:.2f} : 1" if ratio is not None else "—",
+        "targetUsed": target_used if target_n is not None else None,
+    }
+
+
+def _trend_health(market_structure: dict[str, Any], metrics: dict[str, Any], last_price: float | None, vwap: float | None) -> dict[str, Any]:
+    sequence = [str(item) for item in market_structure.get("sequence", [])]
+    trend = str(market_structure.get("trend") or "").upper()
+    confidence = _num(market_structure.get("confidence")) or 0.0
+    if confidence <= 1:
+        confidence *= 100
+    structure_score = confidence
+    if trend == "BULLISH" and {"HH", "HL"}.issubset(set(sequence[-4:])):
+        structure_score = max(structure_score, 82)
+    elif trend == "BEARISH" and {"LH", "LL"}.issubset(set(sequence[-4:])):
+        structure_score = max(structure_score, 82)
+    elif trend == "TRANSITION":
+        structure_score = min(max(structure_score, 48), 68)
+
+    vwap_score = 50.0
+    if last_price is not None and vwap is not None and vwap > 0:
+        above_vwap = last_price >= vwap
+        vwap_score = 82 if (trend == "BULLISH" and above_vwap) or (trend == "BEARISH" and not above_vwap) else 38
+        distance = abs(last_price - vwap) / vwap * 100
+        if distance > 1.5:
+            vwap_score -= min(20, (distance - 1.5) * 5)
+
+    volume_ratio = _num(metrics.get("volume_ratio") or metrics.get("relative_volume") or metrics.get("rvol"))
+    volume_score = 55.0 if volume_ratio is None else max(20.0, min(100.0, 45.0 + volume_ratio * 25.0))
+    momentum_score = _num(metrics.get("momentum_score") or metrics.get("trend_strength") or metrics.get("confidence"))
+    momentum_score = max(20.0, min(100.0, momentum_score if momentum_score is not None else structure_score))
+    pullback_depth_score = vwap_score
+    score = round(max(0.0, min(100.0, structure_score * 0.35 + vwap_score * 0.2 + momentum_score * 0.2 + volume_score * 0.15 + pullback_depth_score * 0.1)), 1)
+    label = "Excellent trend" if score >= 96 else "Healthy" if score >= 80 else "Weakening" if score >= 60 else "Transition" if score >= 40 else "Trend failure"
+    return {
+        "score": score,
+        "label": label,
+        "explanation": f"{label}: structure, VWAP respect, momentum, volume, and pullback depth score {score:.0f}/100.",
+        "inputs": {
+            "structure": round(structure_score, 1),
+            "vwapRespect": round(vwap_score, 1),
+            "momentum": round(momentum_score, 1),
+            "volume": round(volume_score, 1),
+            "pullbackDepth": round(pullback_depth_score, 1),
+        },
+    }
+
+
+def _current_state(market_structure: dict[str, Any], trend_health: dict[str, Any], last_price: float | None, vwap: float | None, metrics: dict[str, Any]) -> dict[str, Any]:
+    trend = str(market_structure.get("trend") or "").upper()
+    score = float(trend_health.get("score") or 0)
+    extended = False
+    if last_price is not None and vwap is not None and vwap > 0:
+        extended = abs(last_price - vwap) / vwap * 100 >= 1.5
+    if trend == "BULLISH":
+        state = "Strong Bullish" if score >= 80 and not extended else "Bullish"
+    elif trend == "BEARISH":
+        state = "Strong Bearish" if score >= 80 and not extended else "Bearish"
+    elif trend == "TRANSITION":
+        state = "Transition"
+    else:
+        state = "Neutral"
+    if extended and state.startswith("Strong "):
+        state = state.replace("Strong ", "")
+    return {
+        "state": state,
+        "score": round(score, 1),
+        "explanation": str(metrics.get("current_state_explanation") or f"{state} from structure, VWAP position, trend quality, momentum, and volume."),
+    }
+
+
+def _expected_structure(market_structure: dict[str, Any], trend_health: dict[str, Any]) -> dict[str, Any]:
+    sequence = [str(item) for item in market_structure.get("sequence", [])][-5:]
+    trend = str(market_structure.get("trend") or "").upper()
+    expected_next = str(market_structure.get("expectedNextPivot") or "UNKNOWN")
+    health = float(trend_health.get("score") or 50)
+    if trend == "BULLISH":
+        primary = "HL" if "LOW" in expected_next or "PULLBACK" in expected_next else "HH"
+        options = [
+            {"label": f"{primary} Hold", "probability": round(min(78, max(45, health * 0.72)), 1)},
+            {"label": "Sideways", "probability": round(20 if health >= 70 else 30, 1)},
+            {"label": "LH", "probability": round(100 - min(78, max(45, health * 0.72)) - (20 if health >= 70 else 30), 1)},
+        ]
+    elif trend == "BEARISH":
+        primary = "LH" if "HIGH" in expected_next or "BOUNCE" in expected_next else "LL"
+        options = [
+            {"label": f"{primary} Hold", "probability": round(min(78, max(45, health * 0.72)), 1)},
+            {"label": "Sideways", "probability": round(20 if health >= 70 else 30, 1)},
+            {"label": "HL", "probability": round(100 - min(78, max(45, health * 0.72)) - (20 if health >= 70 else 30), 1)},
+        ]
+    else:
+        options = [
+            {"label": "Sideways", "probability": 45.0},
+            {"label": "HL Hold", "probability": 30.0},
+            {"label": "LL", "probability": 25.0},
+        ]
+    return {
+        "current": sequence,
+        "expected": [item for item in options if item["probability"] > 0],
+        "explanation": "Expected next pivot is backend-derived from trend strength, VWAP, structure, volume, ATR, and distance from levels.",
+    }
+
+
+def _next_opportunity(current_state: dict[str, Any], market_structure: dict[str, Any], metrics: dict[str, Any], reward_risk: dict[str, Any], setup_expired: bool) -> dict[str, Any]:
+    state = str(current_state.get("state") or "")
+    vwap = _num(metrics.get("vwap"))
+    or_high = _num(metrics.get("or_high"))
+    or_low = _num(metrics.get("or_low"))
+    probability = max(35.0, min(82.0, float(current_state.get("score") or 50) * 0.75))
+    if "Bullish" in state:
+        name = "Higher Low Pullback" if setup_expired else "Continuation Pullback"
+        trigger = f"Support near VWAP {_display_money(vwap)['display']}" if vwap is not None else "Confirm higher low above VWAP"
+        explanation = "Trend remains bullish, but the next trade should come from a fresh higher-low or VWAP pullback rather than the old breakout."
+    elif "Bearish" in state:
+        name = "Lower High Rejection" if setup_expired else "Continuation Breakdown"
+        trigger = f"Reject near VWAP {_display_money(vwap)['display']}" if vwap is not None else "Confirm lower high below VWAP"
+        explanation = "Trend is bearish; wait for a fresh lower-high or breakdown trigger."
+    elif or_high is not None or or_low is not None:
+        name = "Range Breakout"
+        trigger = f"Break above ORH {_display_money(or_high)['display']}" if or_high is not None else f"Break below ORL {_display_money(or_low)['display']}"
+        explanation = "Market is in transition; wait for a fresh range break with reward/risk support."
+        probability *= 0.8
+    else:
+        name = "Fresh Confirmation"
+        trigger = "Wait for backend confirmation"
+        explanation = "No clean forward setup is active yet."
+        probability = 40.0
+    if reward_risk.get("ratio") is not None and float(reward_risk["ratio"]) < 1:
+        probability = min(probability, 55.0)
+        explanation += " Reward/risk is currently poor."
+    return {
+        "nextOpportunity": name,
+        "trigger": trigger,
+        "explanation": explanation,
+        "probability": round(probability, 1),
+    }
+
+
+def _setup_lifecycle(metrics: dict[str, Any], risk_levels: dict[str, Any], chart_bars: list[Any]) -> tuple[dict[str, Any], bool]:
+    setup_type = str(metrics.get("trigger_setup") or metrics.get("opening_playbook") or "No completed setup")
+    trigger_time = _setup_trigger_time(metrics, chart_bars)
+    latest_time = _latest_bar_time(chart_bars)
+    valid_until = trigger_time + timedelta(minutes=35) if trigger_time is not None else None
+    triggered = _truthy(metrics.get("trigger_fired"))
+    expired = bool(triggered and valid_until is not None and latest_time is not None and latest_time > valid_until)
+    status = "Completed" if expired else "Triggered" if triggered else "Pending"
+    entry = _num(risk_levels.get("entry")) or _num(metrics.get("trigger_price"))
+    last = _num(metrics.get("last_price"))
+    direction = str(risk_levels.get("direction") or "neutral")
+    gain = None
+    if entry is not None and entry > 0 and last is not None and triggered:
+        raw_gain = ((last - entry) / entry) * 100
+        gain = raw_gain if direction != "bearish" else -raw_gain
+    return {
+        "setupType": setup_type,
+        "triggerTime": _format_market_time(trigger_time),
+        "triggerPrice": round(entry, 4) if entry is not None else None,
+        "status": status,
+        "result": "Current gain" if gain is not None and gain >= 0 else "Current loss" if gain is not None else None,
+        "validFrom": _format_market_time(trigger_time),
+        "validUntil": _format_market_time(valid_until),
+        "currentGainPct": round(gain, 2) if gain is not None else None,
+    }, expired
+
+
+def _current_action(permission: dict[str, Any], current_state: dict[str, Any], reward_risk: dict[str, Any], setup_expired: bool, metrics: dict[str, Any]) -> dict[str, Any]:
+    active_position = _truthy(metrics.get("active_position_requires_management"))
+    ratio = _num(reward_risk.get("ratio"))
+    state = str(current_state.get("state") or "")
+    if active_position:
+        action = "HOLD"
+        reason = "Position is already open; manage the active trade."
+        recommendation = "HOLD"
+    elif setup_expired:
+        action = "WAIT"
+        reason = "Earlier setup entry window has expired."
+        recommendation = "WAIT FOR NEXT SETUP"
+    elif permission.get("code") == "ready" and ratio is not None and ratio >= 1.2:
+        action = "GO SHORT" if "Bearish" in state else "GO LONG"
+        reason = "Current market state and reward/risk support a fresh entry."
+        recommendation = action
+    elif permission.get("code") == "manage":
+        action = "HOLD"
+        reason = permission.get("description") or "Manage active position."
+        recommendation = "HOLD"
+    elif permission.get("code") == "complete":
+        action = "WAIT"
+        reason = permission.get("description") or "Trade lifecycle is complete."
+        recommendation = "WAIT FOR NEXT SETUP"
+    elif "Bearish" in state and permission.get("code") == "ready":
+        action = "GO SHORT"
+        reason = "Bearish structure confirmed by backend."
+        recommendation = "GO SHORT"
+    else:
+        action = "WAIT"
+        blockers = []
+        if ratio is not None and ratio < 1.2:
+            blockers.append("poor reward/risk")
+        blockers.append(permission.get("description") or "fresh trigger is not confirmed")
+        reason = "Trend still active, but " + ", ".join(blockers)
+        recommendation = "WAIT FOR NEXT SETUP"
+    confidence = float(current_state.get("score") or 50)
+    if action == "WAIT":
+        confidence = max(50.0, min(confidence, 75.0))
+    return {
+        "action": action,
+        "reason": str(reason),
+        "recommendation": recommendation,
+        "confidence": round(confidence, 1),
+    }
+
+
+def _decision_engine(
+    *,
+    metrics: dict[str, Any],
+    resolved: dict[str, Any],
+    risk_levels: dict[str, Any],
+    market_structure: dict[str, Any],
+    permission: dict[str, Any],
+    chart_bars: list[Any],
+    reason: str,
+) -> dict[str, Any]:
+    setup, setup_expired = _setup_lifecycle(metrics, risk_levels, chart_bars)
+    reward_risk = _reward_risk(risk_levels.get("entry"), risk_levels.get("stop"), risk_levels.get("t1"), risk_levels.get("t2"))
+    last_price = _num(metrics.get("last_price"))
+    vwap = _num(metrics.get("vwap"))
+    trend_health = _trend_health(market_structure, metrics, last_price, vwap)
+    current_state = _current_state(market_structure, trend_health, last_price, vwap, metrics)
+    current_action = _current_action(permission, current_state, reward_risk, setup_expired, metrics)
+    expected_structure = _expected_structure(market_structure, trend_health)
+    next_opportunity = _next_opportunity(current_state, market_structure, metrics, reward_risk, setup_expired)
+    reasoning = [
+        f"Setup lifecycle: {setup['setupType']} is {setup['status']}.",
+        f"Current state: {current_state['state']} from 5m structure and VWAP.",
+        f"Current action: {current_action['recommendation']}.",
+        f"Reward/Risk: {reward_risk['display']} using {reward_risk.get('targetUsed') or 'no target'}.",
+        f"Trend Health: {trend_health['score']:.0f}/100 {trend_health['label']}.",
+    ]
+    if resolved.get("missing_confirmations"):
+        reasoning.append("Missing confirmation: " + ", ".join(str(x) for x in _as_list(resolved.get("missing_confirmations"))[:3]))
+    return {
+        "setup": setup,
+        "currentState": current_state,
+        "currentAction": current_action,
+        "nextOpportunity": next_opportunity,
+        "expectedStructure": expected_structure,
+        "trendHealth": trend_health,
+        "rewardRisk": reward_risk,
+        "explanation": str(reason),
+        "confidence": current_action["confidence"],
+        "reasoning": reasoning,
+    }
+
+
 def _vwap_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: str | None) -> dict[str, Any]:
     points: list[dict[str, Any]] = []
     latest_value: float | None = None
@@ -938,13 +1242,22 @@ def build_day_trade_workspace_response(
     reason = str(resolved.get("reason") or trader_decision.get("decision_message") or (getattr(scan, "reasons", []) or [""])[0] or "Backend workspace assembled from the current Day Trade scan.")
     next_condition = str(metrics.get("trigger_requirement") or entry_guidance.get("next_action") or trader_decision.get("next_condition") or reason)
     context_label = str(metrics.get("market_bias") or resolved.get("market_bias") or getattr(scan, "bias", None) or "Neutral").replace("_", " ").title()
+    decision_engine = _decision_engine(
+        metrics=metrics,
+        resolved=resolved,
+        risk_levels=risk_levels,
+        market_structure=market_structure,
+        permission=permission,
+        chart_bars=raw_chart_bars,
+        reason=reason,
+    )
 
     trigger_view = {
         "status": _status("triggered" if metrics.get("trigger_fired") else "pending", "Triggered" if metrics.get("trigger_fired") else "Pending", "positive" if metrics.get("trigger_fired") else "warning"),
         "summary": str(metrics.get("trigger_requirement") or "Backend trigger requirement is pending."),
         "requirements": _requirements(metrics),
     }
-    computed_rr = f"{risk_levels['rr']:.2f}:1" if risk_levels.get("rr") else None
+    computed_rr = decision_engine["rewardRisk"]["display"]
     risk_plan = {
         "entry": _display_money(entry),
         "stop": _display_money(stop),
@@ -952,7 +1265,7 @@ def build_day_trade_workspace_response(
         "target2": _display_money(target2),
         "invalidation": _display_money(risk_levels.get("invalidation")),
         "positionSize": _display_text(option_risk.get("recommended_contracts") or "1 contract max"),
-        "riskReward": _display_text(entry_guidance.get("rr_ratio") or entry_guidance.get("risk_reward") or computed_rr or "—"),
+        "riskReward": _display_ratio(_num(decision_engine["rewardRisk"].get("ratio"))) if computed_rr != "—" else _display_text("—"),
     }
 
     return {
@@ -988,6 +1301,7 @@ def build_day_trade_workspace_response(
         },
         "trigger": trigger_view,
         "riskPlan": risk_plan,
+        "decisionEngine": decision_engine,
         "evidence": _evidence(scan, resolved, metrics),
         "selectedContract": None,
         "trapDetection": trap_detection,

@@ -7,6 +7,7 @@ import {
   BarChart2,
   Bell,
   BookOpen,
+  BriefcaseBusiness,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -21,6 +22,7 @@ import {
   Minus,
   Plus,
   RefreshCw,
+  RadioTower,
   RotateCcw,
   Search,
   ShieldAlert,
@@ -35,6 +37,7 @@ import { analyzeSwingTrade, analyzeV2, deskApi, saveToJournal } from '../api/cli
 import type { DeskAlertCreate, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers, fetchStockTargets, type StockTargetData } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
+import MacdHistogramChart from '../components/MacdHistogramChart'
 import { parseChartPayload } from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
 import { formatTickerTitle, useDocumentTitle } from '../hooks/useDocumentTitle'
@@ -44,6 +47,7 @@ import type { OptionLeg } from '../types'
 const OptionsEntryCheck = lazy(() => import('../components/OptionsEntryCheck'))
 const BULLISH_CANDLE_COLOR = '#22c55e'
 const BEARISH_CANDLE_COLOR = '#ef4444'
+const ALPACA_TRADE_DRAFT_KEY = 'oa_alpaca_trade_draft'
 
 type WorkstationTab = 'overview' | 'fibonacci' | 'options' | 'exit' | 'evidence' | 'journal' | 'alerts'
 type Timeframe = 'Daily' | 'Weekly' | 'Monthly'
@@ -314,6 +318,16 @@ function getSpread(result: SwingTradeScanResult | null, unified: UnifiedAnalysis
   if (unified?.spread_entry && isRecord(unified.spread_entry)) return unified.spread_entry
   const m = result?.metrics as Record<string, unknown> | undefined
   return isRecord(m?.spread_entry) ? m.spread_entry : {}
+}
+
+function swingExpiryDate(result: SwingTradeScanResult, spread: Record<string, unknown>): string {
+  const raw = text(spread.expiry)
+  const match = raw.match(/\d{4}-\d{2}-\d{2}/)
+  if (match) return match[0]
+  const dte = parseInt(result.recommended_contract_duration || '', 10) || 45
+  const date = new Date()
+  date.setDate(date.getDate() + dte)
+  return date.toISOString().slice(0, 10)
 }
 
 function hasBackendValue(...values: unknown[]): boolean {
@@ -685,6 +699,49 @@ export default function SwingTradePage() {
     }
   }, [result, unified, user?.email])
 
+  const handleAddToAlpaca = useCallback(() => {
+    if (!result) return
+    const spread = getSpread(result, unified)
+    const exec = getExec(result)
+    const strike = num(spread.long_strike)
+    if (strike == null || strike <= 0) {
+      setNotice({ tone: 'info', message: 'Alpaca draft needs a backend option strike. Run pre-trade/options first.' })
+      return
+    }
+    const optionType = text(spread.long_leg).toUpperCase().includes('P') || result.bias === 'short' ? 'PUT' : 'CALL'
+    const expiry = swingExpiryDate(result, spread)
+    const strategy = text(spread.strategy) || result.suggested_strategy || (optionType === 'PUT' ? 'Long Put' : 'Long Call')
+    try {
+      window.sessionStorage.setItem(ALPACA_TRADE_DRAFT_KEY, JSON.stringify({
+        source: 'swing',
+        createdAt: new Date().toISOString(),
+        ticker: result.ticker,
+        companyName: result.company_name || result.ticker,
+        strategy,
+        bias: result.bias === 'short' ? 'Bearish' : result.bias === 'long' ? 'Bullish' : 'Neutral',
+        contracts: 1,
+        legs: [{
+          action: 'BUY',
+          option_type: optionType,
+          strike,
+          expiry,
+          mid_price: num(spread.est_debit) ?? 0,
+          bid: 0,
+          ask: 0,
+        }],
+        entryPrice: latestPrice(result, unified) ?? num(exec.breakout) ?? 0,
+        stopLoss: num(exec.stop) ?? undefined,
+        target1: num(exec.target1) ?? undefined,
+        target2: num(exec.target2) ?? undefined,
+        notes: result.decision_message || result.reason || '',
+      }))
+    } catch {
+      setNotice({ tone: 'info', message: 'Unable to create Alpaca draft in this browser session.' })
+      return
+    }
+    navigate(`${ROUTES.autoTrade}?ticker=${encodeURIComponent(result.ticker)}&source=swing`)
+  }, [navigate, result, unified])
+
   const handleCreateAlert = useCallback(async (data: DeskAlertCreate) => {
     await deskApi.createAlert(data)
     setAlertOpen(false)
@@ -730,12 +787,14 @@ export default function SwingTradePage() {
           <SwingTopBar
             result={result}
             unified={unified}
+            ticker={ticker}
             loading={loading}
             onRefresh={() => void runScan(undefined, true)}
             onAddToPortfolio={handleAddToPortfolio}
             onOpenAlert={() => setAlertOpen(true)}
             onOpenPreTrade={() => navigate(preTradeRoute)}
             onOpenSections={() => setSectionsOpen(true)}
+            onOpenDayTrade={() => navigate(getEngineRoute('day', result?.ticker || ticker))}
             hasPosition={existingPositions.length > 0}
           />
 
@@ -772,6 +831,9 @@ export default function SwingTradePage() {
               unified={unified}
               fibTargets={fibTargets}
               existingPositionCount={existingPositions.length}
+              onAddToPortfolio={handleAddToPortfolio}
+              onSaveJournal={() => void handleSaveToJournal()}
+              onAddToAlpaca={handleAddToAlpaca}
             />
           </div>
 
@@ -1041,6 +1103,7 @@ function SwingMobileSearchBar({
 function SwingTopBar({
   result,
   unified,
+  ticker,
   loading,
   hasPosition,
   onRefresh,
@@ -1048,9 +1111,11 @@ function SwingTopBar({
   onOpenAlert,
   onOpenPreTrade,
   onOpenSections,
+  onOpenDayTrade,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
+  ticker: string
   loading: boolean
   hasPosition: boolean
   onRefresh: () => void
@@ -1058,7 +1123,9 @@ function SwingTopBar({
   onOpenAlert: () => void
   onOpenPreTrade: () => void
   onOpenSections: () => void
+  onOpenDayTrade: () => void
 }) {
+  const dayTradeRoute = getEngineRoute('day', result?.ticker || ticker)
   return (
     <div className="relative mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.08] dark:bg-slate-950">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1077,6 +1144,14 @@ function SwingTopBar({
         )}
       </div>
       <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto pb-1">
+        <a
+          href={dayTradeRoute}
+          onClick={event => handlePlainAnchorClick(event, onOpenDayTrade)}
+          className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-black text-sky-700 hover:border-sky-400 dark:text-sky-200"
+        >
+          <Activity size={14} />
+          Day Trade
+        </a>
         <button type="button" onClick={onOpenSections} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]">
           <LayoutList size={14} />
           Sections
@@ -1108,11 +1183,17 @@ function SwingRightRail({
   unified,
   fibTargets,
   existingPositionCount,
+  onAddToPortfolio,
+  onSaveJournal,
+  onAddToAlpaca,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
   fibTargets: StockTargetData | null
   existingPositionCount: number
+  onAddToPortfolio: () => void
+  onSaveJournal: () => void
+  onAddToAlpaca: () => void
 }) {
   const exec = getExec(result)
   const spread = getSpread(result, unified)
@@ -1149,25 +1230,50 @@ function SwingRightRail({
         </div>
       </RailCard>
 
-      <RailCard title="Entry Plan">
-        <div className="grid grid-cols-2 gap-2">
-          <Value label="Entry" value={money(exec.breakout ?? unified?.entry_price)} />
-          <Value label="Stop" value={money(exec.stop ?? unified?.stop_price)} />
-          <Value label="Target 1" value={money(exec.target1) !== '—' ? money(exec.target1) : levelFromUnified(unified, 't1')} />
-          <Value label="Target 2" value={money(exec.target2) !== '—' ? money(exec.target2) : levelFromUnified(unified, 't2')} />
-          <Value label="R/R" value={unified?.rr_ratio || '—'} />
-          <Value label="Timing" value={compactLabel(result?.execution_readiness || text(metrics?.trade_timing_verdict))} />
-        </div>
-      </RailCard>
-
-      <RailCard title="Strategy">
-        <div className="grid grid-cols-2 gap-2">
-          <Value label="Selected" value={compactLabel(text(spread.strategy) || result?.suggested_strategy)} />
-          <Value label="DTE" value={result?.recommended_contract_duration || (text(spread.expiry) ? text(spread.expiry) : '—')} />
-          <Value label="Debit" value={money(spread.est_debit)} />
-          <Value label="Max Gain" value={money(spread.max_gain)} />
-          <Value label="Max Loss" value={money(spread.max_loss)} />
-          <Value label="Breakeven" value={money(spread.breakeven)} />
+      <RailCard title="Entry Plan / Strategy">
+        <div className="grid gap-3">
+          <div>
+            <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Entry Plan</div>
+            <div className="grid grid-cols-2 gap-2">
+              <Value label="Entry" value={money(exec.breakout ?? unified?.entry_price)} />
+              <Value label="Stop" value={money(exec.stop ?? unified?.stop_price)} />
+              <Value label="Target 1" value={money(exec.target1) !== '—' ? money(exec.target1) : levelFromUnified(unified, 't1')} />
+              <Value label="Target 2" value={money(exec.target2) !== '—' ? money(exec.target2) : levelFromUnified(unified, 't2')} />
+              <Value label="R/R" value={unified?.rr_ratio || '—'} />
+              <Value label="Timing" value={compactLabel(result?.execution_readiness || text(metrics?.trade_timing_verdict))} />
+            </div>
+          </div>
+          <div className="border-t border-slate-200 pt-3 dark:border-white/[0.08]">
+            <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Strategy</div>
+            <div className="grid grid-cols-2 gap-2">
+              <Value label="Selected" value={compactLabel(text(spread.strategy) || result?.suggested_strategy)} />
+              <Value label="DTE" value={result?.recommended_contract_duration || (text(spread.expiry) ? text(spread.expiry) : '—')} />
+              <Value label="Debit" value={money(spread.est_debit)} />
+              <Value label="Max Gain" value={money(spread.max_gain)} />
+              <Value label="Max Loss" value={money(spread.max_loss)} />
+              <Value label="Breakeven" value={money(spread.breakeven)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 border-t border-slate-200 pt-3 dark:border-white/[0.08]">
+            <RailActionButton
+              label="Position"
+              icon={<BriefcaseBusiness size={13} />}
+              disabled={!result || existingPositionCount > 0}
+              onClick={onAddToPortfolio}
+            />
+            <RailActionButton
+              label="Journal"
+              icon={<BookOpen size={13} />}
+              disabled={!result}
+              onClick={onSaveJournal}
+            />
+            <RailActionButton
+              label="Alpaca"
+              icon={<RadioTower size={13} />}
+              disabled={!result}
+              onClick={onAddToAlpaca}
+            />
+          </div>
         </div>
       </RailCard>
 
@@ -2029,21 +2135,48 @@ function SwingSectionsDrawer({
 
 function OverviewTab({ result, unified, fibTargets }: { result: SwingTradeScanResult | null; unified: UnifiedAnalysis | null; fibTargets: StockTargetData | null }) {
   const metrics = result?.metrics as Record<string, unknown> | undefined
+  const exec = getExec(result)
+  const macdPoints = useMemo(() => parseChartPayload(metrics?.chart_series), [metrics?.chart_series])
+  const canDrawMacd = (macdPoints?.length || 0) >= 38
   return (
-    <div className="grid gap-3 md:grid-cols-3">
-      <InfoPanel title="Backend Snapshot">
-        <Value label="Session" value={compactLabel(text(metrics?.session_date) || unified?.session)} />
-        <Value label="Market" value={compactLabel(result?.market_bias || text(metrics?.market_context) || unified?.regime)} />
-        <Value label="Volume" value={num(metrics?.volume_ratio) == null ? compactLabel(text(metrics?.volume_label)) : `${num(metrics?.volume_ratio)?.toFixed(2)}x · ${compactLabel(text(metrics?.volume_label))}`} />
-      </InfoPanel>
+    <div className="grid gap-3">
+      <SectionHero
+        eyebrow="Backend Overview"
+        title={result?.decision_label || result?.final_action || 'Run swing analysis'}
+        body={unified?.coach || result?.decision_message || result?.reason || 'Backend guidance will appear here after analysis.'}
+        tone={result?.bias || result?.market_bias}
+        badge={result?.ticker || 'Swing'}
+      />
+      <div className="grid gap-3 md:grid-cols-2">
+        <InfoPanel title="Market Snapshot">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Value label="Session" value={compactLabel(text(metrics?.session_date) || unified?.session)} />
+            <Value label="Market" value={compactLabel(result?.market_bias || text(metrics?.market_context) || unified?.regime)} />
+            <Value label="Volume" value={num(metrics?.volume_ratio) == null ? compactLabel(text(metrics?.volume_label)) : `${num(metrics?.volume_ratio)?.toFixed(2)}x · ${compactLabel(text(metrics?.volume_label))}`} />
+            <Value label="Bias" value={compactLabel(result?.bias)} />
+          </div>
+        </InfoPanel>
+        <InfoPanel title="Trade Levels">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Value label="Entry" value={money(exec.entry)} />
+            <Value label="Stop" value={money(fibTargets?.suggested_stop_loss ?? exec.stop)} />
+            <Value label="Target 1" value={money(fibTargets?.suggested_target1 ?? exec.target1)} />
+            <Value label="Target 2" value={money(fibTargets?.suggested_target2 ?? exec.target2)} />
+          </div>
+        </InfoPanel>
+      </div>
       <InfoPanel title="Fib / Levels">
-        <Value label="Fib Zone" value={fibTargets?.fib_current_zone || 'Backend fib zone not returned'} muted={!fibTargets?.fib_current_zone} />
-        <Value label="Classification" value={fibTargets?.fib_classification || 'Backend classification not returned'} muted={!fibTargets?.fib_classification} />
-        <Value label="Support" value={money(fibTargets?.suggested_stop_loss ?? getExec(result).stop)} />
-        <Value label="Resistance" value={money(fibTargets?.suggested_target1 ?? getExec(result).target1)} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Value label="Fib Zone" value={fibTargets?.fib_current_zone || 'Backend fib zone not returned'} muted={!fibTargets?.fib_current_zone} />
+          <Value label="Classification" value={fibTargets?.fib_classification || 'Backend classification not returned'} muted={!fibTargets?.fib_classification} />
+        </div>
       </InfoPanel>
-      <InfoPanel title="Backend Coach">
-        <p className="line-clamp-5 text-sm leading-relaxed text-secondary">{unified?.coach || result?.decision_message || result?.reason || 'Run analysis to load backend coach guidance.'}</p>
+      <InfoPanel title="MACD Diagram">
+        {metrics && canDrawMacd ? (
+          <MacdHistogramChart metrics={metrics} />
+        ) : (
+          <EmptyTab text="Backend chart history needs more bars to draw the MACD diagram." />
+        )}
       </InfoPanel>
     </div>
   )
@@ -2055,78 +2188,84 @@ function FibonacciTab({ result, fibTargets }: { result: SwingTradeScanResult | n
   const retracementLevels = [...(fibTargets?.fib_retracement_levels || [])].sort((a, b) => (num(a.ratio) ?? 0) - (num(b.ratio) ?? 0))
   if (!result) return <EmptyTab text="Run analysis to load Fibonacci context." />
   return (
-    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid gap-3">
       <InfoPanel title="Fibonacci Map">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Value label="Swing High" value={money(fibTargets?.fib_swing_high)} />
           <Value label="Swing Low" value={money(fibTargets?.fib_swing_low)} />
           <Value label="Direction" value={compactLabel(fibTargets?.fib_direction || '—')} />
           <Value label="Current Price" value={money(fibTargets?.current_price ?? metrics?.last_price)} />
         </div>
-        <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
+        <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-200">Current Fib Read</div>
-              <div className="mt-1 text-sm font-semibold text-heading">{fibTargets?.fib_classification || 'Backend classification not returned'}</div>
+              <div className="mt-1 text-base font-semibold leading-snug text-heading">{fibTargets?.fib_classification || 'Backend classification not returned'}</div>
+              <div className="mt-1 text-xs leading-relaxed text-secondary">
+                {fibTargets?.fib_nearest_confluence || result.playbook_hint || 'No backend confluence summary returned.'}
+              </div>
             </div>
-            <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">
-              {fibTargets?.fib_current_zone || 'No zone'}
+            <div className="w-fit rounded-full border border-amber-500/30 bg-white/70 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-slate-950/40 dark:text-amber-200">
+              {fibTargets?.fib_current_zone || 'Zone unavailable'}
             </div>
-          </div>
-          <div className="mt-2 text-xs leading-relaxed text-secondary">
-            {fibTargets?.fib_nearest_confluence || result.playbook_hint || 'No backend confluence summary returned.'}
           </div>
         </div>
-        <div className="mt-3 grid gap-2">
+        <div className="mt-4 grid gap-2">
           {retracementLevels.map(level => {
             const percent = fibLevelPercent(level)
             const decision = fibLevelDecision(level)
             return (
-              <div key={level.level} className={`grid gap-3 rounded-xl border p-3 sm:grid-cols-[92px_minmax(0,1fr)_96px] sm:items-center ${decision.classes}`}>
-                <div className="flex items-baseline gap-2 sm:block">
-                  <div className="font-mono text-2xl font-semibold leading-none tabular-nums">{percent.primary}</div>
-                  <div className="font-mono text-[10px] font-semibold uppercase tracking-wide opacity-75">{percent.exact}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-heading">
-                    <span className={`h-2 w-2 rounded-full ${decision.dot}`} />
-                    {decision.title}
+              <div key={level.level} className={`rounded-lg border p-3 ${decision.classes}`}>
+                <div className="grid gap-3 md:grid-cols-[104px_minmax(0,1fr)_112px] md:items-center">
+                  <div className="flex items-end gap-2 md:block">
+                    <div className="font-mono text-3xl font-semibold leading-none tabular-nums">{percent.primary}</div>
+                    <div className="pb-0.5 font-mono text-[10px] font-bold uppercase tracking-wide opacity-70 md:pb-0 md:pt-1">{percent.exact}</div>
                   </div>
-                  <div className="mt-1 text-xs leading-relaxed text-secondary">{decision.detail}</div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-heading">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${decision.dot}`} />
+                      <span className="truncate">{decision.title}</span>
+                    </div>
+                    <div className="mt-1 max-w-2xl text-xs leading-relaxed text-secondary">{decision.detail}</div>
+                  </div>
+                  <div className="rounded-md bg-white/70 px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums text-heading dark:bg-slate-950/35 md:text-right">
+                    {money(level.price)}
+                  </div>
                 </div>
-                <div className="font-mono text-base font-semibold tabular-nums text-heading sm:text-right">{money(level.price)}</div>
               </div>
             )
           })}
           {!retracementLevels.length && <Value label="Levels" value="Backend levels not returned" muted />}
         </div>
       </InfoPanel>
-      <InfoPanel title="Confluence">
-        <div className="grid gap-2">
-          <Value label="EMA9" value={money(fibTargets?.ema9)} />
-          <Value label="EMA9 Slope" value={compactLabel(fibTargets?.ema9_slope || '—')} />
-          <Value label="Price vs EMA9" value={compactLabel(fibTargets?.price_vs_ema9 || '—')} />
-          <Value label="MA20" value={money(fibTargets?.ma20 ?? metrics?.ma20)} />
-          <Value label="MA50" value={money(fibTargets?.ma50 ?? metrics?.ma50)} />
-        </div>
-      </InfoPanel>
-      <InfoPanel title="Backend Hint">
-        <p className="text-sm leading-relaxed text-secondary">{result.playbook_hint || result.decision_message || 'No backend Fibonacci hint returned.'}</p>
-      </InfoPanel>
-      <InfoPanel title="Extensions">
-        <div className="grid gap-2">
-          {(fibTargets?.fib_extension_levels || []).map(level => (
-            <Value key={level.level} label={level.level} value={money(level.price)} />
-          ))}
-          {!fibTargets?.fib_extension_levels?.length && <Value label="Extensions" value="Backend extensions not returned" muted />}
-        </div>
-      </InfoPanel>
-      <InfoPanel title="Dates">
-        <div className="grid gap-2">
-          <Value label="High Date" value={fibTargets?.fib_swing_high_date || '—'} />
-          <Value label="Low Date" value={fibTargets?.fib_swing_low_date || '—'} />
-        </div>
-      </InfoPanel>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <InfoPanel title="Confluence">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Value label="EMA9" value={money(fibTargets?.ema9)} />
+            <Value label="EMA9 Slope" value={compactLabel(fibTargets?.ema9_slope || '—')} />
+            <Value label="Price vs EMA9" value={compactLabel(fibTargets?.price_vs_ema9 || '—')} />
+            <Value label="MA20" value={money(fibTargets?.ma20 ?? metrics?.ma20)} />
+            <Value label="MA50" value={money(fibTargets?.ma50 ?? metrics?.ma50)} />
+          </div>
+        </InfoPanel>
+        <InfoPanel title="Backend Hint">
+          <p className="text-sm leading-relaxed text-secondary">{result.playbook_hint || result.decision_message || 'No backend Fibonacci hint returned.'}</p>
+        </InfoPanel>
+        <InfoPanel title="Extensions">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(fibTargets?.fib_extension_levels || []).map(level => (
+              <Value key={level.level} label={level.level} value={money(level.price)} />
+            ))}
+            {!fibTargets?.fib_extension_levels?.length && <Value label="Extensions" value="Backend extensions not returned" muted />}
+          </div>
+        </InfoPanel>
+        <InfoPanel title="Dates">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Value label="High Date" value={fibTargets?.fib_swing_high_date || '—'} />
+            <Value label="Low Date" value={fibTargets?.fib_swing_low_date || '—'} />
+          </div>
+        </InfoPanel>
+      </div>
     </div>
   )
 }
@@ -2160,50 +2299,72 @@ function ExitTab({ result, unified }: { result: SwingTradeScanResult | null; uni
   const exitRows = unified?.exit_rows || []
   const backendRules = (result?.metrics as Record<string, unknown> | undefined)?.exit_rules
   return (
-    <InfoPanel title="Exit Plan">
+    <div className="grid gap-3">
+      <SectionHero
+        eyebrow="Exit Plan"
+        title={exitRows.length ? `${exitRows.length} managed exit step${exitRows.length === 1 ? '' : 's'}` : 'No backend exit rows'}
+        body={result?.decision_message || 'Use backend exit rows for the active swing plan.'}
+        tone={result?.bias}
+        badge={result?.ticker || 'Swing'}
+      />
+      <InfoPanel title="Exit Steps">
       {exitRows.length ? (
-        <div className="overflow-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-[10px] font-black uppercase tracking-widest text-tertiary">
-              <tr><th className="pb-2">When</th><th className="pb-2">Price</th><th className="pb-2">Action</th></tr>
-            </thead>
-            <tbody>
-              {exitRows.map((row, index) => (
-                <tr key={`${row.when}-${index}`} className="border-t border-slate-200 dark:border-white/[0.07]">
-                  <td className="py-2 text-secondary">{row.when}</td>
-                  <td className="py-2 font-mono font-black text-heading">{row.price}</td>
-                  <td className="py-2 text-secondary">{row.action}{row.note ? ` · ${row.note}` : ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid gap-2">
+          {exitRows.map((row, index) => (
+            <div key={`${row.when}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Step {index + 1}</div>
+                  <div className="mt-1 text-sm font-semibold text-heading">{row.when}</div>
+                </div>
+                <div className="rounded-md bg-slate-50 px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums text-heading dark:bg-slate-900">
+                  {row.price}
+                </div>
+              </div>
+              <div className="mt-2 text-sm leading-relaxed text-secondary">{row.action}</div>
+              {row.note && <div className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-200">{row.note}</div>}
+            </div>
+          ))}
         </div>
       ) : (
         <EmptyTab text="No unified exit rows returned by backend." />
       )}
+      </InfoPanel>
       {Array.isArray(backendRules) && backendRules.length > 0 && (
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <InfoPanel title="Backend Rules">
+        <div className="grid gap-2 md:grid-cols-2">
           {backendRules.map((rule, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-white/[0.08]">
+            <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-white/[0.08] dark:bg-slate-950">
               <pre className="whitespace-pre-wrap font-sans text-secondary">{JSON.stringify(rule, null, 2)}</pre>
             </div>
           ))}
         </div>
+        </InfoPanel>
       )}
-    </InfoPanel>
+    </div>
   )
 }
 
 function EvidenceTab({ result, unified }: { result: SwingTradeScanResult | null; unified: UnifiedAnalysis | null }) {
   const reasons = result?.reasons || []
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="grid gap-3">
+      <SectionHero
+        eyebrow="Evidence"
+        title={unified?.conditions?.length ? `${unified.conditions.length} conditions checked` : 'Backend evidence'}
+        body={result?.reason || result?.decision_message || 'Evidence from the swing engine appears here.'}
+        tone={result?.bias}
+        badge={result?.ticker || 'Swing'}
+      />
+      <div className="grid gap-3 lg:grid-cols-2">
       <InfoPanel title="Conditions">
         <div className="grid gap-2">
           {(unified?.conditions || []).map((condition, index) => (
-            <div key={`${condition.label}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
-              <span className="text-secondary">{condition.label}</span>
-              <span className={`font-black uppercase ${condition.type === 'pass' ? 'text-emerald-600 dark:text-emerald-300' : condition.type === 'fail' ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}>{condition.type}</span>
+            <div key={`${condition.label}-${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-slate-950">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold text-heading">{condition.label}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${condition.type === 'pass' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : condition.type === 'fail' ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'}`}>{condition.type}</span>
+              </div>
             </div>
           ))}
           {!unified?.conditions?.length && <EmptyTab text="No unified condition payload returned." />}
@@ -2212,41 +2373,63 @@ function EvidenceTab({ result, unified }: { result: SwingTradeScanResult | null;
       <InfoPanel title="Reasons">
         <div className="grid gap-2">
           {reasons.slice(0, 10).map((reason, index) => (
-            <div key={index} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-secondary dark:bg-slate-900">{reason}</div>
+            <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-secondary dark:border-white/[0.08] dark:bg-slate-950">
+              <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-tertiary">Reason {index + 1}</div>
+              {reason}
+            </div>
           ))}
           {!reasons.length && <EmptyTab text="No backend reasons returned." />}
         </div>
       </InfoPanel>
+      </div>
     </div>
   )
 }
 
 function JournalTab({ result, onSaveJournal }: { result: SwingTradeScanResult | null; onSaveJournal: () => void }) {
   return (
-    <InfoPanel title="Journal">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold text-heading">{result ? `${result.ticker} swing plan` : 'No active swing plan'}</div>
-          <div className="mt-1 text-xs text-tertiary">Saving uses the backend journal API and the backend-returned plan fields.</div>
-        </div>
+    <div className="grid gap-3">
+      <SectionHero
+        eyebrow="Journal"
+        title={result ? `${result.ticker} swing plan` : 'No active swing plan'}
+        body="Saving uses the backend journal API and the backend-returned plan fields."
+        tone={result?.bias}
+        badge="Review"
+      />
+      <InfoPanel title="Save Plan">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Value label="Ticker" value={result?.ticker || '—'} />
+            <Value label="Decision" value={result?.decision_label || result?.final_action || '—'} />
+          </div>
         <button type="button" disabled={!result} onClick={onSaveJournal} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-black text-white hover:bg-violet-500 disabled:opacity-50">
           Save to Journal
         </button>
       </div>
-    </InfoPanel>
+      </InfoPanel>
+    </div>
   )
 }
 
 function AlertsTab({ result, onOpenAlert }: { result: SwingTradeScanResult | null; onOpenAlert: () => void }) {
   const alerts = (result?.metrics as Record<string, unknown> | undefined)?.contextual_alerts
   return (
-    <InfoPanel title="Alerts">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="grid gap-3">
+      <SectionHero
+        eyebrow="Alerts"
+        title={Array.isArray(alerts) && alerts.length ? `${alerts.length} contextual alert${alerts.length === 1 ? '' : 's'}` : 'No contextual alerts'}
+        body="Create alerts from the active backend swing setup."
+        tone={result?.bias}
+        badge={result?.ticker || 'Swing'}
+      />
+      <InfoPanel title="Alert Candidates">
+        <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {Array.isArray(alerts) && alerts.length ? (
             <div className="grid gap-2">
               {alerts.map((alert, index) => (
-                <div key={index} className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-white/[0.08]">
+                <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-slate-950">
+                  <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-tertiary">Alert {index + 1}</div>
                   <pre className="whitespace-pre-wrap font-sans text-secondary">{JSON.stringify(alert, null, 2)}</pre>
                 </div>
               ))}
@@ -2259,7 +2442,23 @@ function AlertsTab({ result, onOpenAlert }: { result: SwingTradeScanResult | nul
           Create Alert
         </button>
       </div>
-    </InfoPanel>
+      </InfoPanel>
+    </div>
+  )
+}
+
+function SectionHero({ eyebrow, title, body, tone, badge }: { eyebrow: string; title: string; body?: string; tone?: string | null; badge?: string }) {
+  return (
+    <section className={`rounded-xl border p-3 ${swingBiasBadgeClass(tone)}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-black uppercase tracking-widest opacity-80">{eyebrow}</div>
+          <div className="mt-1 text-lg font-semibold leading-snug text-heading">{title}</div>
+          {body && <p className="mt-1 text-sm leading-relaxed text-secondary">{body}</p>}
+        </div>
+        {badge && <span className="rounded-full border border-current/25 bg-white/50 px-2 py-0.5 font-mono text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/35">{badge}</span>}
+      </div>
+    </section>
   )
 }
 
@@ -2269,6 +2468,20 @@ function RailCard({ title, children }: { title: string; children: ReactNode }) {
       <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-tertiary">{title}</div>
       {children}
     </section>
+  )
+}
+
+function RailActionButton({ label, icon, disabled, onClick }: { label: string; icon: ReactNode; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-secondary transition hover:border-violet-400 hover:text-heading disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.08] dark:bg-slate-950"
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
   )
 }
 

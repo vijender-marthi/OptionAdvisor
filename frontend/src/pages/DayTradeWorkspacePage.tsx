@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, X, Activity } from 'lucide-react'
+import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, X, Activity, TrendingUp } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { saveToJournal } from '../api/client'
 import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse } from '../api/client'
@@ -26,6 +26,8 @@ const FILTER_TABS: Array<{ key: TickerListTab; label: string }> = [
   { key: 'swing', label: 'Swing' },
   { key: 'all', label: 'All' },
 ]
+
+const ALPACA_TRADE_DRAFT_KEY = 'oa_alpaca_trade_draft'
 
 const TRADE_TYPE_LABELS: Record<SidebarTickerGroupKey, string> = {
   day: 'Day Trade',
@@ -379,6 +381,7 @@ function DayTradeActionLinks({ navigate, compact = false }: { navigate: (path: s
 function DayTradeMobileSearchBar({
   tickerInput,
   setTickerInput,
+  symbol,
   workspaceLoading,
   loadTicker,
   onRefresh,
@@ -387,6 +390,7 @@ function DayTradeMobileSearchBar({
 }: {
   tickerInput: string
   setTickerInput: (value: string) => void
+  symbol: string
   workspaceLoading: boolean
   loadTicker: (symbol?: string) => void
   onRefresh: () => void
@@ -400,14 +404,24 @@ function DayTradeMobileSearchBar({
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade</div>
           <div className="text-sm font-black text-heading">Analyze Ticker</div>
         </div>
-        <button
-          type="button"
-          onClick={onOpenTickers}
-          className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
-        >
-          <Activity size={14} />
-          My Tickers
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={getEngineRoute('swing', symbol || tickerInput)}
+            onClick={event => handlePlainAnchorClick(event, () => navigate(getEngineRoute('swing', symbol || tickerInput)))}
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-700 dark:text-emerald-200"
+          >
+            <TrendingUp size={14} />
+            Swing
+          </a>
+          <button
+            type="button"
+            onClick={onOpenTickers}
+            className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
+          >
+            <Activity size={14} />
+            My Tickers
+          </button>
+        </div>
       </div>
       <div className="flex gap-2">
         <input
@@ -465,6 +479,14 @@ function DayTradeWorkspaceToolbar({
         <div className="font-mono text-lg font-black text-heading">{symbol}</div>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <a
+          href={getEngineRoute('swing', symbol)}
+          onClick={event => handlePlainAnchorClick(event, () => navigate(getEngineRoute('swing', symbol)))}
+          className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-700 hover:border-emerald-400 dark:text-emerald-200"
+        >
+          <TrendingUp size={14} />
+          Swing Trade
+        </a>
         <DayTradeActionLinks navigate={navigate} />
         <button
           type="button"
@@ -860,6 +882,25 @@ export default function DayTradeWorkspacePage() {
     }
 
     if (action.type === 'alpaca') {
+      try {
+        window.sessionStorage.setItem(ALPACA_TRADE_DRAFT_KEY, JSON.stringify({
+          source: 'day',
+          createdAt: new Date().toISOString(),
+          ticker: workspace.symbol.ticker,
+          companyName: workspace.symbol.companyName || workspace.symbol.ticker,
+          strategy,
+          bias,
+          contracts,
+          legs: [optionLeg],
+          entryPrice: rr.entry,
+          stopLoss: rr.stop,
+          target1: rr.target1,
+          target2: rr.target2,
+          notes,
+        }))
+      } catch {
+        // Navigation still works; Auto Trade will open without a prefilled draft.
+      }
       navigate(`${ROUTES.autoTrade}?ticker=${encodeURIComponent(workspace.symbol.ticker)}&source=day`)
       return
     }
@@ -976,6 +1017,7 @@ export default function DayTradeWorkspacePage() {
           <DayTradeMobileSearchBar
             tickerInput={tickerInput}
             setTickerInput={setTickerInput}
+            symbol={symbol}
             workspaceLoading={workspaceLoading}
             loadTicker={loadTicker}
             onRefresh={() => void workspaceState.reload()}

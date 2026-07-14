@@ -80,6 +80,76 @@ class DayTradeRiskPlanView(BaseModel):
     riskReward: DayTradeDisplayValue
 
 
+class DayTradeSetupLifecycleView(BaseModel):
+    setupType: str
+    triggerTime: str | None = None
+    triggerPrice: float | None = None
+    status: str
+    result: str | None = None
+    validFrom: str | None = None
+    validUntil: str | None = None
+    currentGainPct: float | None = None
+
+
+class DayTradeCurrentStateView(BaseModel):
+    state: str
+    score: float
+    explanation: str
+
+
+class DayTradeCurrentActionView(BaseModel):
+    action: str
+    reason: str
+    recommendation: str
+    confidence: float
+
+
+class DayTradeNextOpportunityView(BaseModel):
+    nextOpportunity: str
+    trigger: str
+    explanation: str
+    probability: float
+
+
+class DayTradeExpectedStructureOptionView(BaseModel):
+    label: str
+    probability: float
+
+
+class DayTradeExpectedStructureView(BaseModel):
+    current: list[str] = Field(default_factory=list)
+    expected: list[DayTradeExpectedStructureOptionView] = Field(default_factory=list)
+    explanation: str
+
+
+class DayTradeTrendHealthView(BaseModel):
+    score: float
+    label: str
+    explanation: str
+    inputs: dict[str, float] = Field(default_factory=dict)
+
+
+class DayTradeRewardRiskView(BaseModel):
+    risk: DayTradeDisplayValue
+    reward: DayTradeDisplayValue
+    ratio: float | None = None
+    display: str
+    targetUsed: str | None = None
+
+
+class DayTradeDecisionEngineView(BaseModel):
+    setup: DayTradeSetupLifecycleView
+    currentState: DayTradeCurrentStateView
+    currentAction: DayTradeCurrentActionView
+    nextOpportunity: DayTradeNextOpportunityView
+    expectedStructure: DayTradeExpectedStructureView
+    trendHealth: DayTradeTrendHealthView
+    rewardRisk: DayTradeRewardRiskView
+    explanation: str
+    confidence: float
+    reasoning: list[str] = Field(default_factory=list)
+
+
 class DayTradeEvidenceItemView(BaseModel):
     id: str
     label: str
@@ -237,6 +307,7 @@ class DayTradeWorkspaceResponse(BaseModel):
     decision: DayTradeDecisionView
     trigger: DayTradeTriggerView
     riskPlan: DayTradeRiskPlanView
+    decisionEngine: DayTradeDecisionEngineView | None = None
     evidence: list[DayTradeEvidenceItemView] = Field(default_factory=list)
     selectedContract: DayTradeSelectedContractView | None = None
     trapDetection: dict[str, Any] | None = None

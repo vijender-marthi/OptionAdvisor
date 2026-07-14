@@ -152,6 +152,9 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertTrue(workspace["tabs"]["plan"]["items"])
         self.assertEqual(workspace["tabs"]["options"]["title"], "Options")
         self.assertTrue(workspace["tabs"]["alerts"]["items"])
+        self.assertEqual(workspace["decisionEngine"]["setup"]["setupType"], "ORH Breakout")
+        self.assertIn(workspace["decisionEngine"]["currentAction"]["action"], {"GO LONG", "WAIT"})
+        self.assertIn("trendHealth", workspace["decisionEngine"])
 
     def test_assembler_review_mode_disables_live_execution(self) -> None:
         from day_trade_workspace import build_day_trade_workspace_response
@@ -197,6 +200,47 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual(workspace["decision"]["permission"]["code"], "wait")
         self.assertFalse(workspace["decision"]["primaryAction"]["enabled"])
         self.assertFalse(workspace["session"]["isExecutionAllowed"])
+
+    def test_decision_engine_expires_old_setup_and_waits_for_next_opportunity(self) -> None:
+        workspace = _workspace(
+            "READY",
+            metric_overrides={
+                "chart_bars": [
+                    {"t": "2026-07-09T09:35:00-04:00", "o": 311, "h": 313, "l": 310, "c": 312.25, "v": 1000, "vwap": 311},
+                    {"t": "2026-07-09T10:30:00-04:00", "o": 315, "h": 316, "l": 314, "c": 315.5, "v": 1000, "vwap": 312},
+                ],
+                "trigger_time": "2026-07-09T09:35:00-04:00",
+            },
+        )
+
+        self.assertEqual(workspace["decisionEngine"]["setup"]["status"], "Completed")
+        self.assertEqual(workspace["decisionEngine"]["currentAction"]["action"], "WAIT")
+        self.assertEqual(workspace["decisionEngine"]["currentAction"]["recommendation"], "WAIT FOR NEXT SETUP")
+        self.assertTrue(workspace["decisionEngine"]["nextOpportunity"]["nextOpportunity"])
+
+    def test_reward_risk_uses_reward_divided_by_risk(self) -> None:
+        workspace = _workspace(
+            "READY",
+            entry_overrides={
+                "entry_price": 100,
+                "risk_below": 98,
+                "scalp_target": 102,
+                "target_2": 104,
+                "rr_ratio": "99:1",
+            },
+            metric_overrides={
+                "or_high": 100,
+                "or_low": 96,
+                "vwap": 98,
+                "last_price": 101,
+            },
+        )
+
+        rr = workspace["decisionEngine"]["rewardRisk"]
+        self.assertEqual(rr["risk"]["display"], "$2.00")
+        self.assertEqual(rr["reward"]["display"], "$4.00")
+        self.assertEqual(rr["display"], "2.00 : 1")
+        self.assertEqual(workspace["riskPlan"]["riskReward"]["display"], "2.00 : 1")
 
     def test_route_wraps_existing_day_trade_scan(self) -> None:
         import main

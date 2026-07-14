@@ -6,12 +6,14 @@ import {
 } from 'lucide-react'
 import {
   getTradingStatus, getTradingPositions, getTradingOrders,
-  cancelTradingOrder, closeTradingPosition,
+  cancelTradingOrder, closeTradingPosition, executeTrade,
   type AlpacaAccount, type AlpacaPosition, type AlpacaOrder,
 } from '../api/client'
 import { useApp } from '../contexts/AppContext'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const ALPACA_TRADE_DRAFT_KEY = 'oa_alpaca_trade_draft'
 
 function fmt$(n: number, decimals = 2): string {
   const abs = Math.abs(n)
@@ -27,6 +29,13 @@ function fmtDt(iso: string | null): string {
   if (!iso) return '—'
   try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }
   catch { return iso }
+}
+
+function errorDetail(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: unknown } } })?.response
+  const detail = response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  return error instanceof Error ? error.message : 'Action failed'
 }
 
 const ORDER_STATUS_COLORS: Record<string, string> = {
@@ -256,6 +265,63 @@ function OrdersTable({ orders, onCancel }: {
 
 type Tab = 'positions' | 'orders'
 
+type AlpacaTradeDraftLeg = {
+  action: 'BUY' | 'SELL'
+  option_type: 'CALL' | 'PUT'
+  strike: number
+  expiry: string
+  mid_price?: number
+  bid?: number
+  ask?: number
+}
+
+type AlpacaTradeDraft = {
+  source?: string
+  createdAt?: string
+  ticker: string
+  companyName?: string
+  strategy: string
+  bias?: string
+  contracts: number
+  legs: AlpacaTradeDraftLeg[]
+  entryPrice?: number
+  stopLoss?: number
+  target1?: number
+  target2?: number
+  notes?: string
+}
+
+function readAlpacaTradeDraft(): AlpacaTradeDraft | null {
+  try {
+    const raw = window.sessionStorage.getItem(ALPACA_TRADE_DRAFT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<AlpacaTradeDraft>
+    const ticker = String(parsed.ticker || '').trim().toUpperCase()
+    const strategy = String(parsed.strategy || '').trim()
+    const legs = Array.isArray(parsed.legs) ? parsed.legs : []
+    if (!ticker || !strategy || legs.length === 0) return null
+    const normalizedLegs = legs.map(leg => ({
+      action: String((leg as AlpacaTradeDraftLeg).action || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+      option_type: String((leg as AlpacaTradeDraftLeg).option_type || 'CALL').toUpperCase() === 'PUT' ? 'PUT' : 'CALL',
+      strike: Number((leg as AlpacaTradeDraftLeg).strike) || 0,
+      expiry: String((leg as AlpacaTradeDraftLeg).expiry || '').slice(0, 10),
+      mid_price: Number((leg as AlpacaTradeDraftLeg).mid_price) || 0,
+      bid: Number((leg as AlpacaTradeDraftLeg).bid) || 0,
+      ask: Number((leg as AlpacaTradeDraftLeg).ask) || 0,
+    })).filter(leg => leg.strike > 0 && /^\d{4}-\d{2}-\d{2}$/.test(leg.expiry))
+    if (!normalizedLegs.length) return null
+    return {
+      ...parsed,
+      ticker,
+      strategy,
+      contracts: Math.max(1, Math.round(Number(parsed.contracts) || 1)),
+      legs: normalizedLegs,
+    } as AlpacaTradeDraft
+  } catch {
+    return null
+  }
+}
+
 export default function AutoTradePage() {
   const { user, navigate } = useApp()
   const email = user?.email ?? ''
@@ -268,6 +334,7 @@ export default function AutoTradePage() {
   const [loading, setLoading]       = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError]           = useState<string | null>(null)
+  const [tradeDraft, setTradeDraft] = useState<AlpacaTradeDraft | null>(() => readAlpacaTradeDraft())
 
   // Confirm modal state
   const [confirmAction, setConfirmAction] = useState<null | {
@@ -339,6 +406,37 @@ export default function AutoTradePage() {
     })
   }
 
+  const clearTradeDraft = () => {
+    try { window.sessionStorage.removeItem(ALPACA_TRADE_DRAFT_KEY) } catch { /* ignore */ }
+    setTradeDraft(null)
+  }
+
+  const handleExecuteDraft = () => {
+    if (!tradeDraft) return
+    if (!configured || !account) {
+      setError('Alpaca is not ready. Check paper trading configuration before executing this draft.')
+      return
+    }
+    setConfirmAction({
+      title: 'Execute Paper Trade',
+      body: `Send ${tradeDraft.contracts} ${tradeDraft.strategy} contract${tradeDraft.contracts === 1 ? '' : 's'} for ${tradeDraft.ticker} to Alpaca Paper Trading?`,
+      confirmLabel: 'Execute Paper Trade',
+      confirmClass: 'bg-violet-600 hover:bg-violet-500',
+      fn: async () => {
+        await executeTrade({
+          email,
+          ticker: tradeDraft.ticker,
+          strategy: tradeDraft.strategy,
+          legs: tradeDraft.legs,
+          contracts: tradeDraft.contracts,
+        })
+        clearTradeDraft()
+        setTab('orders')
+        await loadAll(true)
+      },
+    })
+  }
+
   const executeConfirm = async () => {
     if (!confirmAction) return
     setConfirmLoading(true)
@@ -346,7 +444,7 @@ export default function AutoTradePage() {
       await confirmAction.fn()
       setConfirmAction(null)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Action failed')
+      setError(errorDetail(e))
       setConfirmAction(null)
     } finally {
       setConfirmLoading(false)
@@ -436,6 +534,65 @@ export default function AutoTradePage() {
             <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 text-gray-300">.env</code>.
           </p>
         </div>
+
+        {tradeDraft && (
+          <div className="rounded-2xl border border-violet-700/60 bg-violet-950/25 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-200">
+                    {tradeDraft.source === 'day' ? 'Day Trade Draft' : 'Trade Draft'}
+                  </span>
+                  <span className="text-xs text-gray-500">{tradeDraft.createdAt ? fmtDt(tradeDraft.createdAt) : 'Ready to review'}</span>
+                </div>
+                <div className="mt-2 text-lg font-semibold text-white">
+                  {tradeDraft.ticker} · {tradeDraft.strategy}
+                </div>
+                <div className="mt-1 text-sm text-gray-400">
+                  {tradeDraft.contracts} contract{tradeDraft.contracts === 1 ? '' : 's'}
+                  {tradeDraft.bias ? ` · ${tradeDraft.bias}` : ''}
+                  {tradeDraft.entryPrice ? ` · Underlying ${fmt$(tradeDraft.entryPrice)}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearTradeDraft}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-gray-300"
+                aria-label="Dismiss trade draft"
+                title="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {tradeDraft.legs.map((leg, index) => (
+                  <div key={`${leg.action}-${leg.option_type}-${leg.strike}-${index}`} className="rounded-xl border border-gray-800 bg-gray-950/50 px-3 py-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Leg {index + 1}</div>
+                    <div className="mt-1 font-mono text-sm font-semibold text-gray-200">
+                      {leg.action} {leg.option_type} ${leg.strike.toFixed(2)}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-500">
+                      Exp {leg.expiry} · Mid {fmt$(Number(leg.mid_price) || 0)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleExecuteDraft}
+                disabled={!configured || !account || loading || refreshing}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Zap size={16} />
+                Execute Paper Trade
+              </button>
+            </div>
+            {tradeDraft.notes && (
+              <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-gray-500">{tradeDraft.notes}</p>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-900/30 border border-red-700 rounded-2xl px-4 py-3 flex items-center gap-3 text-sm text-red-300">
