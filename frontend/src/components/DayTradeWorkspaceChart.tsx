@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { MouseEvent, ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent, PointerEvent, ReactNode, WheelEvent } from 'react'
 import { ArrowLeft, ArrowRight, Focus, Layers, Maximize2, Minimize2, RotateCcw, SlidersHorizontal, ZoomIn, ZoomOut } from 'lucide-react'
 import type { DayTradeSemanticTone, DayTradeWorkspaceResponse } from '../api/client'
 
@@ -100,6 +100,8 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   const [fullscreen, setFullscreen] = useState(false)
   const [visibleRange, setVisibleRange] = useState<WorkspaceRange>(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' ? chart.defaults.visibleRange : '1h')
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
+  const dragRef = useRef<{ x: number; endIndex: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     setVisibleBars(defaultVisibleBars)
@@ -272,10 +274,32 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     if (!followLive) setEndIndex(cur => clamp(cur, 0, chart.candles.length))
   }
 
+  const zoomAt = (factor: number, anchor = 0.5) => {
+    const total = chart.candles.length
+    if (total <= 1) return
+    const currentVisible = clamp(visibleBars, 1, Math.max(1, total))
+    const currentEnd = followLive ? total : clamp(endIndex, 0, total)
+    const currentStart = clamp(currentEnd - currentVisible, 0, total)
+    const safeAnchor = clamp(anchor, 0, 1)
+    const anchorIndex = currentStart + (currentVisible - 1) * safeAnchor
+    const nextVisible = clamp(Math.round(currentVisible * factor), 10, Math.max(10, total))
+    let nextStart = Math.round(anchorIndex - (nextVisible - 1) * safeAnchor)
+    nextStart = clamp(nextStart, 0, Math.max(0, total - nextVisible))
+    setFollowLive(false)
+    setVisibleBars(nextVisible)
+    setEndIndex(clamp(nextStart + nextVisible, nextVisible, total))
+  }
+
   const pan = (direction: 'left' | 'right') => {
     setFollowLive(false)
     const step = Math.max(5, Math.round(visibleBars * 0.25))
     setEndIndex(cur => clamp(cur + (direction === 'left' ? -step : step), visibleBars, chart.candles.length))
+  }
+
+  const panByBars = (deltaBars: number) => {
+    if (!deltaBars || chart.candles.length <= visibleBars) return
+    setFollowLive(false)
+    setEndIndex(cur => clamp(cur + deltaBars, visibleBars, chart.candles.length))
   }
 
   const resetView = () => {
@@ -329,6 +353,43 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
       x: clamp(((event.clientX - rect.left) / rect.width) * WIDTH, 0, WIDTH),
       y: clamp(((event.clientY - rect.top) / rect.height) * HEIGHT, 0, HEIGHT),
     })
+  }
+
+  const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
+    if (chart.candles.length <= 1) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const anchor = rect.width ? clamp((event.clientX - rect.left) / rect.width, 0, 1) : 0.5
+    if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      const delta = event.deltaX || event.deltaY
+      panByBars(Math.round((delta / Math.max(1, rect.width)) * visibleBars))
+      return
+    }
+    zoomAt(event.deltaY < 0 ? 0.78 : 1.28, anchor)
+  }
+
+  const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (chart.candles.length <= visibleBars) return
+    setFollowLive(false)
+    dragRef.current = { x: event.clientX, endIndex: followLive ? chart.candles.length : endIndex }
+    setDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    handleMouseMove(event)
+    const drag = dragRef.current
+    if (!drag || chart.candles.length <= visibleBars) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const barsPerPx = visibleBars / Math.max(1, rect.width)
+    const deltaBars = Math.round((drag.x - event.clientX) * barsPerPx)
+    setEndIndex(clamp(drag.endIndex + deltaBars, visibleBars, chart.candles.length))
+  }
+
+  const handlePointerEnd = (event: PointerEvent<SVGSVGElement>) => {
+    dragRef.current = null
+    setDragging(false)
+    try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* pointer may already be released */ }
   }
 
   if (!chart.candles.length) {
@@ -455,8 +516,13 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         role="img"
         aria-label="Backend provided Day Trade workspace chart"
         className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'min-h-0 flex-1'} w-full`}
-        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
         onMouseLeave={() => setCrosshair(null)}
+        style={{ cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none' }}
       >
         <rect x="0" y="0" width={WIDTH} height={HEIGHT} className="fill-white dark:fill-slate-950" />
         {[0, 1, 2, 3].map(step => {
