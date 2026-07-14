@@ -14,6 +14,7 @@ import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
+import { formatTickerTitle, useDocumentTitle } from '../hooks/useDocumentTitle'
 import { getTradeWorksheetRoute } from '../routing/routes'
 
 type Palette = {
@@ -799,6 +800,7 @@ export default function TickerPage() {
   const cacheEntry = data ? tickerCache[data.ticker] : null
   const selectedData = data
   const displayData = data
+  useDocumentTitle(formatTickerTitle(displayData?.ticker || inputTicker, 'Position Trading'))
   const preTradeRoute = useMemo(() => {
     const rec = displayData?.recommendations?.find(r => r.rank === selectedRank) ?? displayData?.recommendations?.[0]
     const rawBias = rec?.bias || displayData?.signals?.directional_bias || ''

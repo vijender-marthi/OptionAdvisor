@@ -367,6 +367,7 @@ class CarryTradeResponse(BaseModel):
 
 class SwingTradeRequest(BaseModel):
     ticker: str
+    force_refresh: bool = False
 
 
 class SwingTradeResponse(BaseModel):

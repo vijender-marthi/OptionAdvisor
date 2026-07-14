@@ -4677,6 +4677,11 @@
       },
       "SwingTradeRequest": {
         "properties": {
+          "force_refresh": {
+            "default": false,
+            "title": "Force Refresh",
+            "type": "boolean"
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"

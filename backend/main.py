@@ -3692,7 +3692,7 @@ def swing_trade_scan(
     Verdicts: STRONG GO, GO, WATCH, WAIT, NO-GO with long/short bias.
     """
     try:
-        r = run_swing_trade_scan(req.ticker)
+        r = run_swing_trade_scan(req.ticker, force_refresh=req.force_refresh)
         resolved = resolve_trade_decision(
             {
                 "engine_type": "swing",

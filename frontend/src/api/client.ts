@@ -1144,8 +1144,8 @@ export interface SwingTradeScanResult {
   }
 }
 
-export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {
-  const body: ApiSchemas['SwingTradeRequest'] = { ticker: ticker.trim() }
+export const analyzeSwingTrade = async (ticker: string, forceRefresh = false): Promise<SwingTradeScanResult> => {
+  const body: ApiSchemas['SwingTradeRequest'] = { ticker: ticker.trim(), force_refresh: forceRefresh }
   const { data } = await api.post<SwingTradeScanResult>(generatedApiPath(CLIENT_OPERATION_IDS.swingTradeScan), body)
   return data
 }

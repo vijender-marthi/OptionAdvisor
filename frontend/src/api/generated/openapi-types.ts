@@ -842,6 +842,7 @@ export type ApiSchemas = {
     readonly "volatility_regime": string
   }
   readonly "SwingTradeRequest": {
+    readonly "force_refresh"?: boolean
     readonly "ticker": string
   }
   readonly "SwingTradeResponse": {

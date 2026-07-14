@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, X, Activity } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import type { DayTradeWorkspaceAction } from '../api/client'
+import { saveToJournal } from '../api/client'
+import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse } from '../api/client'
 import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
 import DayTradeWorkspaceShell from '../components/DayTradeWorkspaceShell'
 import { useApp } from '../contexts/AppContext'
 import { useDayTradeWorkspace } from '../hooks/useDayTradeWorkspace'
+import { formatTickerTitle, useDocumentTitle } from '../hooks/useDocumentTitle'
 import { ROUTES, getEngineRoute } from '../routing/routes'
 
 type SidebarTickerGroupKey = 'day' | 'regular' | 'swing'
@@ -234,6 +236,7 @@ function DayTradeSidebarContent({
             {filteredTickers.length ? filteredTickers.map(({ item, groups: itemGroups }) => {
               const sym = item.symbol.toUpperCase()
               const selected = sym === symbol
+              const moveUp = (item.price_change_pct ?? 0) >= 0
               return (
                 <a
                   key={sym}
@@ -242,7 +245,9 @@ function DayTradeSidebarContent({
                   className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
                     selected
                       ? 'border-violet-500 bg-violet-500/10'
-                      : 'border-slate-200 bg-white hover:border-violet-300 dark:border-white/[0.08] dark:bg-slate-950'
+                      : moveUp
+                        ? 'border-emerald-500/20 bg-white hover:border-emerald-400/60 dark:border-emerald-400/15 dark:bg-slate-950'
+                        : 'border-rose-500/20 bg-white hover:border-rose-400/60 dark:border-rose-400/15 dark:bg-slate-950'
                   }`}
                 >
                   <span className="min-w-0">
@@ -488,10 +493,63 @@ function daySidebarPct(value: unknown): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
+function workspaceRawNumber(value: DayTradeWorkspaceDisplayValue | undefined): number | null {
+  if (!value) return null
+  if (typeof value.raw === 'number' && Number.isFinite(value.raw)) return value.raw
+  if (typeof value.raw === 'string') {
+    const parsed = Number(value.raw.replace(/[^0-9.-]/g, ''))
+    if (Number.isFinite(parsed)) return parsed
+  }
+  const parsed = Number(value.display.replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function workspaceDateValue(value: DayTradeWorkspaceDisplayValue | undefined, fallbackDays = 7): string {
+  const raw = String(value?.raw ?? value?.display ?? '').trim()
+  const match = raw.match(/\d{4}-\d{2}-\d{2}/)
+  if (match) return match[0]
+  const date = new Date()
+  date.setDate(date.getDate() + fallbackDays)
+  return date.toISOString().slice(0, 10)
+}
+
+function workspaceBias(workspace: DayTradeWorkspaceResponse): string {
+  const text = `${workspace.chart.marketStructure?.trend || ''} ${workspace.chart.marketStructure?.display || ''}`.toLowerCase()
+  if (text.includes('bear')) return 'Bearish'
+  if (text.includes('bull')) return 'Bullish'
+  return workspace.symbol.change.tone === 'danger' ? 'Bearish' : workspace.symbol.change.tone === 'positive' ? 'Bullish' : 'Neutral'
+}
+
+function workspaceOptionType(workspace: DayTradeWorkspaceResponse): 'CALL' | 'PUT' {
+  const selected = String(workspace.selectedContract?.optionType.display || workspace.selectedContract?.optionType.raw || '').toUpperCase()
+  if (selected.includes('PUT')) return 'PUT'
+  if (selected.includes('CALL')) return 'CALL'
+  return workspaceBias(workspace) === 'Bearish' ? 'PUT' : 'CALL'
+}
+
+function workspaceStrategy(workspace: DayTradeWorkspaceResponse): string {
+  return workspaceOptionType(workspace) === 'PUT' ? 'Long Put' : 'Long Call'
+}
+
+function workspaceRiskReward(workspace: DayTradeWorkspaceResponse): { entry: number; stop: number; target1: number; target2: number; risk: number; reward: number } {
+  const entry = workspaceRawNumber(workspace.riskPlan.entry) ?? workspaceRawNumber(workspace.symbol.price) ?? 0
+  const stop = workspaceRawNumber(workspace.riskPlan.stop) ?? entry
+  const target1 = workspaceRawNumber(workspace.riskPlan.target1) ?? entry
+  const target2 = workspaceRawNumber(workspace.riskPlan.target2) ?? target1
+  return {
+    entry,
+    stop,
+    target1,
+    target2,
+    risk: Math.abs(entry - stop),
+    reward: Math.abs(target2 - entry),
+  }
+}
+
 export default function DayTradeWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { portfolio } = useApp()
+  const { portfolio, user, addManualPosition } = useApp()
   const [notice, setNotice] = useState('')
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -558,6 +616,7 @@ export default function DayTradeWorkspacePage() {
   }, [sidebarCollapsed])
 
   const symbol = (searchParams.get('symbol') || searchParams.get('ticker') || tickerInput || 'AAPL').trim().toUpperCase()
+  useDocumentTitle(formatTickerTitle(symbol, 'Day Trade'))
   const sessionDate = searchParams.get('sessionDate')
   const intervalParam = searchParams.get('interval')
   const interval = intervalParam === '5m' || intervalParam === '15m' ? intervalParam : '1m'
@@ -691,11 +750,122 @@ export default function DayTradeWorkspacePage() {
   }, [setSearchParams])
 
   const handleWorkspaceAction = useCallback((action: DayTradeWorkspaceAction) => {
-    setNotice(action.enabled
-      ? `${action.label} is connected through the backend workspace contract.`
-      : action.disabledReason || `${action.label} is currently unavailable.`
-    )
-  }, [])
+    const workspace = workspaceState.data
+    if (!workspace) return
+    if (!action.enabled) {
+      setNotice(action.disabledReason || `${action.label} is currently unavailable.`)
+      return
+    }
+
+    const rr = workspaceRiskReward(workspace)
+    const strategy = workspaceStrategy(workspace)
+    const bias = workspaceBias(workspace)
+    const expiry = workspaceDateValue(workspace.selectedContract?.expiration)
+    const dte = Math.max(1, Math.round(workspaceRawNumber(workspace.selectedContract?.dte) ?? 7))
+    const contracts = Math.max(1, Math.round(workspaceRawNumber(workspace.riskPlan.positionSize) ?? 1))
+    const optionType = workspaceOptionType(workspace)
+    const strike = workspaceRawNumber(workspace.selectedContract?.strike) ?? rr.entry
+    const premium = workspaceRawNumber(workspace.selectedContract?.midpoint) ?? 0
+    const optionLeg = {
+      action: 'BUY' as const,
+      option_type: optionType,
+      strike,
+      expiry,
+      mid_price: premium,
+      delta: 0,
+      bid: workspaceRawNumber(workspace.selectedContract?.bid) ?? 0,
+      ask: workspaceRawNumber(workspace.selectedContract?.ask) ?? 0,
+      iv: 0,
+      oi: 0,
+      volume: 0,
+      bid_ask_spread_pct: workspaceRawNumber(workspace.selectedContract?.spreadPercent) ?? 0,
+    }
+    const notes = [
+      workspace.decision.setupName ? `Setup ${workspace.decision.setupName}` : null,
+      workspace.decision.headline,
+      workspace.decision.reason,
+      `Entry ${workspace.riskPlan.entry.display}`,
+      `Stop ${workspace.riskPlan.stop.display}`,
+      `T1 ${workspace.riskPlan.target1.display}`,
+      `T2 ${workspace.riskPlan.target2.display}`,
+      `R/R ${workspace.riskPlan.riskReward.display}`,
+    ].filter(Boolean).join(' · ')
+
+    if (action.type === 'journal') {
+      if (!user?.email) {
+        setNotice('Sign in before saving to Journal.')
+        return
+      }
+      void saveToJournal(user.email, {
+        ticker: workspace.symbol.ticker,
+        company_name: workspace.symbol.companyName || workspace.symbol.ticker,
+        strategy,
+        trade_type: 'day',
+        bias,
+        legs: [{
+          action: 'BUY',
+          option_type: optionType,
+          strike,
+          expiry,
+          mid_price: premium,
+        }],
+        expiry,
+        entry_date: new Date().toISOString().slice(0, 10),
+        dte_at_entry: dte,
+        net_credit: premium > 0 ? -premium : 0,
+        max_profit: rr.reward,
+        max_loss: rr.risk,
+        underlying_entry: rr.entry,
+        prob_of_profit: 0,
+        expected_value: 0,
+        total_score: workspace.chart.marketStructure?.confidence ?? 0,
+        engine_signal: workspace.decision.permission.label,
+        notes,
+      }).then(() => {
+        setNotice(`${workspace.symbol.ticker} saved to Journal.`)
+      }).catch(() => {
+        setNotice('Unable to save this setup to Journal.')
+      })
+      return
+    }
+
+    if (action.type === 'position') {
+      addManualPosition({
+        ticker: workspace.symbol.ticker,
+        companyName: workspace.symbol.companyName || workspace.symbol.ticker,
+        strategy,
+        bias,
+        legs: [optionLeg],
+        expiry,
+        dte,
+        net_credit: premium > 0 ? -premium : 0,
+        spread_width: 0,
+        max_profit: rr.reward,
+        max_loss: rr.risk,
+        prob_of_profit: 0,
+        expected_value: 0,
+        scores_total: workspace.chart.marketStructure?.confidence ?? 0,
+        contracts,
+        breakeven_lower: 0,
+        breakeven_upper: 0,
+        entryPrice: rr.entry,
+        target1: rr.target1,
+        target2: rr.target2,
+        stopLoss: rr.stop,
+        source: 'day',
+        notes,
+      })
+      setNotice(`${workspace.symbol.ticker} added to Positions Center.`)
+      return
+    }
+
+    if (action.type === 'alpaca') {
+      navigate(`${ROUTES.autoTrade}?ticker=${encodeURIComponent(workspace.symbol.ticker)}&source=day`)
+      return
+    }
+
+    setNotice(`${action.label} is connected through the backend workspace contract.`)
+  }, [addManualPosition, navigate, user?.email, workspaceState.data])
 
   const handleAddTicker = useCallback(async () => {
     const target = addSelected || (addQuery.trim() ? { symbol: addQuery.trim().toUpperCase(), company: '', sector: '' } : null)

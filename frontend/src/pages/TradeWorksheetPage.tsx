@@ -34,6 +34,7 @@ import {
 import { evaluateTradeWorksheet, fetchCalculationRuns, fetchCalculationSnapshot, fetchCalculationSnapshotAuditLog, fetchCalculationSnapshotIntegrity, fetchOptionChainLiquidity, getJournal, saveToJournal, type CalculationRun, type CalculationSnapshot, type CalculationSnapshotAuditLog, type CalculationSnapshotIntegrity, type MetricDefinition, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 import { useApp } from '../contexts/AppContext'
+import { formatTickerTitle, useDocumentTitle } from '../hooks/useDocumentTitle'
 
 type Direction = 'Bullish' | 'Bearish' | 'Neutral'
 type Strategy =
@@ -272,6 +273,7 @@ export default function TradeWorksheetPage() {
     confidence: 7,
     emotion: 'Calm' as Emotion,
   })
+  useDocumentTitle(formatTickerTitle(form.ticker, 'Trade Worksheet'))
   const [savingJournal, setSavingJournal] = useState(false)
   const [journalSaved, setJournalSaved] = useState(false)
   const chainRequestSeqRef = useRef(0)

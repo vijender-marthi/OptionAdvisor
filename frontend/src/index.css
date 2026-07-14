@@ -206,7 +206,13 @@ button, input, select, textarea { font: inherit; }
 .day-trade-page .font-black,
 .day-trade-workspace-shell .font-black,
 .swing-trade-page .font-black {
-  font-weight: 800;
+  font-weight: 650;
+}
+
+.day-trade-page .font-bold,
+.day-trade-workspace-shell .font-bold,
+.swing-trade-page .font-bold {
+  font-weight: 600;
 }
 
 .day-trade-page .tracking-widest,

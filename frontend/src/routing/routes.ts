@@ -13,6 +13,7 @@ export const ROUTES = {
   positions: '/positions?tab=dashboard',
   watchlist: '/signal-feed',
   alerts: '/alerts',
+  autoTrade: '/auto-trade',
   dayTradeAlerts: '/day-trade-alerts',
   myTickers: '/my-tickers',
   dayTradeDashboard: '/day-trade-dashboard',

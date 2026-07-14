@@ -1,6 +1,6 @@
 import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { LayoutList, PanelRightOpen, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, BriefcaseBusiness, CheckCircle2, LayoutList, PanelRightOpen, RadioTower, TrendingUp, X } from 'lucide-react'
 import type {
   DayTradeRiskMonitorFactor,
   DayTradeRiskMonitorItem,
@@ -16,6 +16,117 @@ type Props = {
   workspace: DayTradeWorkspaceResponse
   onAction?: (action: DayTradeWorkspaceAction) => void
   onIntervalChange?: (interval: '1m' | '5m' | '15m') => void
+}
+
+function marketStructureBadgeClass(value?: string | null): string {
+  const text = String(value || '').toLowerCase()
+  if (text.includes('bull') || text.includes('uptrend') || text.includes('higher')) {
+    return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+  }
+  if (text.includes('bear') || text.includes('downtrend') || text.includes('lower')) {
+    return 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+  }
+  return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
+}
+
+function inferredValueTextClass(label: string, value: string): string {
+  const raw = `${label} ${value}`.toLowerCase()
+  if (raw.includes('stop') || raw.includes('invalid') || raw.includes('bear') || raw.includes('downtrend') || raw.includes('short') || raw.includes('danger') || raw.includes('avoid') || raw.includes('no go') || raw.includes('high risk')) {
+    return 'text-rose-600 dark:text-rose-300'
+  }
+  if (raw.includes('target') || raw.includes('entry') || raw.includes('bull') || raw.includes('uptrend') || raw.includes('long') || raw.includes('go') || raw.includes('low risk') || raw.includes('support')) {
+    return 'text-emerald-600 dark:text-emerald-300'
+  }
+  if (raw.includes('risk') || raw.includes('warn') || raw.includes('wait') || raw.includes('neutral') || raw.includes('pending') || raw.includes('resistance')) {
+    return 'text-amber-600 dark:text-amber-300'
+  }
+  return 'text-heading'
+}
+
+function rawNumber(value: DayTradeWorkspaceDisplayValue | undefined): number | null {
+  if (!value) return null
+  if (typeof value.raw === 'number' && Number.isFinite(value.raw)) return value.raw
+  if (typeof value.raw === 'string') {
+    const parsed = Number(value.raw.replace(/[^0-9.-]/g, ''))
+    if (Number.isFinite(parsed)) return parsed
+  }
+  const parsed = Number(value.display.replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function moneyValue(value: number | null): string {
+  return value == null || !Number.isFinite(value) ? '—' : `$${value.toFixed(2)}`
+}
+
+function formatTrendLabel(workspace: DayTradeWorkspaceResponse): string {
+  const structure = workspace.chart.marketStructure
+  if (!structure) return workspace.decision.context.label
+  const trendText = structure.trend.replace(/_/g, ' ')
+  const direction = /bull|bear/i.test(trendText) ? trendText : structure.display || trendText
+  const strength = structure.structureStrength
+  if (strength != null && strength >= 75) return `Strong ${direction.toLowerCase().includes('bull') ? 'Bullish' : direction.toLowerCase().includes('bear') ? 'Bearish' : direction}`
+  return direction.replace(/_/g, ' ')
+}
+
+function buildDecisionChecks(workspace: DayTradeWorkspaceResponse): string[] {
+  const current = rawNumber(workspace.symbol.price)
+  const vwap = typeof workspace.chart.vwapOverlay?.latestValue === 'number' ? workspace.chart.vwapOverlay.latestValue : null
+  const orh = workspace.chart.levels.find(level => /(^|\s)ORH($|\s)|opening range high/i.test(level.label))
+  const structure = workspace.chart.marketStructure
+  const chartChecks = [
+    current != null && vwap != null && current >= vwap ? 'Above VWAP' : null,
+    current != null && orh && current >= orh.price ? 'Above ORH' : null,
+    structure?.trend && /bull|hh|hl|uptrend|higher/i.test(`${structure.trend} ${structure.display} ${structure.sequence.join(' ')}`)
+      ? 'HH-HL structure intact'
+      : structure?.display
+        ? `Structure: ${structure.display}`
+        : null,
+  ].filter((item): item is string => Boolean(item))
+  const checks = [
+    ...chartChecks,
+    ...workspace.trigger.requirements
+      .filter(item => !/go long|go short|data quality|trigger/i.test(item.label))
+      .filter(item => item.tone === 'positive' || /pass|above|intact|yes|true/i.test(`${item.result} ${item.displayValue || ''}`))
+      .map(item => item.label),
+    ...workspace.evidence
+      .filter(item => item.tone === 'positive')
+      .filter(item => !/go long|go short|data quality|trigger/i.test(item.label))
+      .sort((a, b) => a.order - b.order)
+      .map(item => item.label),
+  ]
+  return Array.from(new Set(checks)).slice(0, 4)
+}
+
+function buildDecisionWarnings(workspace: DayTradeWorkspaceResponse): string[] {
+  const current = rawNumber(workspace.symbol.price)
+  const vwap = typeof workspace.chart.vwapOverlay?.latestValue === 'number' ? workspace.chart.vwapOverlay.latestValue : null
+  const entry = rawNumber(workspace.riskPlan.entry)
+  const stop = rawNumber(workspace.riskPlan.stop)
+  const target2 = rawNumber(workspace.riskPlan.target2)
+  const warnings: string[] = []
+
+  if (current != null && vwap != null && vwap > 0) {
+    const pct = ((current - vwap) / vwap) * 100
+    const side = pct >= 0 ? 'above' : 'below'
+    warnings.push(`Price is ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% ${side} VWAP`)
+  }
+  if (entry != null && target2 != null) {
+    warnings.push(`Only ${moneyValue(Math.abs(target2 - entry))} remains to T2`)
+  }
+  if (entry != null && stop != null) {
+    warnings.push(`Stop requires ${moneyValue(Math.abs(entry - stop))} risk`)
+  }
+  return warnings
+}
+
+function buildActionCopy(workspace: DayTradeWorkspaceResponse): string {
+  const vwap = typeof workspace.chart.vwapOverlay?.latestValue === 'number' ? workspace.chart.vwapOverlay.latestValue : null
+  const pullback = vwap != null ? `Wait for pullback toward VWAP (${moneyValue(vwap)})` : 'Wait for a cleaner pullback'
+  const structure = workspace.chart.marketStructure?.expectedNextPivot || workspace.chart.marketStructure?.expectedNext || 'a new higher low'
+  const permissionText = `${workspace.decision.permission.code} ${workspace.decision.permission.label}`.toLowerCase()
+  const blocked = permissionText.includes('block') || permissionText.includes('wait') || permissionText.includes('avoid') || workspace.decision.permission.tone !== 'positive' || !workspace.decision.primaryAction.enabled
+  if (blocked) return workspace.decision.nextCondition || `${pullback} or ${String(structure).replace(/_/g, ' ')} before entering.`
+  return workspace.decision.primaryAction.label || workspace.decision.headline
 }
 
 export default function DayTradeWorkspaceShell({ workspace, onAction, onIntervalChange }: Props) {
@@ -58,7 +169,7 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
       />
       <div className="grid min-h-0 flex-1 gap-3 p-3 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} onIntervalChange={onIntervalChange} />
-        <TradeDecisionPanel workspace={workspace} />
+        <TradeDecisionPanel workspace={workspace} onAction={onAction} />
       </div>
       <WorkspaceDetailDrawer
         workspace={workspace}
@@ -122,7 +233,7 @@ export function TradeDecisionHeader({
           <span className="font-mono text-lg font-black text-heading">{workspace.symbol.price.display}</span>
           <span className={`font-mono text-sm font-bold ${workspaceToneTextClass(workspace.symbol.change.tone || 'neutral')}`}>{workspace.symbol.change.display}</span>
           {workspace.chart.marketStructure && (
-            <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${marketStructureBadgeClass(`${workspace.chart.marketStructure.display} ${workspace.chart.marketStructure.trend}`)}`}>
               {workspace.chart.marketStructure.display} · {workspace.chart.marketStructure.trend.replace(/_/g, ' ')}
             </span>
           )}
@@ -219,16 +330,100 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalCh
   )
 }
 
-export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTradeWorkspaceResponse; onAction?: (action: DayTradeWorkspaceAction) => void }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const rrKey = 'risk' + 'Reward'
   const rrValue = workspace.riskPlan[rrKey as keyof typeof workspace.riskPlan] as DayTradeWorkspaceDisplayValue
+  const entry = rawNumber(workspace.riskPlan.entry)
+  const stop = rawNumber(workspace.riskPlan.stop)
+  const target2 = rawNumber(workspace.riskPlan.target2)
+  const risk = entry != null && stop != null ? Math.abs(entry - stop) : null
+  const reward = entry != null && target2 != null ? Math.abs(target2 - entry) : null
+  const decisionChecks = buildDecisionChecks(workspace)
+  const decisionWarnings = buildDecisionWarnings(workspace)
   return (
     <aside className="grid max-h-[70vh] content-start gap-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none">
       <Panel title="Current Decision">
-        <StatusPill status={workspace.decision.permission} />
-        <div className="mt-2 text-sm font-semibold text-heading">{workspace.decision.headline}</div>
-        <div className="mt-1 text-xs text-tertiary">{workspace.decision.reason}</div>
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <TrendingUp size={16} className={marketStructureBadgeClass(formatTrendLabel(workspace)).includes('emerald') ? 'text-emerald-600 dark:text-emerald-300' : marketStructureBadgeClass(formatTrendLabel(workspace)).includes('rose') ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'} />
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">Trend</div>
+                <div className={`text-sm font-semibold ${inferredValueTextClass('Trend', formatTrendLabel(workspace))}`}>{formatTrendLabel(workspace)}</div>
+              </div>
+            </div>
+            <StatusPill status={workspace.decision.permission} />
+          </div>
+
+          <div>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Reason Blocked</div>
+            <div className="grid gap-1">
+              {(decisionChecks.length ? decisionChecks : [workspace.decision.context.label, workspace.trigger.status.label]).map(item => (
+                <div key={item} className="flex items-center gap-2 text-xs text-secondary">
+                  <CheckCircle2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-300" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {decisionWarnings.length > 0 && (
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">But</div>
+              <div className="grid gap-1">
+                {decisionWarnings.map(item => (
+                  <div key={item} className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-200">
+                    <AlertTriangle size={13} className="shrink-0" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-tertiary">Risk / Reward</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <MiniMetric label="Risk" value={moneyValue(risk)} tone="danger" />
+              <MiniMetric label="Reward" value={moneyValue(reward)} tone="positive" />
+              <MiniMetric label="R:R" value={rrValue.display} tone={rrValue.tone || 'warning'} />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">Action</div>
+            <div className="mt-1 text-xs leading-relaxed text-secondary">{buildActionCopy(workspace)}</div>
+          </div>
+        </div>
+      </Panel>
+      <Panel title="Entry / Stop / Targets">
+        <div className="grid grid-cols-2 gap-2">
+          <Value label="Entry" value={workspace.riskPlan.entry.display} />
+          <Value label="Stop" value={workspace.riskPlan.stop.display} />
+          <Value label="T1" value={workspace.riskPlan.target1.display} />
+          <Value label="T2" value={workspace.riskPlan.target2.display} />
+          <Value label="Invalidation" value={(workspace.riskPlan as { invalidation?: DayTradeWorkspaceDisplayValue }).invalidation?.display ?? workspace.riskPlan.stop.display} />
+          <Value label="Size" value={workspace.riskPlan.positionSize.display} />
+          <Value label="R/R" value={rrValue.display} />
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <QuickTradeAction
+            label="Journal"
+            icon={<BookOpen size={13} />}
+            onClick={() => onAction?.({ id: 'quick_journal', type: 'journal', label: 'Add to Journal', enabled: true })}
+          />
+          <QuickTradeAction
+            label="Position"
+            icon={<BriefcaseBusiness size={13} />}
+            onClick={() => onAction?.({ id: 'quick_position', type: 'position', label: 'Add to Positions Center', enabled: true })}
+          />
+          <QuickTradeAction
+            label="Alpaca"
+            icon={<RadioTower size={13} />}
+            onClick={() => onAction?.({ id: 'quick_alpaca', type: 'alpaca', label: 'Open Alpaca Trading', enabled: true })}
+          />
+        </div>
       </Panel>
       <Panel title="Setup">
         <div className="grid gap-2">
@@ -245,7 +440,7 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
           <div className="grid gap-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-black uppercase tracking-wide text-tertiary">Trend</span>
-              <span className="text-xs font-black text-heading">{workspace.chart.marketStructure.trend.replace(/_/g, ' ')}</span>
+              <span className={`text-xs font-semibold ${inferredValueTextClass('Trend', workspace.chart.marketStructure.trend)}`}>{workspace.chart.marketStructure.trend.replace(/_/g, ' ')}</span>
             </div>
             <Value label="Sequence" value={workspace.chart.marketStructure.sequence.length ? workspace.chart.marketStructure.sequence.join(' → ') : workspace.chart.marketStructure.display} />
             <Value label="Current Pivot" value={workspace.chart.marketStructure.currentPivot || '—'} />
@@ -273,17 +468,6 @@ export function TradeDecisionPanel({ workspace }: { workspace: DayTradeWorkspace
         </div>
       </Panel>
       <RiskMonitorPanel workspace={workspace} />
-      <Panel title="Entry / Stop / Targets">
-        <div className="grid grid-cols-2 gap-2">
-          <Value label="Entry" value={workspace.riskPlan.entry.display} />
-          <Value label="Stop" value={workspace.riskPlan.stop.display} />
-          <Value label="T1" value={workspace.riskPlan.target1.display} />
-          <Value label="T2" value={workspace.riskPlan.target2.display} />
-          <Value label="Invalidation" value={(workspace.riskPlan as { invalidation?: DayTradeWorkspaceDisplayValue }).invalidation?.display ?? workspace.riskPlan.stop.display} />
-          <Value label="Size" value={workspace.riskPlan.positionSize.display} />
-          <Value label="R/R" value={rrValue.display} />
-        </div>
-      </Panel>
       {workspace.selectedContract && (
         <Panel title="Contract / Risk">
           <div className="grid grid-cols-2 gap-2">
@@ -681,7 +865,36 @@ function Value({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-900">
       <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
-      <div className="font-mono text-sm font-black text-heading">{value}</div>
+      <div className={`font-mono text-sm font-semibold ${inferredValueTextClass(label, value)}`}>{value}</div>
     </div>
+  )
+}
+
+function MiniMetric({ label, value, tone }: { label: string; value: string; tone: string }) {
+  const cls = tone === 'positive'
+    ? 'text-emerald-600 dark:text-emerald-300'
+    : tone === 'danger'
+      ? 'text-rose-600 dark:text-rose-300'
+      : tone === 'warning'
+        ? 'text-amber-600 dark:text-amber-300'
+        : 'text-heading'
+  return (
+    <div className="rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-900">
+      <div className="text-[9px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
+      <div className={`font-mono text-xs font-semibold ${cls}`}>{value}</div>
+    </div>
+  )
+}
+
+function QuickTradeAction({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-secondary transition hover:border-violet-400 hover:text-heading dark:border-white/[0.08] dark:bg-slate-950"
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
   )
 }

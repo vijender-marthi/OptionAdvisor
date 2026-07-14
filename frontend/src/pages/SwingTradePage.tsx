@@ -37,10 +37,13 @@ import { fetchMyTickers, fetchStockTargets, type StockTargetData } from '../api/
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import { parseChartPayload } from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
+import { formatTickerTitle, useDocumentTitle } from '../hooks/useDocumentTitle'
 import { ROUTES, getEngineRoute, getTradeWorksheetRoute } from '../routing/routes'
 import type { OptionLeg } from '../types'
 
 const OptionsEntryCheck = lazy(() => import('../components/OptionsEntryCheck'))
+const BULLISH_CANDLE_COLOR = '#22c55e'
+const BEARISH_CANDLE_COLOR = '#ef4444'
 
 type WorkstationTab = 'overview' | 'fibonacci' | 'options' | 'exit' | 'evidence' | 'journal' | 'alerts'
 type Timeframe = 'Daily' | 'Weekly' | 'Monthly'
@@ -52,6 +55,90 @@ function handlePlainAnchorClick(event: MouseEvent<HTMLAnchorElement>, action: ()
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   event.preventDefault()
   action()
+}
+
+function inferredSwingTextClass(label: string, value: string): string {
+  const raw = `${label} ${value}`.toLowerCase()
+  if (raw.includes('stop') || raw.includes('invalid') || raw.includes('bear') || raw.includes('short') || raw.includes('put') || raw.includes('avoid') || raw.includes('fail') || raw.includes('high risk')) {
+    return 'text-rose-600 dark:text-rose-300'
+  }
+  if (raw.includes('target') || raw.includes('entry') || raw.includes('bull') || raw.includes('long') || raw.includes('call') || raw.includes('go') || raw.includes('low risk') || raw.includes('uptrend')) {
+    return 'text-emerald-600 dark:text-emerald-300'
+  }
+  if (raw.includes('risk') || raw.includes('neutral') || raw.includes('wait') || raw.includes('watch') || raw.includes('medium') || raw.includes('pullback')) {
+    return 'text-amber-600 dark:text-amber-300'
+  }
+  return 'text-heading'
+}
+
+function swingBiasBadgeClass(value?: string | null): string {
+  const raw = String(value || '').toLowerCase()
+  if (raw.includes('bear') || raw.includes('short')) return 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+  if (raw.includes('bull') || raw.includes('long')) return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+  return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
+}
+
+type FibPriceLevel = NonNullable<StockTargetData['fib_retracement_levels']>[number]
+
+function fibLevelPercent(level: FibPriceLevel): { primary: string; exact: string } {
+  const ratio = num(level.ratio)
+  const raw = ratio == null ? Number.parseFloat(String(level.level).replace('%', '')) : ratio > 1 ? ratio : ratio * 100
+  if (!Number.isFinite(raw)) return { primary: String(level.level || '—'), exact: String(level.level || '—') }
+  return {
+    primary: `${Math.round(raw)}%`,
+    exact: `${raw.toFixed(raw % 1 === 0 ? 0 : 1)}%`,
+  }
+}
+
+function fibLevelDecision(level: FibPriceLevel): { title: string; detail: string; classes: string; dot: string } {
+  const ratio = num(level.ratio)
+  const pctValue = ratio == null ? Number.parseFloat(String(level.level).replace('%', '')) : ratio > 1 ? ratio : ratio * 100
+  if (pctValue <= 24) {
+    return {
+      title: 'Shallow pullback',
+      detail: 'Trend is still stretched; avoid chasing until price confirms.',
+      classes: 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-200',
+      dot: 'bg-sky-500',
+    }
+  }
+  if (pctValue <= 39) {
+    return {
+      title: 'Healthy retreat',
+      detail: 'First quality pullback area if momentum and structure stay intact.',
+      classes: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200',
+      dot: 'bg-emerald-500',
+    }
+  }
+  if (pctValue <= 51) {
+    return {
+      title: 'Decision zone',
+      detail: 'Needs confirmation candle; good place to wait instead of guessing.',
+      classes: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200',
+      dot: 'bg-amber-500',
+    }
+  }
+  if (pctValue <= 64) {
+    return {
+      title: 'Golden retrace',
+      detail: 'Strong pullback zone; bullish only if buyers defend this area.',
+      classes: 'border-lime-500/30 bg-lime-500/10 text-lime-700 dark:text-lime-200',
+      dot: 'bg-lime-500',
+    }
+  }
+  if (pctValue <= 79) {
+    return {
+      title: 'Danger zone',
+      detail: 'Deep retracement; trend quality is fading unless price reclaims fast.',
+      classes: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200',
+      dot: 'bg-rose-500',
+    }
+  }
+  return {
+    title: 'Invalidation risk',
+    detail: 'Beyond normal pullback depth; treat as breakdown risk first.',
+    classes: 'border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-200',
+    dot: 'bg-red-500',
+  }
 }
 
 type ChartIndicator = {
@@ -142,6 +229,10 @@ function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(high, Math.max(low, value))
+}
+
 function text(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value : ''
 }
@@ -149,6 +240,20 @@ function text(value: unknown): string {
 function money(value: unknown): string {
   const n = num(value)
   return n == null ? '—' : `$${n.toFixed(2)}`
+}
+
+function signedMoney(value: unknown): string {
+  const n = num(value)
+  if (n == null) return '—'
+  return `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
+}
+
+function formatSwingVolume(value: unknown): string {
+  const n = num(value)
+  if (n == null) return '—'
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
 function pct(value: unknown): string {
@@ -179,6 +284,15 @@ function formatSwingAxisTime(value: string | null | undefined): string {
   const parts = raw.split('-')
   if (parts.length >= 3) return `${parts[1]}/${parts[2].slice(0, 2)}`
   return raw
+}
+
+function swingDateKey(value: string | null | undefined): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10)
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] || raw
 }
 
 function levelFromUnified(unified: UnifiedAnalysis | null, type: 't1' | 't2'): string {
@@ -366,6 +480,7 @@ export default function SwingTradePage() {
     user,
   } = useApp()
   const { ticker, loading, error, result } = ui
+  useDocumentTitle(formatTickerTitle(result?.ticker || ticker, 'Swing Trade'))
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [watchlistOpen, setWatchlistOpen] = useState(true)
@@ -402,7 +517,7 @@ export default function SwingTradePage() {
     return getTradeWorksheetRoute({ ticker: sym, direction, strategy, source: 'swing' })
   }, [result?.bias, result?.suggested_strategy, result?.ticker, ticker])
 
-  const runScan = useCallback(async (overrideTicker?: string) => {
+  const runScan = useCallback(async (overrideTicker?: string, forceRefresh = true) => {
     const sym = (overrideTicker || ticker).trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
@@ -412,7 +527,7 @@ export default function SwingTradePage() {
     setUnified(null)
     setFibTargets(null)
     try {
-      const data = await analyzeSwingTrade(sym)
+      const data = await analyzeSwingTrade(sym, forceRefresh)
       setUi(cur => ({ ...cur, loading: false, ticker: data.ticker, result: data }))
       setOcKey(k => k + 1)
       try {
@@ -616,7 +731,7 @@ export default function SwingTradePage() {
             result={result}
             unified={unified}
             loading={loading}
-            onRefresh={() => void runScan()}
+            onRefresh={() => void runScan(undefined, true)}
             onAddToPortfolio={handleAddToPortfolio}
             onOpenAlert={() => setAlertOpen(true)}
             onOpenPreTrade={() => navigate(preTradeRoute)}
@@ -799,6 +914,7 @@ function SwingLeftSidebar({
         <div className="min-h-0 flex-1 space-y-2 overflow-auto overscroll-contain">
           {myTickers.length ? myTickers.map(item => {
             const selected = item.symbol === result?.ticker
+            const moveUp = (item.changePct ?? 0) >= 0
             return (
               <a
                 key={item.symbol}
@@ -807,7 +923,9 @@ function SwingLeftSidebar({
                 className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
                   selected
                     ? 'border-violet-500 bg-violet-500/10'
-                    : 'border-slate-200 bg-white hover:border-violet-300 dark:border-white/[0.08] dark:bg-slate-950'
+                    : moveUp
+                      ? 'border-emerald-500/20 bg-white hover:border-emerald-400/60 dark:border-emerald-400/15 dark:bg-slate-950'
+                      : 'border-rose-500/20 bg-white hover:border-rose-400/60 dark:border-rose-400/15 dark:bg-slate-950'
                 }`}
               >
                 <span className="min-w-0">
@@ -952,6 +1070,11 @@ function SwingTopBar({
             {pct(unified.change_pct)}
           </span>
         )}
+        {(result?.bias || result?.swing_bias) && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${swingBiasBadgeClass(result?.bias || result?.swing_bias)}`}>
+            {compactLabel(result?.bias || result?.swing_bias)}
+          </span>
+        )}
       </div>
       <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto pb-1">
         <button type="button" onClick={onOpenSections} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]">
@@ -1089,7 +1212,15 @@ function SwingPrimaryChart({
   onTimeframeChange: (value: Timeframe) => void
 }) {
   const metrics = result?.metrics as Record<string, unknown> | undefined
-  const points = useMemo(() => parseChartPayload(metrics?.chart_series), [metrics?.chart_series])
+  const rawPoints = useMemo(() => parseChartPayload(metrics?.chart_series), [metrics?.chart_series])
+  const points = useMemo(() => {
+    if (!rawPoints?.length) return rawPoints
+    const last = num(metrics?.last_price)
+    if (last == null || last <= 0) return rawPoints
+    const next = rawPoints.slice()
+    next[next.length - 1] = { ...next[next.length - 1]!, c: last }
+    return next
+  }, [metrics?.last_price, rawPoints])
   const framework = useMemo(() => buildIndicatorFramework(result, unified, fibTargets), [result, unified, fibTargets])
   const defaultIds = framework.recommendedIds.length
     ? framework.recommendedIds
@@ -1105,6 +1236,7 @@ function SwingPrimaryChart({
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelection.ids)
   const [fullScreen, setFullScreen] = useState(false)
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
   const dragRef = useRef<{ pointerId: number; startX: number } | null>(null)
   const availableIds = useMemo(() => new Set(framework.catalog.filter(item => item.available).map(item => item.id)), [framework.catalog])
   const indicatorById = useMemo(() => new Map(framework.catalog.map(item => [item.id, item])), [framework.catalog])
@@ -1145,7 +1277,8 @@ function SwingPrimaryChart({
   const macdTop = 535
   const macdBottom = 596
   const safeEnd = Math.min(Math.max(endIndex || points.length, visibleBars), points.length)
-  const visible = points.slice(Math.max(0, safeEnd - visibleBars), safeEnd)
+  const visibleStartIndex = Math.max(0, safeEnd - visibleBars)
+  const visible = points.slice(visibleStartIndex, safeEnd)
   const prices = visible.flatMap(p => [p.c, p.ma20, p.ma50].filter((n): n is number => typeof n === 'number' && Number.isFinite(n)))
   const levelValues = [
     num(getExec(result).breakout),
@@ -1167,6 +1300,7 @@ function SwingPrimaryChart({
   const candleWidth = Math.max(3, Math.min(18, xStep * 0.58))
   const yFor = (price: number) => priceBottom - ((price - minPrice) / priceRange) * (priceBottom - priceTop)
   const xFor = (index: number) => index * xStep + xStep * 0.5
+  const visibleIndexByDate = new Map(visible.map((point, index) => [swingDateKey(point.d), index]))
   const axisY = height - 22
   const xAxisTicks = (() => {
     if (!visible.length) return []
@@ -1198,7 +1332,7 @@ function SwingPrimaryChart({
     : []
   const structurePivots = activeIds.has('structure')
     ? backendStructurePivots(metrics).slice(-5).map(pivot => {
-        const index = visible.findIndex(point => point.d === pivot.date)
+        const index = visibleIndexByDate.get(swingDateKey(pivot.date)) ?? -1
         return index >= 0 && pivot.price != null
           ? { ...pivot, x: xFor(index), y: yFor(pivot.price) }
           : null
@@ -1206,8 +1340,27 @@ function SwingPrimaryChart({
     : []
   const structureTone = String((metrics?.market_structure as Record<string, unknown> | undefined)?.bias || '').toLowerCase()
   const structureColor = structureTone.includes('bear') ? '#ef4444' : structureTone.includes('bull') ? '#10b981' : '#f59e0b'
-  const nearest = crosshair && visible.length
-    ? visible[Math.max(0, Math.min(visible.length - 1, Math.round(crosshair.x / Math.max(1, xStep) - 0.5)))]
+  const nearestIndex = crosshair && visible.length
+    ? clamp(Math.round(crosshair.x / Math.max(1, xStep) - 0.5), 0, visible.length - 1)
+    : null
+  const nearest = nearestIndex == null ? null : visible[nearestIndex]
+  const crosshairDetail = nearest && nearestIndex != null
+    ? (() => {
+        const absoluteIndex = visibleStartIndex + nearestIndex
+        const open = points[absoluteIndex - 1]?.c ?? nearest.c
+        const close = nearest.c
+        const rangeHigh = Math.max(open, close)
+        const rangeLow = Math.min(open, close)
+        return {
+          point: nearest,
+          open,
+          close,
+          rangeHigh,
+          rangeLow,
+          change: close - open,
+          changePct: open ? ((close - open) / open) * 100 : null,
+        }
+      })()
     : null
   const zoom = (dir: 'in' | 'out') => setVisibleBars(cur => Math.max(20, Math.min(points.length, cur + (dir === 'in' ? -16 : 16))))
   const panByBars = (bars: number) => {
@@ -1257,6 +1410,7 @@ function SwingPrimaryChart({
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return
     dragRef.current = { pointerId: event.pointerId, startX: event.clientX }
+    setDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
@@ -1273,6 +1427,7 @@ function SwingPrimaryChart({
   const stopDrag = (event: PointerEvent<SVGSVGElement>) => {
     if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null
+      setDragging(false)
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     }
   }
@@ -1361,7 +1516,7 @@ function SwingPrimaryChart({
         </div>
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className={`${fullScreen ? 'h-[calc(100vh-220px)]' : 'min-h-0 flex-1'} block w-full cursor-grab select-none md:touch-none`}
+          className={`${fullScreen ? 'h-[calc(100vh-220px)]' : 'min-h-0 flex-1'} block w-full select-none md:touch-none`}
           role="img"
           aria-label="Swing trade daily chart"
           onWheel={handleWheel}
@@ -1372,8 +1527,10 @@ function SwingPrimaryChart({
           onMouseMove={handleMouseMove}
           onMouseLeave={() => {
             dragRef.current = null
+            setDragging(false)
             setCrosshair(null)
           }}
+          style={{ cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none' }}
         >
           <rect x="0" y="0" width={width} height={height} rx="8" fill="transparent" />
           {[0, 1, 2, 3, 4].map(i => {
@@ -1397,11 +1554,12 @@ function SwingPrimaryChart({
             const bodyTop = Math.min(openY, closeY)
             const bodyHeight = Math.max(2, Math.abs(closeY - openY))
             const volHeight = ((point.v || 0) / maxVol) * (volumeBottom - volumeTop)
+            const candleColor = up ? BULLISH_CANDLE_COLOR : BEARISH_CANDLE_COLOR
             return (
               <g key={`${point.d}-${index}`}>
-                <line x1={x} x2={x} y1={highY} y2={lowY} stroke={up ? '#22c55e' : '#ef4444'} strokeWidth="1.5" opacity="0.9" />
-                <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1.5" fill={up ? '#22c55e' : '#ef4444'} opacity="0.9" />
-                {activeIds.has('volume') && <rect x={x - candleWidth / 2} y={volumeBottom - volHeight} width={candleWidth} height={volHeight} fill={up ? '#22c55e' : '#ef4444'} opacity="0.28" />}
+                <line x1={x} x2={x} y1={highY} y2={lowY} stroke={candleColor} strokeWidth="1.5" opacity="0.9" />
+                <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1.5" fill={candleColor} opacity="0.9" />
+                {activeIds.has('volume') && <rect x={x - candleWidth / 2} y={volumeBottom - volHeight} width={candleWidth} height={volHeight} fill={candleColor} opacity="0.28" />}
               </g>
             )
           })}
@@ -1451,11 +1609,11 @@ function SwingPrimaryChart({
                 return (
                   <g key={`${pivot.date}-${label}-${index}`}>
                     <circle cx={pivot.x} cy={pivot.y} r="4.2" fill={provisional ? 'transparent' : structureColor} stroke={structureColor} strokeWidth={provisional ? '2' : '1.5'} strokeDasharray={provisional ? '2 2' : undefined} />
-                    <rect x={pivot.x - labelWidth / 2} y={chipY - 9} width={labelWidth} height="18" rx="6" fill="rgba(15,23,42,0.88)" stroke={structureColor} strokeWidth="1" strokeDasharray={provisional ? '2 2' : undefined} />
+                    <rect x={pivot.x - labelWidth / 2} y={chipY - 9} width={labelWidth} height="18" rx="6" fill="var(--surface-card)" stroke={structureColor} strokeWidth="1" strokeDasharray={provisional ? '2 2' : undefined} />
                     <text x={pivot.x} y={chipY + 4} textAnchor="middle" fill={structureColor} className="text-[10px] font-black">
                       {index === structurePivots.length - 1 ? `Current ${label}` : label}
                     </text>
-                    <text x={pivot.x} y={chipY + (label.includes('H') ? -10 : 17)} textAnchor="middle" className="fill-slate-500 text-[9px] font-mono">
+                    <text x={pivot.x} y={chipY + (label.includes('H') ? -10 : 17)} textAnchor="middle" fill="var(--text-tertiary)" className="text-[9px] font-mono">
                       ${pivot.price.toFixed(2)}
                     </text>
                   </g>
@@ -1467,6 +1625,25 @@ function SwingPrimaryChart({
             <g>
               <line x1={crosshair.x} x2={crosshair.x} y1="0" y2={height} stroke="#94a3b8" strokeDasharray="3 4" opacity="0.45" />
               <line x1="0" x2={width} y1={crosshair.y} y2={crosshair.y} stroke="#94a3b8" strokeDasharray="3 4" opacity="0.25" />
+              {crosshairDetail && (
+                <g transform={`translate(${clamp(crosshair.x + 14, 8, width - 186)}, ${clamp(crosshair.y + 14, 8, height - 158)})`}>
+                  <rect width="178" height="150" rx="8" fill="var(--chart-tooltip-bg)" stroke="var(--chart-tooltip-border)" strokeWidth="1" />
+                  <text x="10" y="18" fill="var(--text-heading)" className="text-[11px] font-bold">
+                    Date: {formatSwingAxisTime(crosshairDetail.point.d)}
+                  </text>
+                  <text x="10" y="36" fill="var(--text-secondary)" className="text-[11px]">Open: {money(crosshairDetail.open)}</text>
+                  <text x="10" y="52" fill="var(--text-secondary)" className="text-[11px]">High: {money(crosshairDetail.rangeHigh)}</text>
+                  <text x="10" y="68" fill="var(--text-secondary)" className="text-[11px]">Low: {money(crosshairDetail.rangeLow)}</text>
+                  <text x="10" y="84" fill="var(--text-secondary)" className="text-[11px]">Close: {money(crosshairDetail.close)}</text>
+                  <text x="10" y="100" fill={crosshairDetail.change >= 0 ? BULLISH_CANDLE_COLOR : BEARISH_CANDLE_COLOR} className="text-[11px] font-bold">
+                    Move: {signedMoney(crosshairDetail.change)}
+                    {crosshairDetail.changePct == null ? '' : ` (${crosshairDetail.changePct >= 0 ? '+' : ''}${crosshairDetail.changePct.toFixed(2)}%)`}
+                  </text>
+                  <text x="10" y="116" fill="var(--text-tertiary)" className="text-[10px]">Vol: {formatSwingVolume(crosshairDetail.point.v)}</text>
+                  <text x="10" y="132" fill="var(--text-tertiary)" className="text-[10px]">MA20: {money(crosshairDetail.point.ma20)} · MA50: {money(crosshairDetail.point.ma50)}</text>
+                  <text x="10" y="144" fill="var(--text-faint)" className="text-[9px]">Daily series uses backend close data</text>
+                </g>
+              )}
             </g>
           )}
           <line x1="0" x2={width} y1={volumeTop - 10} y2={volumeTop - 10} stroke="currentColor" className="text-slate-200 dark:text-slate-800" />
@@ -1875,29 +2052,53 @@ function OverviewTab({ result, unified, fibTargets }: { result: SwingTradeScanRe
 function FibonacciTab({ result, fibTargets }: { result: SwingTradeScanResult | null; fibTargets: StockTargetData | null }) {
   const metrics = result?.metrics as Record<string, unknown> | undefined
   const exec = getExec(result)
+  const retracementLevels = [...(fibTargets?.fib_retracement_levels || [])].sort((a, b) => (num(a.ratio) ?? 0) - (num(b.ratio) ?? 0))
   if (!result) return <EmptyTab text="Run analysis to load Fibonacci context." />
   return (
     <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
       <InfoPanel title="Fibonacci Map">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Value label="Swing High" value={money(fibTargets?.fib_swing_high)} />
           <Value label="Swing Low" value={money(fibTargets?.fib_swing_low)} />
           <Value label="Direction" value={compactLabel(fibTargets?.fib_direction || '—')} />
           <Value label="Current Price" value={money(fibTargets?.current_price ?? metrics?.last_price)} />
         </div>
         <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
-          <div className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-200">Backend Fib Context</div>
-          <div className="mt-1 grid gap-2 md:grid-cols-3">
-            <Value label="Current Zone" value={fibTargets?.fib_current_zone || '—'} />
-            <Value label="Classification" value={fibTargets?.fib_classification || '—'} />
-            <Value label="Nearest Confluence" value={fibTargets?.fib_nearest_confluence || '—'} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-200">Current Fib Read</div>
+              <div className="mt-1 text-sm font-semibold text-heading">{fibTargets?.fib_classification || 'Backend classification not returned'}</div>
+            </div>
+            <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+              {fibTargets?.fib_current_zone || 'No zone'}
+            </div>
+          </div>
+          <div className="mt-2 text-xs leading-relaxed text-secondary">
+            {fibTargets?.fib_nearest_confluence || result.playbook_hint || 'No backend confluence summary returned.'}
           </div>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-4">
-          {(fibTargets?.fib_retracement_levels || []).map(level => (
-            <Value key={level.level} label={level.level} value={money(level.price)} />
-          ))}
-          {!fibTargets?.fib_retracement_levels?.length && <Value label="Levels" value="Backend levels not returned" muted />}
+        <div className="mt-3 grid gap-2">
+          {retracementLevels.map(level => {
+            const percent = fibLevelPercent(level)
+            const decision = fibLevelDecision(level)
+            return (
+              <div key={level.level} className={`grid gap-3 rounded-xl border p-3 sm:grid-cols-[92px_minmax(0,1fr)_96px] sm:items-center ${decision.classes}`}>
+                <div className="flex items-baseline gap-2 sm:block">
+                  <div className="font-mono text-2xl font-semibold leading-none tabular-nums">{percent.primary}</div>
+                  <div className="font-mono text-[10px] font-semibold uppercase tracking-wide opacity-75">{percent.exact}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-heading">
+                    <span className={`h-2 w-2 rounded-full ${decision.dot}`} />
+                    {decision.title}
+                  </div>
+                  <div className="mt-1 text-xs leading-relaxed text-secondary">{decision.detail}</div>
+                </div>
+                <div className="font-mono text-base font-semibold tabular-nums text-heading sm:text-right">{money(level.price)}</div>
+              </div>
+            )
+          })}
+          {!retracementLevels.length && <Value label="Levels" value="Backend levels not returned" muted />}
         </div>
       </InfoPanel>
       <InfoPanel title="Confluence">
@@ -2084,7 +2285,7 @@ function Value({ label, value, muted = false }: { label: string; value: string; 
   return (
     <div className="rounded-lg bg-slate-50 px-2 py-1.5 dark:bg-slate-900">
       <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
-      <div className={`mt-0.5 truncate font-mono text-sm font-black ${muted ? 'text-tertiary' : 'text-heading'}`}>{value || '—'}</div>
+      <div className={`mt-0.5 truncate font-mono text-sm font-semibold ${muted ? 'text-tertiary' : inferredSwingTextClass(label, value || '—')}`}>{value || '—'}</div>
     </div>
   )
 }
@@ -2097,7 +2298,7 @@ function VerdictPill({ verdict }: { verdict?: string | null }) {
     : upper.includes('AVOID') || upper.includes('NO')
       ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200'
       : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
-  return <span className={`rounded-full border px-2 py-0.5 text-xs font-black uppercase tracking-wide ${cls}`}>{raw}</span>
+  return <span className={`rounded-full border px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${cls}`}>{raw}</span>
 }
 
 function EmptyTab({ text }: { text: string }) {

@@ -38,6 +38,8 @@ const PRICE_BOTTOM = 468
 const VOLUME_TOP = 500
 const VOLUME_BOTTOM = 600
 const VWAP_STROKE = '#facc15'
+const BULLISH_CANDLE_COLOR = '#22c55e'
+const BEARISH_CANDLE_COLOR = '#ef4444'
 const MIN_VISIBLE_BARS = 10
 
 function toneStroke(tone: DayTradeSemanticTone): string {
@@ -563,17 +565,18 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           const candleWidth = Math.max(3.5, Math.min(model.barWidth * 0.76, 20))
           const bodyTop = Math.min(point.openY, point.closeY)
           const bodyHeight = Math.max(1, Math.abs(point.closeY - point.openY))
-          const candleClass = point.up ? 'fill-emerald-500 stroke-emerald-500' : 'fill-rose-500 stroke-rose-500'
+          const candleColor = point.up ? BULLISH_CANDLE_COLOR : BEARISH_CANDLE_COLOR
           return (
             <g key={`${model.visibleCandles[index].time}-${index}`}>
-              <line x1={point.x} x2={point.x} y1={point.highY} y2={point.lowY} className={candleClass} strokeWidth={Math.max(1.5, Math.min(candleWidth * 0.22, 3))} />
-              <rect x={point.x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1" className={candleClass} />
+              <line x1={point.x} x2={point.x} y1={point.highY} y2={point.lowY} stroke={candleColor} strokeWidth={Math.max(1.5, Math.min(candleWidth * 0.22, 3))} />
+              <rect x={point.x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1" fill={candleColor} stroke={candleColor} />
               <rect
                 x={point.x - candleWidth / 2}
                 y={point.volumeY}
                 width={candleWidth}
                 height={Math.max(1, point.volumeHeight)}
-                className={point.up ? 'fill-emerald-500/30' : 'fill-rose-500/30'}
+                fill={candleColor}
+                opacity="0.28"
               />
             </g>
           )
