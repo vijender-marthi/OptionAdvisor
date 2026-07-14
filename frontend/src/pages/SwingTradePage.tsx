@@ -37,7 +37,7 @@ import { fetchMyTickers, fetchStockTargets, type StockTargetData } from '../api/
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import { parseChartPayload } from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES, getTradeWorksheetRoute } from '../routing/routes'
+import { ROUTES, getEngineRoute, getTradeWorksheetRoute } from '../routing/routes'
 import type { OptionLeg } from '../types'
 
 const OptionsEntryCheck = lazy(() => import('../components/OptionsEntryCheck'))
@@ -47,6 +47,12 @@ type Timeframe = 'Daily' | 'Weekly' | 'Monthly'
 type IndicatorCategory = 'trend' | 'momentum' | 'volatility' | 'volume' | 'levels' | 'context'
 type IndicatorPanel = 'price' | 'volume' | 'oscillator' | 'structure'
 type IndicatorPresetId = 'clean' | 'swing_core' | 'trend' | 'momentum' | 'volatility' | 'engine_recommended'
+
+function handlePlainAnchorClick(event: MouseEvent<HTMLAnchorElement>, action: () => void) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  action()
+}
 
 type ChartIndicator = {
   id: string
@@ -729,6 +735,7 @@ function SwingLeftSidebar({
   onClose: () => void
   mobileOverlay?: boolean
 }) {
+  const navigate = useNavigate()
   return (
     <aside className={mobileOverlay
       ? 'absolute left-0 top-0 flex h-full w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950'
@@ -781,18 +788,22 @@ function SwingLeftSidebar({
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Watchlist</div>
-          <button type="button" className="text-[10px] font-bold text-violet-600 dark:text-violet-300" onClick={() => window.location.assign(ROUTES.myTickers)}>
+          <a
+            href={ROUTES.myTickers}
+            className="text-[10px] font-bold text-violet-600 dark:text-violet-300"
+            onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.myTickers))}
+          >
             Manage
-          </button>
+          </a>
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-auto overscroll-contain">
           {myTickers.length ? myTickers.map(item => {
             const selected = item.symbol === result?.ticker
             return (
-              <button
+              <a
                 key={item.symbol}
-                type="button"
-                onClick={() => onRun(item.symbol)}
+                href={getEngineRoute('swing', item.symbol)}
+                onClick={event => handlePlainAnchorClick(event, () => onRun(item.symbol))}
                 className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
                   selected
                     ? 'border-violet-500 bg-violet-500/10'
@@ -809,7 +820,7 @@ function SwingLeftSidebar({
                     {pct(item.changePct)}
                   </span>
                 </span>
-              </button>
+              </a>
             )
           }) : (
             <div className="rounded-lg border border-slate-200 px-3 py-3 text-sm text-tertiary dark:border-white/[0.08]">
@@ -823,25 +834,33 @@ function SwingLeftSidebar({
         <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Quick Tickers</div>
         <div className="flex flex-wrap gap-1.5">
           {['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMD', 'META'].map(sym => (
-            <button
+            <a
               key={sym}
-              type="button"
-              onClick={() => onRun(sym)}
+              href={getEngineRoute('swing', sym)}
+              onClick={event => handlePlainAnchorClick(event, () => onRun(sym))}
               className="rounded-full border border-slate-200 px-2 py-1 font-mono text-[11px] font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
             >
               {sym}
-            </button>
+            </a>
           ))}
         </div>
       </section>
 
       <section className="mt-3 grid shrink-0 gap-2">
-        <button type="button" onClick={() => window.location.assign(ROUTES.dayTrade)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+        <a
+          href={ROUTES.dayTrade}
+          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.dayTrade))}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+        >
           Day Trade Workspace
-        </button>
-        <button type="button" onClick={() => window.location.assign(ROUTES.positions)} className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+        </a>
+        <a
+          href={ROUTES.positions}
+          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.positions))}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+        >
           Positions Center
-        </button>
+        </a>
       </section>
     </aside>
   )

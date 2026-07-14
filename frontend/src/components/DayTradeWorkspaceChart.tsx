@@ -38,6 +38,7 @@ const PRICE_BOTTOM = 468
 const VOLUME_TOP = 500
 const VOLUME_BOTTOM = 600
 const VWAP_STROKE = '#facc15'
+const MIN_VISIBLE_BARS = 10
 
 function toneStroke(tone: DayTradeSemanticTone): string {
   if (tone === 'positive') return 'var(--semantic-bullish)'
@@ -90,35 +91,38 @@ function ChartIconButton({ label, onClick, children }: ChartIconButtonProps) {
 
 export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onIntervalChange }: { chart: WorkspaceChart; marketTimeZone?: string; onIntervalChange?: (interval: WorkspaceInterval) => void }) {
   const firstCandleTime = chart.candles[0]?.time || ''
-  const defaultVisibleBars = clamp(safeNumber(chart.defaults.initialVisibleBars, 100), 10, Math.max(10, chart.candles.length || 10))
+  const baseVisibleBars = clamp(safeNumber(chart.defaults.initialVisibleBars, 100), MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length || MIN_VISIBLE_BARS))
   const defaultOverlayIds = useMemo(() => new Set(chart.defaults.visibleOverlayIds), [chart.defaults.visibleOverlayIds])
-  const [visibleBars, setVisibleBars] = useState(defaultVisibleBars)
-  const [endIndex, setEndIndex] = useState(chart.candles.length)
+  const [zoomLevel, setZoomLevel] = useState(1)
+  const [panOffsetBars, setPanOffsetBars] = useState(0)
   const [followLive, setFollowLive] = useState(chart.defaults.followLive)
   const [overlayMenuOpen, setOverlayMenuOpen] = useState(false)
   const [visibleOverlayIds, setVisibleOverlayIds] = useState(defaultOverlayIds)
   const [fullscreen, setFullscreen] = useState(false)
   const [visibleRange, setVisibleRange] = useState<WorkspaceRange>(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' ? chart.defaults.visibleRange : '1h')
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
-  const dragRef = useRef<{ x: number; endIndex: number } | null>(null)
+  const dragRef = useRef<{ x: number; panOffsetBars: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const visibleBars = clamp(Math.round(baseVisibleBars / Math.max(0.1, zoomLevel)), MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length || MIN_VISIBLE_BARS))
 
   useEffect(() => {
-    setVisibleBars(defaultVisibleBars)
-    setEndIndex(chart.candles.length)
+    setZoomLevel(1)
+    setPanOffsetBars(0)
     setFollowLive(chart.defaults.followLive)
     setVisibleOverlayIds(defaultOverlayIds)
     setVisibleRange(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' ? chart.defaults.visibleRange : '1h')
-  }, [chart.defaults.followLive, chart.defaults.interval, chart.defaults.visibleRange, defaultOverlayIds, defaultVisibleBars, firstCandleTime])
+  }, [chart.defaults.followLive, chart.defaults.interval, chart.defaults.visibleRange, defaultOverlayIds, firstCandleTime])
 
   const model = useMemo(() => {
     const candles = chart.candles || []
-    const safeEndIndex = followLive ? candles.length : clamp(endIndex, 0, candles.length)
+    const liveEndIndex = Math.max(0, candles.length - 1)
+    const safePanOffsetBars = followLive ? 0 : clamp(panOffsetBars, 0, Math.max(0, candles.length - 1))
+    const endIndex = clamp(liveEndIndex - safePanOffsetBars, 0, liveEndIndex)
     const visibleCount = clamp(visibleBars, 1, Math.max(1, candles.length))
-    const startIndex = clamp(safeEndIndex - visibleCount, 0, candles.length)
-    const visibleCandles = candles.slice(startIndex, safeEndIndex)
+    const startIndex = clamp(endIndex - visibleCount + 1, 0, candles.length)
+    const visibleCandles = candles.slice(startIndex, endIndex + 1)
     const visibleTimeSet = new Set(visibleCandles.map(candle => candle.time))
-    const barWidth = visibleCandles.length > 0 ? WIDTH / (visibleCandles.length + safeNumber(chart.defaults.rightOffsetBars, 4)) : WIDTH
+    const barWidth = visibleCandles.length > 0 ? WIDTH / visibleCandles.length : WIDTH
     const visibleCandlePrices = visibleCandles.flatMap(candle => [candle.high, candle.low]).filter(isFiniteNumber)
     const candleMin = visibleCandlePrices.length ? Math.min(...visibleCandlePrices) : 0
     const candleMax = visibleCandlePrices.length ? Math.max(...visibleCandlePrices) : 1
@@ -257,8 +261,10 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
       structurePoints,
       minPrice,
       maxPrice,
+      startIndex,
+      endIndex,
     }
-  }, [chart, endIndex, followLive, visibleBars, visibleOverlayIds])
+  }, [chart, followLive, panOffsetBars, visibleBars, visibleOverlayIds])
 
   const overlayOptions = useMemo(() => {
     const map = new Map<string, { id: string; label: string }>()
@@ -288,59 +294,45 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   }, [chart.vwapOverlay?.points, crosshair, model.barWidth, model.visibleCandles])
 
   const zoom = (direction: 'in' | 'out') => {
-    setVisibleBars(cur => {
-      const next = direction === 'in'
-        ? Math.round(cur * 0.72)
-        : Math.round(cur * 1.32)
-      return clamp(next, 10, Math.max(10, chart.candles.length))
-    })
-    if (!followLive) setEndIndex(cur => clamp(cur, 0, chart.candles.length))
+    zoomByVisibleFactor(direction === 'in' ? 0.72 : 1.32)
   }
 
-  const zoomAt = (factor: number, anchor = 0.5) => {
+  const zoomByVisibleFactor = (visibleFactor: number) => {
     const total = chart.candles.length
     if (total <= 1) return
-    const currentVisible = clamp(visibleBars, 1, Math.max(1, total))
-    const currentEnd = followLive ? total : clamp(endIndex, 0, total)
-    const currentStart = clamp(currentEnd - currentVisible, 0, total)
-    const safeAnchor = clamp(anchor, 0, 1)
-    const anchorIndex = currentStart + (currentVisible - 1) * safeAnchor
-    const nextVisible = clamp(Math.round(currentVisible * factor), 10, Math.max(10, total))
-    let nextStart = Math.round(anchorIndex - (nextVisible - 1) * safeAnchor)
-    nextStart = clamp(nextStart, 0, Math.max(0, total - nextVisible))
-    setFollowLive(false)
-    setVisibleBars(nextVisible)
-    setEndIndex(clamp(nextStart + nextVisible, nextVisible, total))
+    const minZoom = baseVisibleBars / Math.max(MIN_VISIBLE_BARS, total)
+    const maxZoom = baseVisibleBars / MIN_VISIBLE_BARS
+    setZoomLevel(cur => clamp(cur / visibleFactor, Math.max(0.1, minZoom), Math.max(1, maxZoom)))
   }
 
   const pan = (direction: 'left' | 'right') => {
     setFollowLive(false)
     const step = Math.max(5, Math.round(visibleBars * 0.25))
-    setEndIndex(cur => clamp(cur + (direction === 'left' ? -step : step), visibleBars, chart.candles.length))
+    setPanOffsetBars(cur => clamp(cur + (direction === 'left' ? step : -step), 0, Math.max(0, chart.candles.length - visibleBars)))
   }
 
   const panByBars = (deltaBars: number) => {
     if (!deltaBars || chart.candles.length <= visibleBars) return
     setFollowLive(false)
-    setEndIndex(cur => clamp(cur + deltaBars, visibleBars, chart.candles.length))
+    setPanOffsetBars(cur => clamp(cur + deltaBars, 0, Math.max(0, chart.candles.length - visibleBars)))
   }
 
   const resetView = () => {
-    setVisibleBars(defaultVisibleBars)
-    setEndIndex(chart.candles.length)
+    setZoomLevel(1)
+    setPanOffsetBars(0)
     setFollowLive(chart.defaults.followLive)
     setVisibleOverlayIds(defaultOverlayIds)
   }
 
   const fitSession = () => {
-    setVisibleBars(Math.max(10, chart.candles.length))
-    setEndIndex(chart.candles.length)
-    setFollowLive(false)
+    setZoomLevel(baseVisibleBars / Math.max(MIN_VISIBLE_BARS, chart.candles.length))
+    setPanOffsetBars(0)
+    setFollowLive(true)
     setVisibleRange('session')
   }
 
   const returnToLive = () => {
-    setEndIndex(chart.candles.length)
+    setPanOffsetBars(0)
     setFollowLive(true)
   }
 
@@ -364,9 +356,10 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   const changeVisibleRange = (range: WorkspaceRange) => {
     setVisibleRange(range)
     const bars = range === '30m' ? 30 : range === '1h' ? 60 : range === '2h' ? 120 : chart.candles.length
-    setVisibleBars(clamp(bars, 10, Math.max(10, chart.candles.length)))
-    setEndIndex(chart.candles.length)
-    setFollowLive(range !== 'session' ? chart.defaults.followLive : false)
+    const nextVisibleBars = clamp(bars, MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length))
+    setZoomLevel(baseVisibleBars / nextVisibleBars)
+    setPanOffsetBars(0)
+    setFollowLive(true)
   }
 
   const handleMouseMove = (event: MouseEvent<SVGSVGElement>) => {
@@ -382,19 +375,18 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     if (chart.candles.length <= 1) return
     event.preventDefault()
     const rect = event.currentTarget.getBoundingClientRect()
-    const anchor = rect.width ? clamp((event.clientX - rect.left) / rect.width, 0, 1) : 0.5
     if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
       const delta = event.deltaX || event.deltaY
       panByBars(Math.round((delta / Math.max(1, rect.width)) * visibleBars))
       return
     }
-    zoomAt(event.deltaY < 0 ? 0.78 : 1.28, anchor)
+    zoomByVisibleFactor(event.deltaY < 0 ? 0.78 : 1.28)
   }
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (chart.candles.length <= visibleBars) return
     setFollowLive(false)
-    dragRef.current = { x: event.clientX, endIndex: followLive ? chart.candles.length : endIndex }
+    dragRef.current = { x: event.clientX, panOffsetBars: followLive ? 0 : panOffsetBars }
     setDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -406,7 +398,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
     const rect = event.currentTarget.getBoundingClientRect()
     const barsPerPx = visibleBars / Math.max(1, rect.width)
     const deltaBars = Math.round((drag.x - event.clientX) * barsPerPx)
-    setEndIndex(clamp(drag.endIndex + deltaBars, visibleBars, chart.candles.length))
+    setPanOffsetBars(clamp(drag.panOffsetBars + deltaBars, 0, Math.max(0, chart.candles.length - visibleBars)))
   }
 
   const handlePointerEnd = (event: PointerEvent<SVGSVGElement>) => {
@@ -459,6 +451,12 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             <option value="session">Session</option>
           </select>
           <span>{chart.defaults.scaleMode}</span>
+          <span className="font-mono text-[10px] text-tertiary">
+            Loaded Candles {chart.candles.length}
+          </span>
+          <span className="font-mono text-[10px] text-tertiary">
+            Visible Candles {model.visibleCandles.length}
+          </span>
           {!followLive && (
             <button type="button" onClick={returnToLive} className="rounded-full border border-violet-400 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-200">
               Return to live
