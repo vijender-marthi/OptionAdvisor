@@ -57,11 +57,11 @@ const TRADE_TYPE_META: Record<string, { label: string; desc: string; badgeClass:
 }
 
 const AVATAR_COLORS: { letters: string; bg: string; text: string }[] = [
-  { letters: 'ABCDE', bg: 'bg-blue-600/30', text: 'text-blue-300' },
-  { letters: 'FGHIJ', bg: 'bg-teal-600/30', text: 'text-teal-300' },
-  { letters: 'KLMNO', bg: 'bg-purple-600/30', text: 'text-purple-300' },
-  { letters: 'PQRST', bg: 'bg-amber-600/30', text: 'text-amber-300' },
-  { letters: 'UVWXYZ', bg: 'bg-rose-600/30', text: 'text-rose-300' },
+  { letters: 'ABCDE', bg: 'bg-blue-100 dark:bg-blue-600/30', text: 'text-blue-700 dark:text-blue-300' },
+  { letters: 'FGHIJ', bg: 'bg-teal-100 dark:bg-teal-600/30', text: 'text-teal-700 dark:text-teal-300' },
+  { letters: 'KLMNO', bg: 'bg-purple-100 dark:bg-purple-600/30', text: 'text-purple-700 dark:text-purple-300' },
+  { letters: 'PQRST', bg: 'bg-amber-100 dark:bg-amber-600/30', text: 'text-amber-700 dark:text-amber-300' },
+  { letters: 'UVWXYZ', bg: 'bg-rose-100 dark:bg-rose-600/30', text: 'text-rose-700 dark:text-rose-300' },
 ]
 
 function avatarFor(symbol: string) {
@@ -72,7 +72,7 @@ function avatarFor(symbol: string) {
 }
 
 function badgeBase(tradeType: string): string {
-  return TRADE_TYPE_META[tradeType]?.badgeClass || 'bg-gray-700 text-gray-300'
+  return TRADE_TYPE_META[tradeType]?.badgeClass || 'bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-300'
 }
 
 function fmtPrice(value?: number | null): string {
@@ -90,8 +90,8 @@ function fmtChangePct(value?: number | null): string {
 }
 
 function changeTone(value?: number | null): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 'text-gray-500'
-  return value >= 0 ? 'text-emerald-400' : 'text-red-400'
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'text-slate-500 dark:text-gray-500'
+  return value >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
 }
 
 const TABS: { key: TabFilter; label: string }[] = [
@@ -312,11 +312,11 @@ export default function MyTickersPage() {
             </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">My Tickers</h1>
           </div>
-          <p className="mt-1 text-sm text-gray-400">{tickers.length} ticker{tickers.length !== 1 ? 's' : ''} tracked</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-gray-400">{tickers.length} ticker{tickers.length !== 1 ? 's' : ''} tracked</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setShowAddModal(true)} className="inline-flex items-center gap-2 rounded-full bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"><Plus size={16} /> Add</button>
-          <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+          <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh</button>
         </div>
       </header>
 
@@ -327,20 +327,20 @@ export default function MyTickersPage() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-gray-800 pb-0">
+      <div className="flex gap-1 border-b border-slate-200 pb-0 dark:border-gray-800">
         {TABS.map(tab => (
-          <button key={tab.key} type="button" onClick={() => handleTabChange(tab.key)} className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.key ? 'border-b-2 border-violet-500 text-violet-400' : 'text-gray-500 hover:text-gray-300'}`}>
+          <button key={tab.key} type="button" onClick={() => handleTabChange(tab.key)} className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.key ? 'border-b-2 border-violet-500 text-violet-700 dark:text-violet-400' : 'text-slate-500 hover:text-slate-800 dark:text-gray-500 dark:hover:text-gray-300'}`}>
             {tab.label}
           </button>
         ))}
       </div>
 
       {loading && tickers.length === 0 ? (
-        <div className="flex items-center justify-center py-20 text-sm text-gray-500">Loading tickers...</div>
+        <div className="flex items-center justify-center py-20 text-sm text-slate-600 dark:text-gray-500">Loading tickers...</div>
       ) : error ? (
-        <div className="flex items-center justify-center py-20 text-sm text-red-400">{error}</div>
+        <div className="flex items-center justify-center py-20 text-sm text-red-700 dark:text-red-400">{error}</div>
       ) : filteredTickers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-20 text-gray-500">
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-slate-600 dark:text-gray-500">
           <Search size={32} className="opacity-40" />
           <p className="text-sm">
             {activeTab === 'all'
@@ -352,9 +352,9 @@ export default function MyTickersPage() {
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/50 shadow-xl shadow-black/10">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60 dark:border-gray-800 dark:bg-gray-900/50 dark:shadow-black/10">
           <div className="overflow-x-auto">
-            <div className="hidden min-w-[1040px] grid-cols-[minmax(220px,1.45fr)_112px_106px_106px_132px_132px_minmax(188px,1fr)_96px] items-center gap-3 border-b border-gray-800 bg-gray-950/55 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 md:grid">
+            <div className="hidden min-w-[1040px] grid-cols-[minmax(220px,1.45fr)_112px_106px_106px_132px_132px_minmax(188px,1fr)_96px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:border-gray-800 dark:bg-gray-950/55 dark:text-gray-500 md:grid">
               <span>Ticker</span>
               <span className="text-right">Price</span>
               <span className="text-right">Change</span>
@@ -364,7 +364,7 @@ export default function MyTickersPage() {
               <span>Links</span>
               <span className="text-right">Actions</span>
             </div>
-            <div className="divide-y divide-gray-800">
+            <div className="divide-y divide-slate-200 dark:divide-gray-800">
               {filteredTickers.map((ticker, idx) => (
                 <TickerRow
                   key={ticker.symbol}
@@ -443,13 +443,13 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      className={`transition-all ${highlight ? 'animate-pulse bg-green-900/20' : earningsThisWeek ? 'bg-yellow-900/15' : 'bg-gray-900/35'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      className={`transition-all ${highlight ? 'animate-pulse bg-emerald-50 dark:bg-green-900/20' : earningsThisWeek ? 'bg-amber-50 dark:bg-yellow-900/15' : 'bg-white dark:bg-gray-900/35'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
       <div className="p-3 md:hidden">
-        <div className={`rounded-xl border p-3 ${earningsThisWeek ? 'border-yellow-700/50 bg-yellow-950/20' : 'border-gray-800 bg-gray-950/25'}`}>
+        <div className={`rounded-xl border p-3 ${earningsThisWeek ? 'border-amber-200 bg-amber-50 dark:border-yellow-700/50 dark:bg-yellow-950/20' : 'border-slate-200 bg-white dark:border-gray-800 dark:bg-gray-950/25'}`}>
           <div className="flex items-start gap-3">
             <TickerIdentity avatar={avatar} ticker={ticker} earningsThisWeek={earningsThisWeek} ed={ed} edDays={edDays} lastEd={lastEd} onEdit={onEdit} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
-            <button type="button" onClick={onRemove} className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
+            <button type="button" onClick={onRemove} className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-red-400"><Trash2 size={15} /></button>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <MobileMetric label="Price" value={fmtPrice(ticker.last_price)} />
@@ -471,8 +471,8 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
         <SessionQuote label="AH" price={ticker.post_market_price} change={ticker.post_market_change} pct={ticker.post_market_change_pct} compact />
         <QuickLinks ticker={ticker} types={types} engineLabel={ENGINE_LABEL} />
         <div className="flex items-center justify-end gap-1">
-          <button type="button" onClick={onEdit} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-gray-300" title={`Edit ${ticker.symbol}`}><Pencil size={14} /></button>
-          <button type="button" onClick={onRemove} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400" title={`Remove ${ticker.symbol}`}><Trash2 size={15} /></button>
+          <button type="button" onClick={onEdit} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300" title={`Edit ${ticker.symbol}`}><Pencil size={14} /></button>
+          <button type="button" onClick={onRemove} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-red-400" title={`Remove ${ticker.symbol}`}><Trash2 size={15} /></button>
         </div>
       </div>
     </div>
@@ -495,22 +495,22 @@ function TickerIdentity({ avatar, ticker, earningsThisWeek, ed, edDays, lastEd, 
       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-white">{ticker.symbol}</span>
+          <span className="text-sm font-semibold text-slate-950 dark:text-white">{ticker.symbol}</span>
           <div className="flex flex-col gap-0.5">
-            {onMoveUp && <button type="button" onClick={onMoveUp} className="-mb-0.5 text-gray-600 hover:text-gray-300"><ChevronUp size={10} /></button>}
-            {onMoveDown && <button type="button" onClick={onMoveDown} className="-mt-0.5 text-gray-600 hover:text-gray-300"><ChevronDown size={10} /></button>}
+            {onMoveUp && <button type="button" onClick={onMoveUp} className="-mb-0.5 text-slate-400 hover:text-slate-700 dark:text-gray-600 dark:hover:text-gray-300"><ChevronUp size={10} /></button>}
+            {onMoveDown && <button type="button" onClick={onMoveDown} className="-mt-0.5 text-slate-400 hover:text-slate-700 dark:text-gray-600 dark:hover:text-gray-300"><ChevronDown size={10} /></button>}
           </div>
-          <button type="button" onClick={onEdit} className="text-gray-500 hover:text-gray-300 md:hidden"><Pencil size={12} /></button>
+          <button type="button" onClick={onEdit} className="text-slate-500 hover:text-slate-800 dark:text-gray-500 dark:hover:text-gray-300 md:hidden"><Pencil size={12} /></button>
         </div>
-        {ticker.company_name && <div className="truncate text-xs text-gray-500">{ticker.company_name}</div>}
+        {ticker.company_name && <div className="truncate text-xs text-slate-600 dark:text-gray-500">{ticker.company_name}</div>}
         {ed && (
-          <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${earningsThisWeek ? 'font-semibold text-yellow-400' : 'text-gray-600'}`}>
+          <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${earningsThisWeek ? 'font-semibold text-amber-700 dark:text-yellow-400' : 'text-slate-500 dark:text-gray-600'}`}>
             <Calendar size={10} />
             <span>Next earnings {ed}{edDays != null ? ` (${edDays}d)` : ''}</span>
           </div>
         )}
         {lastEd && (
-          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
+          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500 dark:text-gray-600">
             <Calendar size={10} />
             <span>Last earnings {lastEd}</span>
           </div>
@@ -520,14 +520,14 @@ function TickerIdentity({ avatar, ticker, earningsThisWeek, ed, edDays, lastEd, 
   )
 }
 
-function TableNumber({ value, tone = 'text-gray-100' }: { value: string; tone?: string }) {
+function TableNumber({ value, tone = 'text-slate-900 dark:text-gray-100' }: { value: string; tone?: string }) {
   return <div className={`text-right font-mono text-sm font-semibold tabular-nums ${tone}`}>{value}</div>
 }
 
-function MobileMetric({ label, value, tone = 'text-gray-100' }: { label: string; value: string; tone?: string }) {
+function MobileMetric({ label, value, tone = 'text-slate-900 dark:text-gray-100' }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-950/45 px-2.5 py-2">
-      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">{label}</div>
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-gray-800 dark:bg-gray-950/45">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-gray-500">{label}</div>
       <div className={`mt-0.5 font-mono text-sm font-semibold tabular-nums ${tone}`}>{value}</div>
     </div>
   )
@@ -535,20 +535,20 @@ function MobileMetric({ label, value, tone = 'text-gray-100' }: { label: string;
 
 function SessionQuote({ label, price, change, pct, compact = false }: { label: 'PRE' | 'AH'; price?: number | null; change?: number | null; pct?: number | null; compact?: boolean }) {
   const hasData = price != null || change != null || pct != null
-  const accent = label === 'PRE' ? 'text-violet-400' : 'text-sky-400'
+  const accent = label === 'PRE' ? 'text-violet-700 dark:text-violet-400' : 'text-sky-700 dark:text-sky-400'
   if (compact) {
     return (
       <div className="text-right">
         <div className={`text-[9px] font-bold uppercase tracking-wider ${accent}`}>{label}</div>
-        <div className="font-mono text-sm font-semibold tabular-nums text-gray-100">{fmtPrice(price)}</div>
+        <div className="font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-gray-100">{fmtPrice(price)}</div>
         <div className={`font-mono text-[11px] font-semibold tabular-nums ${changeTone(pct ?? change)}`}>{hasData ? fmtChangePct(pct) : '--'}</div>
       </div>
     )
   }
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-950/45 px-2.5 py-2">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-gray-800 dark:bg-gray-950/45">
       <div className={`text-[9px] font-bold uppercase tracking-wider ${accent}`}>{label}</div>
-      <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-gray-100">{fmtPrice(price)}</div>
+      <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-gray-100">{fmtPrice(price)}</div>
       <div className={`font-mono text-[11px] font-semibold tabular-nums ${changeTone(pct ?? change)}`}>{hasData ? fmtChangePct(pct) : '--'}</div>
     </div>
   )
@@ -558,7 +558,7 @@ function QuickLinks({ ticker, types, engineLabel, className = '' }: { ticker: My
   return (
     <div className={`flex min-w-0 flex-wrap gap-1.5 ${className}`}>
       {types.length === 0 ? (
-        <span className="text-xs text-gray-600">No linked pages</span>
+        <span className="text-xs text-slate-500 dark:text-gray-600">No linked pages</span>
       ) : types.map(tt => (
         <a
           key={tt}
@@ -659,10 +659,10 @@ function AddModal({ open, onClose, onAdd, existingSymbols }: { open: boolean; on
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 pt-12" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
-          <h2 className="text-base font-semibold text-white">Add ticker</h2>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-gray-500 hover:bg-gray-800 hover:text-white"><X size={18} /></button>
+      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-gray-800">
+          <h2 className="text-base font-semibold text-slate-950 dark:text-white">Add ticker</h2>
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-white"><X size={18} /></button>
         </div>
 
         <div className="p-5">
@@ -674,10 +674,10 @@ function AddModal({ open, onClose, onAdd, existingSymbols }: { open: boolean; on
                 placeholder="Search by symbol or company name..."
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-violet-500"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-950 placeholder-slate-400 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
               />
               {duplicateWarning && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-800/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-400">
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-400">
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   <span>{duplicateWarning}</span>
                 </div>
@@ -685,43 +685,43 @@ function AddModal({ open, onClose, onAdd, existingSymbols }: { open: boolean; on
               {allResults.length > 0 && (
                 <div className="mt-3 max-h-60 space-y-1 overflow-y-auto">
                   {allResults.map(entry => (
-                    <button key={entry.symbol} type="button" onClick={() => handleSelect(entry)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-800">
-                      <span className="text-sm font-semibold text-white">{entry.symbol}</span>
-                      <span className="text-xs text-gray-500">{entry.company}</span>
-                      <span className="ml-auto text-[10px] text-gray-600">{entry.sector}</span>
+                    <button key={entry.symbol} type="button" onClick={() => handleSelect(entry)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-gray-800">
+                      <span className="text-sm font-semibold text-slate-950 dark:text-white">{entry.symbol}</span>
+                      <span className="text-xs text-slate-600 dark:text-gray-500">{entry.company}</span>
+                      <span className="ml-auto text-[10px] text-slate-500 dark:text-gray-600">{entry.sector}</span>
                     </button>
                   ))}
                 </div>
               )}
               {remoteLoading && (
-                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                <div className="mt-3 flex items-center gap-2 text-xs text-slate-500 dark:text-gray-500">
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
                   Searching Yahoo Finance...
                 </div>
               )}
               {query.trim() && !remoteLoading && allResults.length === 0 && (
-                <p className="mt-3 text-xs text-gray-500">No results for &lsquo;{query.trim()}&rsquo;.</p>
+                <p className="mt-3 text-xs text-slate-500 dark:text-gray-500">No results for &lsquo;{query.trim()}&rsquo;.</p>
               )}
             </>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 rounded-lg bg-gray-800/60 px-3 py-2">
-                <span className="text-sm font-semibold text-white">{selectedResult.symbol}</span>
-                <span className="text-xs text-gray-400">{selectedResult.company}</span>
-                <span className="ml-auto text-[10px] text-gray-600">{selectedResult.sector}</span>
-                <button type="button" onClick={() => setSelectedResult(null)} className="text-gray-500 hover:text-gray-300"><X size={14} /></button>
+              <div className="flex items-center gap-3 rounded-lg bg-slate-100 px-3 py-2 dark:bg-gray-800/60">
+                <span className="text-sm font-semibold text-slate-950 dark:text-white">{selectedResult.symbol}</span>
+                <span className="text-xs text-slate-600 dark:text-gray-400">{selectedResult.company}</span>
+                <span className="ml-auto text-[10px] text-slate-500 dark:text-gray-600">{selectedResult.sector}</span>
+                <button type="button" onClick={() => setSelectedResult(null)} className="text-slate-500 hover:text-slate-800 dark:text-gray-500 dark:hover:text-gray-300"><X size={14} /></button>
               </div>
-              <p className="text-xs font-medium text-gray-400">Select trade types:</p>
+              <p className="text-xs font-medium text-slate-600 dark:text-gray-400">Select trade types:</p>
               {['day', 'swing', 'regular'].map(tt => (
-                <label key={tt} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-800 px-3 py-2.5 hover:bg-gray-800/50">
+                <label key={tt} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 hover:bg-slate-50 dark:border-gray-800 dark:hover:bg-gray-800/50">
                   <input type="checkbox" checked={checked.has(tt)} onChange={() => setChecked(prev => { const next = new Set(prev); next.has(tt) ? next.delete(tt) : next.add(tt); return next })} className="h-4 w-4 accent-violet-500" />
                   <div className="min-w-0 flex-1">
                     <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeBase(tt)}`}>{TRADE_TYPE_META[tt]?.label || tt}</span>
-                    <span className="ml-2 text-xs text-gray-500">{TRADE_TYPE_META[tt]?.desc}</span>
+                    <span className="ml-2 text-xs text-slate-600 dark:text-gray-500">{TRADE_TYPE_META[tt]?.desc}</span>
                   </div>
                 </label>
               ))}
-              <button type="button" disabled={checked.size === 0 || busy} onClick={handleAdd} className={`mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium ${checked.size === 0 ? 'cursor-not-allowed bg-gray-800 text-gray-500' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
+              <button type="button" disabled={checked.size === 0 || busy} onClick={handleAdd} className={`mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium ${checked.size === 0 ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-gray-800 dark:text-gray-500' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
                 {busy ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-200 border-t-transparent" /> : <Plus size={16} />}
                 Add {selectedResult.symbol.toUpperCase()}
               </button>
@@ -743,25 +743,25 @@ function RemoveSheet({ ticker, checked, onChange, onConfirm, onCancel }: { ticke
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-t-2xl border border-gray-800 bg-gray-900 px-5 pb-8 pt-3" onClick={e => e.stopPropagation()}>
-        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-gray-700" />
-        <h3 className="text-base font-semibold text-white">Remove {ticker.symbol} from My Tickers</h3>
-        <p className="mt-1 text-xs text-gray-500">Uncheck the modes you want to keep watching.</p>
+      <div className="w-full max-w-md rounded-t-2xl border border-slate-200 bg-white px-5 pb-8 pt-3 dark:border-gray-800 dark:bg-gray-900" onClick={e => e.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-300 dark:bg-gray-700" />
+        <h3 className="text-base font-semibold text-slate-950 dark:text-white">Remove {ticker.symbol} from My Tickers</h3>
+        <p className="mt-1 text-xs text-slate-600 dark:text-gray-500">Uncheck the modes you want to keep watching.</p>
         <div className="mt-4 space-y-2">
           {types.map(tt => (
-            <label key={tt} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 ${checked.has(tt) ? 'border-red-800/50 bg-red-900/15' : 'border-gray-800 bg-gray-800/40'}`}>
+            <label key={tt} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 ${checked.has(tt) ? 'border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/15' : 'border-slate-200 bg-slate-50 dark:border-gray-800 dark:bg-gray-800/40'}`}>
               <input type="checkbox" checked={checked.has(tt)} onChange={() => { const next = new Set(checked); next.has(tt) ? next.delete(tt) : next.add(tt); onChange(next) }} className="h-4 w-4 accent-red-500" />
               <div className="min-w-0 flex-1">
                 <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeBase(tt)}`}>{TRADE_TYPE_META[tt]?.label || tt}</span>
-                <span className="ml-2 text-xs text-gray-500">{TRADE_TYPE_META[tt]?.desc}</span>
+                <span className="ml-2 text-xs text-slate-600 dark:text-gray-500">{TRADE_TYPE_META[tt]?.desc}</span>
               </div>
             </label>
           ))}
         </div>
-        <button type="button" disabled={noneChecked} onClick={onConfirm} className={`mt-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium ${noneChecked ? 'cursor-not-allowed bg-gray-800 text-gray-500' : 'bg-red-600 text-white hover:bg-red-500'}`}>
+        <button type="button" disabled={noneChecked} onClick={onConfirm} className={`mt-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium ${noneChecked ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-gray-800 dark:text-gray-500' : 'bg-red-600 text-white hover:bg-red-500'}`}>
           {noneChecked ? 'Select types to remove' : label}
         </button>
-        <button type="button" onClick={onCancel} className="mt-2 flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm text-gray-400 hover:text-gray-300">Cancel</button>
+        <button type="button" onClick={onCancel} className="mt-2 flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm text-slate-600 hover:text-slate-950 dark:text-gray-400 dark:hover:text-gray-300">Cancel</button>
       </div>
     </div>
   )
@@ -771,24 +771,24 @@ function EditSheet({ ticker, checked, onChange, onSave, onCancel }: { ticker: My
   const hasNone = checked.size === 0
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-t-2xl border border-gray-800 bg-gray-900 px-5 pb-8 pt-3" onClick={e => e.stopPropagation()}>
-        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-gray-700" />
-        <h3 className="text-base font-semibold text-white">Edit {ticker.symbol} trade types</h3>
+      <div className="w-full max-w-md rounded-t-2xl border border-slate-200 bg-white px-5 pb-8 pt-3 dark:border-gray-800 dark:bg-gray-900" onClick={e => e.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-300 dark:bg-gray-700" />
+        <h3 className="text-base font-semibold text-slate-950 dark:text-white">Edit {ticker.symbol} trade types</h3>
         <div className="mt-4 space-y-2">
           {['day', 'swing', 'regular'].map(tt => (
-            <label key={tt} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 ${checked.has(tt) ? 'border-violet-800/50 bg-violet-900/15' : 'border-gray-800 bg-gray-800/40'}`}>
+            <label key={tt} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 ${checked.has(tt) ? 'border-violet-200 bg-violet-50 dark:border-violet-800/50 dark:bg-violet-900/15' : 'border-slate-200 bg-slate-50 dark:border-gray-800 dark:bg-gray-800/40'}`}>
               <input type="checkbox" checked={checked.has(tt)} onChange={() => { const next = new Set(checked); next.has(tt) ? next.delete(tt) : next.add(tt); onChange(next) }} className="h-4 w-4 accent-violet-500" />
               <div className="min-w-0 flex-1">
                 <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeBase(tt)}`}>{TRADE_TYPE_META[tt]?.label || tt}</span>
-                <span className="ml-2 text-xs text-gray-500">{TRADE_TYPE_META[tt]?.desc}</span>
+                <span className="ml-2 text-xs text-slate-600 dark:text-gray-500">{TRADE_TYPE_META[tt]?.desc}</span>
               </div>
             </label>
           ))}
         </div>
-        <button type="button" disabled={hasNone} onClick={onSave} className={`mt-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium ${hasNone ? 'cursor-not-allowed bg-gray-800 text-gray-500' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
+        <button type="button" disabled={hasNone} onClick={onSave} className={`mt-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium ${hasNone ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-gray-800 dark:text-gray-500' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
           Save changes
         </button>
-        <button type="button" onClick={onCancel} className="mt-2 flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm text-gray-400 hover:text-gray-300">Cancel</button>
+        <button type="button" onClick={onCancel} className="mt-2 flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm text-slate-600 hover:text-slate-950 dark:text-gray-400 dark:hover:text-gray-300">Cancel</button>
       </div>
     </div>
   )

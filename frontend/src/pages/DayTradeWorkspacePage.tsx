@@ -248,8 +248,8 @@ function DayTradeSidebarContent({
                     selected
                       ? 'border-violet-500 bg-violet-500/10'
                       : moveUp
-                        ? 'border-emerald-500/20 bg-white hover:border-emerald-400/60 dark:border-emerald-400/15 dark:bg-slate-950'
-                        : 'border-rose-500/20 bg-white hover:border-rose-400/60 dark:border-rose-400/15 dark:bg-slate-950'
+                        ? 'border-emerald-300 bg-white hover:border-emerald-400 dark:border-emerald-400/15 dark:bg-slate-950'
+                        : 'border-rose-300 bg-white hover:border-rose-400 dark:border-rose-400/15 dark:bg-slate-950'
                   }`}
                 >
                   <span className="min-w-0">
@@ -257,7 +257,7 @@ function DayTradeSidebarContent({
                     <span className="block truncate text-xs text-tertiary">{item.company_name}</span>
                     <span className="mt-1 flex flex-wrap gap-1">
                       {Array.from(itemGroups).map(groupKey => (
-                        <span key={groupKey} className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
+                        <span key={groupKey} className="rounded-full border border-slate-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
                           {groupKey === 'regular' ? 'Position' : groupKey}
                         </span>
                       ))}
