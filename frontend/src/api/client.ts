@@ -672,6 +672,50 @@ export type DayTradeDecisionEngine = {
   reasoning: string[]
 }
 
+export type ProfessionalDecisionMetric = {
+  value?: unknown
+  display: string
+  formula?: string | null
+  inputs?: string[]
+  reason?: string | null
+  timestamp?: string | null
+  confidence?: number | null
+  source?: string | null
+}
+
+export type ProfessionalDecisionPayload = {
+  hierarchy: {
+    marketContext: ProfessionalDecisionMetric
+    stockBias: ProfessionalDecisionMetric
+    setup: ProfessionalDecisionMetric
+    currentPhase: ProfessionalDecisionMetric
+    nextOpportunity: ProfessionalDecisionMetric
+    originalEntry?: ProfessionalDecisionMetric | null
+    currentAction: ProfessionalDecisionMetric
+  }
+  why: {
+    positiveFactors: ProfessionalDecisionMetric[]
+    negativeFactors: ProfessionalDecisionMetric[]
+    neutralFactors: ProfessionalDecisionMetric[]
+  }
+  changesDecision: {
+    bullish: ProfessionalDecisionMetric[]
+    bearish: ProfessionalDecisionMetric[]
+    invalidation: ProfessionalDecisionMetric[]
+  }
+  confidence: {
+    biasConfidence: ProfessionalDecisionMetric
+    tradeConfidence: ProfessionalDecisionMetric
+    entryQuality: ProfessionalDecisionMetric
+    entryTiming: ProfessionalDecisionMetric
+  }
+  scores: Record<string, ProfessionalDecisionMetric>
+  risk: Record<string, ProfessionalDecisionMetric>
+  marketContext: Record<string, ProfessionalDecisionMetric>
+  timeline: Array<{ id: string; label: string; phase: string; timestamp?: string | null; price?: number | null; status: string; reason?: string | null }>
+  aiCoach: { lines: string[] }
+}
+
 export type DayTradeWorkspaceResponse = Omit<
   ApiSchemas['DayTradeWorkspaceResponse'],
   'chart' | 'decision' | 'evidence' | 'tabs' | 'trigger'
@@ -682,6 +726,7 @@ export type DayTradeWorkspaceResponse = Omit<
   chart: DayTradeWorkspaceChart
   tabs: Record<string, unknown>
   decisionEngine?: DayTradeDecisionEngine | null
+  professionalDecision?: ProfessionalDecisionPayload | null
   trapDetection?: {
     enabled?: boolean
     type?: string | null
@@ -1194,6 +1239,7 @@ export interface SwingTradeScanResult {
     scalp_target?: number
     exit_rules?: Array<{ trigger: string; price: number; action: string; note: string }>
   }
+  professional_decision?: ProfessionalDecisionPayload
 }
 
 export const analyzeSwingTrade = async (ticker: string, forceRefresh = false): Promise<SwingTradeScanResult> => {

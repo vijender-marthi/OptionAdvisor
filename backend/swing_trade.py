@@ -140,6 +140,7 @@ class SwingTradeScan:
     playbook_hint:           str               = ""
     expected_holding_period:  str               = ""
     recommended_contract_duration: str          = ""
+    professional_decision:    dict[str, Any]    = field(default_factory=dict)
 
 
 # ── Technical helpers ─────────────────────────────────────────────────
@@ -1986,6 +1987,198 @@ def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> d
       return classify_structure([])
 
 
+def _prof_num(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        n = float(value)
+        return n if math.isfinite(n) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _prof_money(value: Any) -> str:
+    n = _prof_num(value)
+    return "—" if n is None else f"${n:,.2f}"
+
+
+def _prof_metric(
+    *,
+    value: Any,
+    display: str | None = None,
+    formula: str | None = None,
+    inputs: list[str] | None = None,
+    reason: str | None = None,
+    timestamp: str | None = None,
+    confidence: float | None = None,
+    source: str = "swing_trade",
+) -> dict[str, Any]:
+    return {
+        "value": value,
+        "display": str(display if display is not None else value if value not in (None, "") else "—"),
+        "formula": formula,
+        "inputs": inputs or [],
+        "reason": reason,
+        "timestamp": timestamp,
+        "confidence": round(float(confidence), 1) if confidence is not None else None,
+        "source": source,
+    }
+
+
+def _swing_entry_timing_label(entry_quality: str, final_action: str, metrics: dict[str, Any]) -> str:
+    raw = f"{entry_quality} {final_action}".upper()
+    if "AVOID" in raw or "CHASE" in raw or "BAD" in raw:
+        return "Do Not Chase"
+    if "LATE" in raw:
+        return "Late"
+    if "EXTEND" in raw:
+        return "Extended"
+    if "GOOD" in raw:
+        return "Good"
+    score = _prof_num(metrics.get("entry_quality_score"))
+    if score is not None and score >= 80:
+        return "Perfect"
+    if score is not None and score >= 62:
+        return "Good"
+    return "Do Not Chase"
+
+
+def _swing_grade(score: float, timing: str) -> str:
+    if timing in {"Do Not Chase", "Too Late"}:
+        return "C"
+    if score >= 8.5:
+        return "A+"
+    if score >= 7.0:
+        return "A"
+    if score >= 5.0:
+        return "B"
+    return "C"
+
+
+def _build_swing_professional_decision(
+    *,
+    ticker: str,
+    decision: dict[str, Any],
+    metrics: dict[str, Any],
+    reasons: list[str],
+    market_structure: dict[str, Any],
+    exec_levels: dict[str, Any],
+    playbook_hint: str,
+) -> dict[str, Any]:
+    generated_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    bias_raw = str(decision.get("swing_bias") or "").upper()
+    stock_bias = "Bullish" if "BULL" in bias_raw or decision.get("swing_bias") == "BULLISH" else "Bearish" if "BEAR" in bias_raw or decision.get("swing_bias") == "BEARISH" else "Neutral"
+    market_raw = str(decision.get("market_context") or metrics.get("market_context") or metrics.get("market_bias") or "Neutral").upper()
+    market_context = "Bullish" if "SUPPORT" in market_raw or "BULL" in market_raw else "Bearish" if "WEAK" in market_raw or "BEAR" in market_raw else "Neutral"
+    final_action = str(decision.get("final_action") or "NO_TRADE")
+    current_action = "WAIT" if final_action in {"WAIT_PULLBACK", "WAIT_BREAKOUT", "WAIT_FOR_BREAKDOWN", "AVOID_CHASE", "NO_TRADE"} else final_action.replace("_", " ")
+    setup = str(metrics.get("entry_recommendation_state") or decision.get("decision_label") or "Swing Setup").replace("_", " ").title()
+    phase = "Pending" if "WAIT" in final_action or final_action == "NO_TRADE" else "Confirmed" if final_action in {"GO", "GO_SMALL", "STRONG_GO"} else "Armed"
+    next_opportunity = "Bullish Pullback" if stock_bias == "Bullish" else "Bearish Pullback" if stock_bias == "Bearish" else "No Trade"
+    if "BREAKOUT" in final_action:
+        next_opportunity = "Breakout"
+    if "BREAKDOWN" in final_action:
+        next_opportunity = "Breakdown"
+    timing = _swing_entry_timing_label(str(decision.get("entry_quality") or ""), final_action, metrics)
+    score_10 = float(_prof_num(decision.get("trade_quality_score")) or 0.0)
+    score_100 = min(100.0, max(0.0, score_10 * 10.0))
+    entry_score = float(_prof_num(metrics.get("entry_quality_score")) or score_100)
+    grade = _swing_grade(score_10, timing)
+    entry = _prof_num(exec_levels.get("breakout") or exec_levels.get("entry"))
+    stop = _prof_num(exec_levels.get("stop"))
+    target1 = _prof_num(exec_levels.get("target1"))
+    target2 = _prof_num(exec_levels.get("target2"))
+    target = target2 or target1
+    last = _prof_num(metrics.get("last_price"))
+    risk = abs(entry - stop) if entry is not None and stop is not None else None
+    reward = abs(target - entry) if entry is not None and target is not None else None
+    rr = reward / risk if risk and reward is not None else None
+    reward_remaining = abs(target - last) if target is not None and last is not None else None
+    risk_remaining = abs(last - stop) if stop is not None and last is not None else None
+    structure_display = str(market_structure.get("display") or market_structure.get("structure") or "")
+
+    positive = [_prof_metric(value=item, display=item, reason="Backend swing reason.", timestamp=generated_at, confidence=score_100) for item in reasons[:5]]
+    if structure_display:
+        positive.append(_prof_metric(value="Structure", display=structure_display, reason="Backend-confirmed daily market structure.", timestamp=generated_at, confidence=score_100))
+    negative = [_prof_metric(value=item, display=item, reason="Backend risk flag.", timestamp=generated_at, confidence=score_100) for item in list(decision.get("risk_flags") or [])[:5]]
+    neutral = [_prof_metric(value=item, display=item, reason="Pending backend confirmation.", timestamp=generated_at, confidence=score_100) for item in list(decision.get("confirmation_needed") or [])[:5]]
+
+    bullish_changes = [
+        _prof_metric(value="Breakout", display="Breakout", reason="Price breaks backend resistance with confirmation.", timestamp=generated_at),
+        _prof_metric(value="Bullish Pullback", display="Bullish Pullback", reason="Pullback holds above MA20/VWAP equivalent support.", timestamp=generated_at),
+    ]
+    bearish_changes = [
+        _prof_metric(value="Breakdown", display="Breakdown", reason="Price loses backend support.", timestamp=generated_at),
+        _prof_metric(value="VWAP Reject", display="VWAP Reject", reason="Price rejects key mean/reference level.", timestamp=generated_at),
+    ]
+    invalidation = [_prof_metric(value="Invalidation", display=f"Lost {_prof_money(stop)}", reason="Setup invalidates if backend stop/structure level is lost.", timestamp=generated_at)]
+    coach_lines = [
+        f"What happened: {ticker} has {stock_bias.lower()} swing bias and {setup}.",
+        f"Why: " + (positive[0]["display"] if positive else str(decision.get("decision_message") or "Backend returned mixed evidence.")),
+        f"What to watch: {next_opportunity} with confirmation.",
+        f"What invalidates: lose {_prof_money(stop)} or structure flips.",
+        f"Next setup: {next_opportunity}; do not chase extended entries.",
+    ][:6]
+
+    return {
+        "hierarchy": {
+            "marketContext": _prof_metric(value=market_context, display=market_context, formula="SPY/QQQ/sector/VIX/breadth context where available", inputs=["market_context"], reason="Broad market state affects swing confidence.", timestamp=generated_at, confidence=score_100),
+            "stockBias": _prof_metric(value=stock_bias, display=stock_bias, formula="Daily structure + trend + momentum", inputs=["market_structure", "ma20", "ma50", "rsi"], reason=structure_display or "Backend swing bias.", timestamp=generated_at, confidence=score_100),
+            "setup": _prof_metric(value=setup, display=setup, formula="Backend swing setup classifier", inputs=["decision_label", "entry_recommendation_state"], reason=decision.get("decision_message"), timestamp=generated_at, confidence=score_100),
+            "currentPhase": _prof_metric(value=phase, display=phase, formula="Universal setup lifecycle", inputs=["final_action", "entry_quality"], reason="Phase is derived from backend action and entry quality.", timestamp=generated_at, confidence=score_100),
+            "nextOpportunity": _prof_metric(value=next_opportunity, display=next_opportunity, formula="Action + bias + timing", inputs=["final_action", "swing_bias", "entry_quality"], reason=playbook_hint, timestamp=generated_at, confidence=score_100),
+            "originalEntry": _prof_metric(value=phase, display="Completed" if phase in {"Confirmed", "Continuation"} else "Pending", formula="Swing phase state", inputs=["final_action"], reason="Original entry is complete only after backend confirmation.", timestamp=generated_at, confidence=score_100),
+            "currentAction": _prof_metric(value=current_action, display=current_action, formula="Backend final action", inputs=["final_action"], reason=decision.get("decision_message"), timestamp=generated_at, confidence=score_100),
+        },
+        "why": {"positiveFactors": positive[:6], "negativeFactors": negative[:6], "neutralFactors": neutral[:6]},
+        "changesDecision": {"bullish": bullish_changes, "bearish": bearish_changes, "invalidation": invalidation},
+        "confidence": {
+            "biasConfidence": _prof_metric(value=score_100, display=f"{score_100:.0f}%", formula="Swing trade quality score", inputs=["trade_quality_score"], timestamp=generated_at, confidence=score_100),
+            "tradeConfidence": _prof_metric(value=score_100, display=f"{score_100:.0f}%", formula="Backend trade confidence", inputs=["trade_quality_score", "risk_level"], timestamp=generated_at, confidence=score_100),
+            "entryQuality": _prof_metric(value=grade, display=grade, formula="Score mapped to A+/A/B/C", inputs=["trade_quality_score", "entry_quality"], reason="Letter grade replaces high/medium/low.", timestamp=generated_at, confidence=score_100),
+            "entryTiming": _prof_metric(value=timing, display=timing, formula="Entry timing guardrail", inputs=["entry_quality", "final_action"], reason="Engine should not recommend chasing.", timestamp=generated_at, confidence=entry_score),
+        },
+        "scores": {
+            "trendScore": _prof_metric(value=metrics.get("trend_score"), display=str(metrics.get("trend_score") or "—"), formula="Backend trend score", inputs=["trend_score"], timestamp=generated_at, confidence=_prof_num(metrics.get("trend_score"))),
+            "structureScore": _prof_metric(value=metrics.get("structure_score"), display=str(metrics.get("structure_score") or "—"), formula="Backend structure score", inputs=["market_structure"], timestamp=generated_at, confidence=_prof_num(metrics.get("structure_score"))),
+            "momentumScore": _prof_metric(value=metrics.get("momentum_score"), display=str(metrics.get("momentum_score") or "—"), formula="Backend momentum score", inputs=["momentum"], timestamp=generated_at, confidence=_prof_num(metrics.get("momentum_score"))),
+            "volumeScore": _prof_metric(value=metrics.get("volume_score"), display=str(metrics.get("volume_score") or "—"), formula="Backend volume score", inputs=["volume"], timestamp=generated_at, confidence=_prof_num(metrics.get("volume_score"))),
+            "marketScore": _prof_metric(value=score_100, display=f"{score_100:.0f}", formula="Market contribution", inputs=["market_context"], timestamp=generated_at, confidence=score_100),
+            "entryScore": _prof_metric(value=entry_score, display=f"{entry_score:.0f}", formula="Backend entry score", inputs=["entry_quality_score"], timestamp=generated_at, confidence=entry_score),
+            "overallTradeScore": _prof_metric(value=score_100, display=f"{score_100:.0f}", formula="Overall swing score", inputs=["trend", "structure", "momentum", "volume", "market", "entry"], timestamp=generated_at, confidence=score_100),
+        },
+        "risk": {
+            "entry": _prof_metric(value=entry, display=_prof_money(entry), formula="Backend execution level", inputs=["exec_levels"], timestamp=generated_at, confidence=score_100),
+            "stop": _prof_metric(value=stop, display=_prof_money(stop), formula="Backend stop level", inputs=["exec_levels"], timestamp=generated_at, confidence=score_100),
+            "risk": _prof_metric(value=risk, display=_prof_money(risk), formula="abs(entry - stop)", inputs=["entry", "stop"], timestamp=generated_at, confidence=score_100),
+            "target": _prof_metric(value=target, display=_prof_money(target), formula="Backend target level", inputs=["target1", "target2"], timestamp=generated_at, confidence=score_100),
+            "riskReward": _prof_metric(value=rr, display="—" if rr is None else f"{rr:.2f} : 1", formula="reward / risk", inputs=["entry", "stop", "target"], timestamp=generated_at, confidence=score_100),
+            "rewardRemaining": _prof_metric(value=reward_remaining, display=_prof_money(reward_remaining), formula="abs(target - last)", inputs=["target", "last_price"], timestamp=generated_at, confidence=score_100),
+            "riskRemaining": _prof_metric(value=risk_remaining, display=_prof_money(risk_remaining), formula="abs(last - stop)", inputs=["last_price", "stop"], timestamp=generated_at, confidence=score_100),
+            "tradeQuality": _prof_metric(value=grade, display=grade, formula="Entry grade + R:R + confidence", inputs=["entryQuality", "riskReward", "tradeConfidence"], timestamp=generated_at, confidence=score_100),
+        },
+        "marketContext": {
+            "spy": _prof_metric(value=metrics.get("spy_trend"), display=str(metrics.get("spy_trend") or "Unavailable"), formula="Market context feed", inputs=["SPY"], timestamp=generated_at),
+            "qqq": _prof_metric(value=metrics.get("qqq_trend"), display=str(metrics.get("qqq_trend") or "Unavailable"), formula="Market context feed", inputs=["QQQ"], timestamp=generated_at),
+            "sector": _prof_metric(value=metrics.get("sector_trend"), display=str(metrics.get("sector_trend") or "Unavailable"), formula="Sector ETF context", inputs=["sector"], timestamp=generated_at),
+            "vix": _prof_metric(value=metrics.get("vix"), display=str(metrics.get("vix") or "Unavailable"), formula="VIX context", inputs=["VIX"], timestamp=generated_at),
+            "breadth": _prof_metric(value=metrics.get("breadth"), display=str(metrics.get("breadth") or "Unavailable"), formula="Market breadth context", inputs=["breadth"], timestamp=generated_at),
+            "relativeStrength": _prof_metric(value=metrics.get("relative_strength"), display=str(metrics.get("relative_strength") or "Unavailable"), formula="Ticker versus market context", inputs=["relative_strength"], timestamp=generated_at),
+        },
+        "timeline": [
+            {"id": "opening-range", "label": "Base", "phase": "Pending", "timestamp": None, "price": None, "status": "completed", "reason": "Daily base/trend context is loaded."},
+            {"id": "trigger", "label": "Trigger", "phase": "Triggered", "timestamp": None, "price": entry, "status": "completed" if phase in {"Confirmed", "Continuation"} else "pending", "reason": str(decision.get("decision_message") or "")},
+            {"id": "confirmation", "label": "Confirmation", "phase": "Confirmed", "timestamp": None, "price": entry, "status": "completed" if phase == "Confirmed" else "pending", "reason": "Backend final action confirmation."},
+            {"id": "retest", "label": "Retest", "phase": "Retest", "timestamp": None, "price": None, "status": "pending", "reason": "Wait for pullback/retest if timing is not clean."},
+            {"id": "continuation", "label": "Continuation", "phase": "Continuation", "timestamp": None, "price": None, "status": "pending", "reason": "Continuation requires fresh confirmation."},
+            {"id": "target1", "label": "Target1", "phase": "Target1", "timestamp": None, "price": target1, "status": "pending", "reason": "First backend target."},
+            {"id": "target2", "label": "Target2", "phase": "Target2", "timestamp": None, "price": target2, "status": "pending", "reason": "Second backend target."},
+            {"id": "exhaustion", "label": "Exhaustion", "phase": "Exhausted", "timestamp": None, "price": None, "status": "pending", "reason": "Exhaustion appears when backend blocks chasing."},
+        ],
+        "aiCoach": {"lines": coach_lines},
+    }
+
+
 # ── Option liquidity helper ───────────────────────────────────────────
 
 def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float]:
@@ -3093,6 +3286,15 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         entry_quality=decision["entry_quality"],
         risk_level=decision["risk_level"],
     )
+    professional_decision = _build_swing_professional_decision(
+        ticker=t,
+        decision=decision,
+        metrics=metrics,
+        reasons=reasons,
+        market_structure=market_structure,
+        exec_levels=exec_levels,
+        playbook_hint=playbook_hint,
+    )
 
     scan = SwingTradeScan(
         ticker=t,
@@ -3120,6 +3322,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         playbook_hint=playbook_hint,
         expected_holding_period=decision.get("expected_holding_period", ""),
         recommended_contract_duration=decision.get("recommended_contract_duration", ""),
+        professional_decision=professional_decision,
     )
     # Validate scan invariants before caching
     _issues = _validate_swing_scan(scan)

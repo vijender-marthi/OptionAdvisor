@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Wallet, Zap, RefreshCw, AlertTriangle, DollarSign,
-  TrendingUp, TrendingDown, Settings, ExternalLink, X,
+  Activity, TrendingUp, TrendingDown, Settings, ExternalLink, X,
   ShieldAlert, BarChart3, Clock,
 } from 'lucide-react'
 import {
@@ -10,6 +11,7 @@ import {
   type AlpacaAccount, type AlpacaPosition, type AlpacaOrder,
 } from '../api/client'
 import { useApp } from '../contexts/AppContext'
+import { getEngineRoute, ROUTES } from '../routing/routes'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -323,7 +325,10 @@ function readAlpacaTradeDraft(): AlpacaTradeDraft | null {
 }
 
 export default function AutoTradePage() {
-  const { user, navigate } = useApp()
+  const { user } = useApp()
+  const routerNavigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const draftRequest = searchParams.toString()
   const email = user?.email ?? ''
 
   const [configured, setConfigured] = useState<boolean | null>(null)
@@ -335,6 +340,7 @@ export default function AutoTradePage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError]           = useState<string | null>(null)
   const [tradeDraft, setTradeDraft] = useState<AlpacaTradeDraft | null>(() => readAlpacaTradeDraft())
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   // Confirm modal state
   const [confirmAction, setConfirmAction] = useState<null | {
@@ -380,6 +386,18 @@ export default function AutoTradePage() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  useEffect(() => {
+    const params = new URLSearchParams(draftRequest)
+    const draft = readAlpacaTradeDraft()
+    const source = params.get('source')?.trim().toLowerCase()
+    const ticker = params.get('ticker')?.trim().toUpperCase()
+    const matchesTicker = !ticker || draft?.ticker === ticker
+    const matchesSource = !source || !draft?.source || draft.source.toLowerCase() === source
+    const matchingDraft = draft && matchesTicker && matchesSource ? draft : null
+    setTradeDraft(matchingDraft)
+    setDraftError(source && ticker && !matchingDraft ? `No Alpaca trade draft found for ${ticker}. Return to Day/Swing Trade and use the Alpaca button again.` : null)
+  }, [draftRequest])
+
   const handleClosePosition = (symbol: string) => {
     setConfirmAction({
       title: 'Close Position',
@@ -413,6 +431,11 @@ export default function AutoTradePage() {
 
   const handleExecuteDraft = () => {
     if (!tradeDraft) return
+    const hasPrice = tradeDraft.legs.every(leg => Number(leg.mid_price) > 0 || Number(leg.bid) > 0 || Number(leg.ask) > 0)
+    if (!hasPrice) {
+      setError('This Alpaca draft is missing option quote pricing. Re-run the Day Trade workspace after option data loads, then send it again.')
+      return
+    }
     if (!configured || !account) {
       setError('Alpaca is not ready. Check paper trading configuration before executing this draft.')
       return
@@ -460,6 +483,13 @@ export default function AutoTradePage() {
   const optionPositions    = positions.filter(p => p.asset_class === 'us_option')
   const openOrdersCount    = orders.filter(o => ['new','accepted','pending_new','partially_filled'].includes(o.status)).length
   const filledToday        = orders.filter(o => o.status === 'filled' && o.filled_at?.startsWith(new Date().toISOString().slice(0,10))).length
+  const draftSourceRoute = tradeDraft?.source === 'swing'
+    ? getEngineRoute('swing', tradeDraft.ticker)
+    : tradeDraft?.ticker
+      ? getEngineRoute('day', tradeDraft.ticker)
+      : ROUTES.dayTrade
+  const draftSourceLabel = tradeDraft?.source === 'swing' ? 'Swing Trade' : 'Day Trade'
+  const draftHasPrice = tradeDraft?.legs.every(leg => Number(leg.mid_price) > 0 || Number(leg.bid) > 0 || Number(leg.ask) > 0) ?? false
 
   return (
     <div className="auto-trade-page min-h-screen p-4 md:p-6">
@@ -514,13 +544,13 @@ export default function AutoTradePage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate('ticker')}
-              aria-label="Open Position Trading"
-              title="Open Position Trading"
+              onClick={() => routerNavigate(draftSourceRoute)}
+              aria-label={`Return to ${draftSourceLabel}`}
+              title={`Return to ${draftSourceLabel}`}
               className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500
                          text-white rounded-xl transition-colors shrink-0"
             >
-              <TrendingUp size={18} />
+              <Activity size={18} />
             </button>
           </div>
         </div>
@@ -581,16 +611,28 @@ export default function AutoTradePage() {
               <button
                 type="button"
                 onClick={handleExecuteDraft}
-                disabled={!configured || !account || loading || refreshing}
+                disabled={!configured || !account || loading || refreshing || !draftHasPrice}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                title={!draftHasPrice ? 'Missing option quote pricing' : 'Execute Paper Trade'}
               >
                 <Zap size={16} />
                 Execute Paper Trade
               </button>
             </div>
+            {!draftHasPrice && (
+              <div className="mt-3 rounded-lg border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+                Draft added, but option quote pricing is missing. Re-run Day Trade after option data loads before executing in Alpaca.
+              </div>
+            )}
             {tradeDraft.notes && (
               <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-gray-500">{tradeDraft.notes}</p>
             )}
+          </div>
+        )}
+
+        {draftError && (
+          <div className="rounded-2xl border border-amber-700 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+            {draftError}
           </div>
         )}
 

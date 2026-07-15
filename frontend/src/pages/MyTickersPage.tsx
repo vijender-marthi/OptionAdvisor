@@ -303,7 +303,7 @@ export default function MyTickersPage() {
   }, [showNotice])
 
   return (
-    <div className="mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
+    <div className="min-h-screen w-full max-w-none space-y-4 p-4 text-primary md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -354,7 +354,7 @@ export default function MyTickersPage() {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60 dark:border-gray-800 dark:bg-gray-900/50 dark:shadow-black/10">
           <div className="overflow-x-auto">
-            <div className="hidden min-w-[1040px] grid-cols-[minmax(220px,1.45fr)_112px_106px_106px_132px_132px_minmax(188px,1fr)_96px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:border-gray-800 dark:bg-gray-950/55 dark:text-gray-500 md:grid">
+            <div className="hidden min-w-[1180px] grid-cols-[minmax(260px,1.6fr)_112px_106px_106px_132px_132px_minmax(220px,1fr)_128px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:border-gray-800 dark:bg-gray-950/55 dark:text-gray-500 md:grid">
               <span>Ticker</span>
               <span className="text-right">Price</span>
               <span className="text-right">Change</span>
@@ -362,7 +362,7 @@ export default function MyTickersPage() {
               <span className="text-right">Pre</span>
               <span className="text-right">AH</span>
               <span>Links</span>
-              <span className="text-right">Actions</span>
+              <span className="sticky right-0 -mr-4 bg-slate-50 py-1 pr-4 text-right dark:bg-gray-950">Actions</span>
             </div>
             <div className="divide-y divide-slate-200 dark:divide-gray-800">
               {filteredTickers.map((ticker, idx) => (
@@ -462,7 +462,7 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
         </div>
       </div>
 
-      <div className="hidden min-w-[1040px] grid-cols-[minmax(220px,1.45fr)_112px_106px_106px_132px_132px_minmax(188px,1fr)_96px] items-center gap-3 px-4 py-3 md:grid">
+      <div className="hidden min-w-[1180px] grid-cols-[minmax(260px,1.6fr)_112px_106px_106px_132px_132px_minmax(220px,1fr)_128px] items-center gap-3 px-4 py-3 md:grid">
         <TickerIdentity avatar={avatar} ticker={ticker} earningsThisWeek={earningsThisWeek} ed={ed} edDays={edDays} lastEd={lastEd} onEdit={onEdit} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
         <TableNumber value={fmtPrice(ticker.last_price)} />
         <TableNumber value={fmtChange(ticker.price_change)} tone={changeTone(ticker.price_change)} />
@@ -470,7 +470,7 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
         <SessionQuote label="PRE" price={ticker.pre_market_price} change={ticker.pre_market_change} pct={ticker.pre_market_change_pct} compact />
         <SessionQuote label="AH" price={ticker.post_market_price} change={ticker.post_market_change} pct={ticker.post_market_change_pct} compact />
         <QuickLinks ticker={ticker} types={types} engineLabel={ENGINE_LABEL} />
-        <div className="flex items-center justify-end gap-1">
+        <div className="sticky right-0 -mr-4 flex items-center justify-end gap-1 bg-white py-1 pr-4 dark:bg-gray-900">
           <button type="button" onClick={onEdit} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300" title={`Edit ${ticker.symbol}`}><Pencil size={14} /></button>
           <button type="button" onClick={onRemove} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-red-400" title={`Remove ${ticker.symbol}`}><Trash2 size={15} /></button>
         </div>

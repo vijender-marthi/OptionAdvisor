@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MouseEvent, PointerEvent, ReactNode, WheelEvent } from 'react'
+import type { DragEvent, MouseEvent, PointerEvent, ReactNode, WheelEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Activity,
@@ -8,18 +8,23 @@ import {
   Bell,
   BookOpen,
   BriefcaseBusiness,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Crosshair,
   FileText,
+  GripVertical,
   Info,
   Layers,
   LayoutList,
   Loader2,
   Lock,
   Maximize2,
+  Minimize2,
   Minus,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RefreshCw,
   RadioTower,
@@ -34,7 +39,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { analyzeSwingTrade, analyzeV2, deskApi, saveToJournal } from '../api/client'
-import type { DeskAlertCreate, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
+import type { DeskAlertCreate, ProfessionalDecisionPayload, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers, fetchStockTargets, type StockTargetData } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import MacdHistogramChart from '../components/MacdHistogramChart'
@@ -498,6 +503,21 @@ export default function SwingTradePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [watchlistOpen, setWatchlistOpen] = useState(true)
+  const [rightRailOpen, setRightRailOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem('swing_trade_right_rail_open') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const [rightRailWidth, setRightRailWidth] = useState(() => {
+    try {
+      const saved = Number(window.localStorage.getItem('swing_trade_right_rail_width'))
+      return Number.isFinite(saved) && saved >= 280 ? saved : 340
+    } catch {
+      return 340
+    }
+  })
   const [mobileWatchlistOpen, setMobileWatchlistOpen] = useState(false)
   const [myTickers, setMyTickers] = useState<Array<{ symbol: string; company?: string; price?: number | null; changePct?: number | null }>>([])
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
@@ -507,6 +527,9 @@ export default function SwingTradePage() {
   const [activeTab, setActiveTab] = useState<WorkstationTab>('overview')
   const [sectionsOpen, setSectionsOpen] = useState(false)
   const [timeframe, setTimeframe] = useState<Timeframe>('Daily')
+  const [chartMinimized, setChartMinimized] = useState(false)
+  const [chartMaximized, setChartMaximized] = useState(false)
+  const [chartHeight, setChartHeight] = useState(680)
   const [ocKey, setOcKey] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -593,6 +616,44 @@ export default function SwingTradePage() {
     const id = window.setTimeout(() => setNotice(null), 3000)
     return () => window.clearTimeout(id)
   }, [notice])
+
+  useEffect(() => {
+    try { window.localStorage.setItem('swing_trade_right_rail_open', rightRailOpen ? '1' : '0') } catch { /* quota */ }
+  }, [rightRailOpen])
+
+  useEffect(() => {
+    try { window.localStorage.setItem('swing_trade_right_rail_width', String(rightRailWidth)) } catch { /* quota */ }
+  }, [rightRailWidth])
+
+  const resizeRightRail = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const startX = event.clientX
+    const startWidth = rightRailWidth
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const handleMove = (moveEvent: globalThis.PointerEvent) => {
+      setRightRailWidth(Math.max(280, Math.min(560, startWidth - (moveEvent.clientX - startX))))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }, [rightRailWidth])
+
+  const resizeChartWidget = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const startY = event.clientY
+    const startHeight = chartHeight
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const handleMove = (moveEvent: globalThis.PointerEvent) => {
+      setChartHeight(Math.max(360, Math.min(1100, startHeight + (moveEvent.clientY - startY))))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }, [chartHeight])
 
   const handleAddToPortfolio = useCallback(() => {
     if (!result) return
@@ -749,8 +810,8 @@ export default function SwingTradePage() {
   }, [])
 
   return (
-    <div className="swing-trade-page min-h-screen bg-surface-page p-3 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden xl:pb-3">
-      <div className="mx-auto flex max-w-[1920px] gap-3 md:h-[calc(100%-5.5rem)] md:overflow-hidden xl:h-full">
+    <div className="swing-trade-page min-h-screen bg-surface-page p-2 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden md:p-0">
+      <div className="flex w-full gap-1 md:h-full md:overflow-hidden">
         {watchlistOpen && (
           <SwingLeftSidebar
             ticker={ticker}
@@ -768,7 +829,7 @@ export default function SwingTradePage() {
           <button
             type="button"
             onClick={() => setWatchlistOpen(true)}
-            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-secondary hover:border-violet-400 dark:border-white/[0.08] dark:bg-slate-950 lg:flex"
+            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-secondary hover:border-violet-400 dark:border-white/[0.08] dark:bg-slate-950 md:flex"
             aria-label="Open Swing watchlist"
           >
             <ChevronRight size={18} />
@@ -796,10 +857,12 @@ export default function SwingTradePage() {
             onOpenSections={() => setSectionsOpen(true)}
             onOpenDayTrade={() => navigate(getEngineRoute('day', result?.ticker || ticker))}
             hasPosition={existingPositions.length > 0}
+            rightRailOpen={rightRailOpen}
+            onToggleRightRail={() => setRightRailOpen(open => !open)}
           />
 
           {notice && (
-            <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${
+            <div className={`m-1 rounded-lg border px-3 py-2 text-xs ${
               notice.tone === 'success'
                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
                 : 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200'
@@ -809,32 +872,87 @@ export default function SwingTradePage() {
           )}
 
           {error && (
-            <div className="mb-3 flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
+            <div className="m-1 flex gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-200">
               <ShieldAlert className="mt-0.5 shrink-0" size={16} />
               {error}
             </div>
           )}
 
-          <div className="grid min-h-0 flex-1 gap-3 md:overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-h-[560px] rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0 md:overflow-hidden">
-              <SwingPrimaryChart
-                result={result}
-                unified={unified}
-                fibTargets={fibTargets}
-                timeframe={timeframe}
-                onTimeframeChange={setTimeframe}
-              />
+          <div
+            className={`grid min-h-0 flex-1 gap-1 p-1 md:overflow-hidden ${rightRailOpen ? 'xl:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'xl:grid-cols-1'}`}
+            style={{ ['--right-rail-width' as string]: `${rightRailWidth}px` }}
+          >
+            <section className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
+              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-900/60">
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+                  <GripVertical size={14} />
+                  Chart Widget
+                </div>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => setChartMinimized(cur => !cur)} className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label={chartMinimized ? 'Restore chart widget' : 'Minimize chart widget'} title={chartMinimized ? 'Restore chart' : 'Minimize chart'}>
+                    {chartMinimized ? <Minimize2 size={13} /> : <Minus size={13} />}
+                  </button>
+                  <button type="button" onClick={() => setChartMaximized(true)} className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Maximize chart widget" title="Maximize chart">
+                    <Maximize2 size={13} />
+                  </button>
+                </div>
+              </div>
+              {!chartMinimized && (
+                <>
+                  <div className="min-h-0 flex-1" style={{ minHeight: chartHeight }}>
+                    <SwingPrimaryChart
+                      result={result}
+                      unified={unified}
+                      fibTargets={fibTargets}
+                      timeframe={timeframe}
+                      onTimeframeChange={setTimeframe}
+                    />
+                  </div>
+                  <div className="h-2 shrink-0 cursor-row-resize border-t border-slate-100 bg-slate-50 transition hover:bg-violet-100 active:bg-violet-200 dark:border-white/[0.05] dark:bg-slate-900/70 dark:hover:bg-violet-950/50" onPointerDown={resizeChartWidget} role="separator" aria-orientation="horizontal" aria-label="Resize chart widget" title="Drag to resize chart" />
+                </>
+              )}
             </section>
+            {chartMaximized && (
+              <div className="fixed inset-4 z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label="Chart widget">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
+                  <div className="text-sm font-black uppercase tracking-widest text-heading">Chart Widget</div>
+                  <button type="button" onClick={() => setChartMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized chart">
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 p-2">
+                  <SwingPrimaryChart
+                    result={result}
+                    unified={unified}
+                    fibTargets={fibTargets}
+                    timeframe={timeframe}
+                    onTimeframeChange={setTimeframe}
+                  />
+                </div>
+              </div>
+            )}
 
-            <SwingRightRail
-              result={result}
-              unified={unified}
-              fibTargets={fibTargets}
-              existingPositionCount={existingPositions.length}
-              onAddToPortfolio={handleAddToPortfolio}
-              onSaveJournal={() => void handleSaveToJournal()}
-              onAddToAlpaca={handleAddToAlpaca}
-            />
+            {rightRailOpen && (
+              <>
+                <div
+                  className="hidden cursor-col-resize rounded-full bg-slate-200 transition hover:bg-violet-400 active:bg-violet-500 dark:bg-white/[0.08] xl:block"
+                  onPointerDown={resizeRightRail}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize right info panel"
+                  title="Drag to resize right panel"
+                />
+                <SwingRightRail
+                  result={result}
+                  unified={unified}
+                  fibTargets={fibTargets}
+                  existingPositionCount={existingPositions.length}
+                  onAddToPortfolio={handleAddToPortfolio}
+                  onSaveJournal={() => void handleSaveToJournal()}
+                  onAddToAlpaca={handleAddToAlpaca}
+                />
+              </>
+            )}
           </div>
 
           <SwingSectionsDrawer
@@ -853,7 +971,7 @@ export default function SwingTradePage() {
       </div>
 
       {mobileWatchlistOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileWatchlistOpen(false)} />
           <SwingLeftSidebar
             ticker={ticker}
@@ -913,10 +1031,16 @@ function SwingLeftSidebar({
   mobileOverlay?: boolean
 }) {
   const navigate = useNavigate()
+  const [tickerSearch, setTickerSearch] = useState('')
+  const filteredTickers = useMemo(() => {
+    const query = tickerSearch.trim().toUpperCase()
+    if (!query) return myTickers
+    return myTickers.filter(item => item.symbol.includes(query) || String(item.company || '').toUpperCase().includes(query))
+  }, [myTickers, tickerSearch])
   return (
     <aside className={mobileOverlay
       ? 'absolute left-0 top-0 flex h-full w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950'
-      : 'hidden h-full w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 lg:flex'
+      : 'hidden h-full w-72 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 md:flex 2xl:w-80'
     }>
       <div className="mb-3 flex shrink-0 items-start justify-between">
         <div>
@@ -931,7 +1055,33 @@ function SwingLeftSidebar({
         </button>
       </div>
 
-      <section className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+      <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Search My Tickers</div>
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2 dark:border-white/[0.08] dark:bg-slate-950">
+          <Search size={14} className="text-tertiary" />
+          <input
+            value={tickerSearch}
+            onChange={event => setTickerSearch(event.target.value)}
+            className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-heading outline-none placeholder:text-tertiary"
+            placeholder="Symbol or company"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Search swing tickers"
+          />
+          {tickerSearch && (
+            <button
+              type="button"
+              onClick={() => setTickerSearch('')}
+              className="rounded-md p-1 text-tertiary hover:bg-slate-100 hover:text-heading dark:hover:bg-slate-900"
+              aria-label="Clear ticker search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
         <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Analyze</div>
         <div className="flex gap-2">
           <input
@@ -956,15 +1106,15 @@ function SwingLeftSidebar({
         </div>
         {result && (
           <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.08] dark:bg-slate-950">
-            <div className="font-mono text-xl font-black text-heading">{result.ticker}</div>
+            <div className="font-mono text-lg font-black text-heading">{result.ticker}</div>
             <div className="truncate text-xs text-secondary">{result.company_name}</div>
           </div>
         )}
       </section>
 
-      <section className="mt-3 flex min-h-0 flex-1 flex-col">
+      <section className="flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Watchlist</div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">My Tickers</div>
           <a
             href={ROUTES.myTickers}
             className="text-[10px] font-bold text-violet-600 dark:text-violet-300"
@@ -974,7 +1124,7 @@ function SwingLeftSidebar({
           </a>
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-auto overscroll-contain">
-          {myTickers.length ? myTickers.map(item => {
+          {filteredTickers.length ? filteredTickers.map(item => {
             const selected = item.symbol === result?.ticker
             const moveUp = (item.changePct ?? 0) >= 0
             return (
@@ -1004,7 +1154,7 @@ function SwingLeftSidebar({
             )
           }) : (
             <div className="rounded-lg border border-slate-200 px-3 py-3 text-sm text-tertiary dark:border-white/[0.08]">
-              No swing tickers saved.
+              {tickerSearch ? 'No matching swing tickers.' : 'No swing tickers saved.'}
             </div>
           )}
         </div>
@@ -1060,7 +1210,7 @@ function SwingMobileSearchBar({
   onOpenWatchlist: () => void
 }) {
   return (
-    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 lg:hidden">
+    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:hidden">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Swing Trade</div>
@@ -1112,6 +1262,8 @@ function SwingTopBar({
   onOpenPreTrade,
   onOpenSections,
   onOpenDayTrade,
+  rightRailOpen,
+  onToggleRightRail,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
@@ -1124,14 +1276,17 @@ function SwingTopBar({
   onOpenPreTrade: () => void
   onOpenSections: () => void
   onOpenDayTrade: () => void
+  rightRailOpen: boolean
+  onToggleRightRail: () => void
 }) {
   const dayTradeRoute = getEngineRoute('day', result?.ticker || ticker)
   return (
-    <div className="relative mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.08] dark:bg-slate-950">
+    <div className="relative mb-1 flex min-h-10 flex-wrap items-center justify-between gap-2 border border-slate-200 bg-white px-2 py-1 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 xl:border-x-0 xl:border-t-0">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="font-mono text-2xl font-black text-heading">{result?.ticker || '—'}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest text-tertiary">Swing Trade</span>
+        <span className="font-mono text-base font-black text-heading">{result?.ticker || ticker || '—'}</span>
         <span className="max-w-[340px] truncate text-sm font-semibold text-secondary">{result?.company_name || unified?.company || ''}</span>
-        <span className="font-mono text-xl font-black text-heading">{money(latestPrice(result, unified))}</span>
+        <span className="font-mono text-base font-black text-heading">{money(latestPrice(result, unified))}</span>
         {unified?.change_pct != null && (
           <span className={`font-mono text-sm font-bold ${unified.change_pct >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
             {pct(unified.change_pct)}
@@ -1143,34 +1298,44 @@ function SwingTopBar({
           </span>
         )}
       </div>
-      <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto pb-1">
+      <div className="flex max-w-full shrink-0 items-center gap-1.5 overflow-x-auto">
         <a
           href={dayTradeRoute}
           onClick={event => handlePlainAnchorClick(event, onOpenDayTrade)}
-          className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-black text-sky-700 hover:border-sky-400 dark:text-sky-200"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1.5 text-[11px] font-black text-sky-700 hover:border-sky-400 dark:text-sky-200"
         >
           <Activity size={14} />
           Day Trade
         </a>
-        <button type="button" onClick={onOpenSections} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]">
+        <button type="button" onClick={onOpenSections} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]">
           <LayoutList size={14} />
           Sections
         </button>
+        <button
+          type="button"
+          onClick={onToggleRightRail}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+          aria-label={rightRailOpen ? 'Collapse right info panel' : 'Expand right info panel'}
+          title={rightRailOpen ? 'Collapse right panel' : 'Expand right panel'}
+        >
+          {rightRailOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+          <span className="hidden xl:inline">{rightRailOpen ? 'Hide Info' : 'Show Info'}</span>
+        </button>
         {hasPosition && (
-          <button type="button" onClick={() => window.location.assign(ROUTES.positions)} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-700 dark:text-amber-200">
+          <button type="button" onClick={() => window.location.assign(ROUTES.positions)} className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-200">
             In Position
           </button>
         )}
-        <button type="button" onClick={onOpenPreTrade} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-700 dark:text-emerald-200">
+        <button type="button" onClick={onOpenPreTrade} className="shrink-0 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] font-black text-emerald-700 dark:text-emerald-200">
           Pre-Trade
         </button>
-        <button type="button" onClick={onOpenAlert} disabled={!result} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 disabled:opacity-50 dark:border-white/[0.08]">
+        <button type="button" onClick={onOpenAlert} disabled={!result} className="shrink-0 rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-black text-secondary hover:border-violet-400 disabled:opacity-50 dark:border-white/[0.08]">
           Alert
         </button>
-        <button type="button" onClick={onAddToPortfolio} disabled={!result || hasPosition} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-500 disabled:opacity-50">
+        <button type="button" onClick={onAddToPortfolio} disabled={!result || hasPosition} className="shrink-0 rounded-md bg-violet-600 px-2 py-1.5 text-[11px] font-black text-white hover:bg-violet-500 disabled:opacity-50">
           Portfolio
         </button>
-        <button type="button" onClick={onRefresh} disabled={loading} className="rounded-lg border border-slate-200 p-2 text-secondary hover:border-violet-400 disabled:opacity-50 dark:border-white/[0.08]" aria-label="Refresh swing analysis">
+        <button type="button" onClick={onRefresh} disabled={loading} className="shrink-0 rounded-md border border-slate-200 p-1.5 text-secondary hover:border-violet-400 disabled:opacity-50 dark:border-white/[0.08]" aria-label="Refresh swing analysis">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -1204,19 +1369,26 @@ function SwingRightRail({
     : ''
   const signalQuality = unified?.verdict_presentation?.signal_quality?.label || result?.setup_quality || result?.entry_quality || '—'
   const confidence = unified?.confidence ?? result?.confidence ?? null
+  const professional = result?.professional_decision
   return (
     <aside className="hidden min-h-0 content-start gap-3 overflow-y-auto overscroll-contain pr-1 xl:grid">
       <RailCard title="Current Decision">
-        <div className="flex items-center justify-between gap-2">
-          <VerdictPill verdict={unified?.verdict || result?.final_action || result?.verdict} />
-          <span className="font-mono text-xl font-black text-heading">{confidence == null ? '—' : `${Math.round(confidence)}%`}</span>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Value label="Bias" value={compactLabel(result?.bias || result?.swing_bias)} />
-          <Value label="Score" value={result?.trade_quality_score != null ? String(result.trade_quality_score) : '—'} />
-          <Value label="Signal" value={signalQuality} />
-          <Value label="Risk" value={unified?.risk_level || result?.risk_level || '—'} />
-        </div>
+        {professional ? (
+          <SwingProfessionalDecisionSummary decision={professional} />
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <VerdictPill verdict={unified?.verdict || result?.final_action || result?.verdict} />
+              <span className="font-mono text-xl font-black text-heading">{confidence == null ? '—' : `${Math.round(confidence)}%`}</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Value label="Bias" value={compactLabel(result?.bias || result?.swing_bias)} />
+              <Value label="Score" value={result?.trade_quality_score != null ? String(result.trade_quality_score) : '—'} />
+              <Value label="Signal" value={signalQuality} />
+              <Value label="Risk" value={unified?.risk_level || result?.risk_level || '—'} />
+            </div>
+          </>
+        )}
         {existingPositionCount > 0 && <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-700 dark:text-amber-200">Already tracked in Positions Center</div>}
       </RailCard>
 
@@ -1235,12 +1407,14 @@ function SwingRightRail({
           <div>
             <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Entry Plan</div>
             <div className="grid grid-cols-2 gap-2">
-              <Value label="Entry" value={money(exec.breakout ?? unified?.entry_price)} />
-              <Value label="Stop" value={money(exec.stop ?? unified?.stop_price)} />
-              <Value label="Target 1" value={money(exec.target1) !== '—' ? money(exec.target1) : levelFromUnified(unified, 't1')} />
-              <Value label="Target 2" value={money(exec.target2) !== '—' ? money(exec.target2) : levelFromUnified(unified, 't2')} />
-              <Value label="R/R" value={unified?.rr_ratio || '—'} />
-              <Value label="Timing" value={compactLabel(result?.execution_readiness || text(metrics?.trade_timing_verdict))} />
+              <Value label="Entry" value={professional?.risk.entry.display ?? money(exec.breakout ?? unified?.entry_price)} />
+              <Value label="Stop" value={professional?.risk.stop.display ?? money(exec.stop ?? unified?.stop_price)} />
+              <Value label="Risk" value={professional?.risk.risk.display ?? '—'} />
+              <Value label="Target" value={professional?.risk.target.display ?? (money(exec.target2) !== '—' ? money(exec.target2) : levelFromUnified(unified, 't2'))} />
+              <Value label="R/R" value={professional?.risk.riskReward.display ?? (unified?.rr_ratio || '—')} />
+              <Value label="Timing" value={professional?.confidence.entryTiming.display ?? compactLabel(result?.execution_readiness || text(metrics?.trade_timing_verdict))} />
+              <Value label="Reward Left" value={professional?.risk.rewardRemaining.display ?? '—'} />
+              <Value label="Quality" value={professional?.risk.tradeQuality.display ?? '—'} />
             </div>
           </div>
           <div className="border-t border-slate-200 pt-3 dark:border-white/[0.08]">
@@ -1540,12 +1714,13 @@ function SwingPrimaryChart({
 
   return (
     <div className={fullScreen ? 'fixed inset-3 z-50 flex flex-col overflow-hidden rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-950' : 'flex min-h-0 flex-col md:h-full md:overflow-hidden'}>
-      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
-          <div className="mt-1 text-sm font-semibold text-secondary">
-            Backend daily series · {preset === 'engine_recommended' && framework.recommendedReason ? framework.recommendedReason : 'user-selected indicator view'}
-          </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-1 border-b border-slate-200 px-2 py-1 text-[11px] dark:border-white/[0.08]">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 font-semibold text-secondary">
+          <span className="text-[10px] font-black uppercase tracking-widest text-tertiary">Chart</span>
+          <span className="hidden truncate xl:inline">
+            {preset === 'engine_recommended' && framework.recommendedReason ? framework.recommendedReason : 'Backend daily series'}
+          </span>
+          <span className="font-mono text-[10px] text-tertiary">{visibleBars} bars</span>
         </div>
         <div className="flex items-center gap-1">
           {(['Daily', 'Weekly', 'Monthly'] as Timeframe[]).map(tf => (
@@ -1554,20 +1729,20 @@ function SwingPrimaryChart({
               type="button"
               disabled={tf !== 'Daily'}
               onClick={() => onTimeframeChange(tf)}
-              className={`rounded-lg border px-2.5 py-1 text-xs font-black ${timeframe === tf ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200' : 'border-slate-200 text-secondary dark:border-white/[0.08]'} disabled:cursor-not-allowed disabled:opacity-45`}
+              className={`rounded-md border px-2 py-0.5 text-[10px] font-black ${timeframe === tf ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200' : 'border-slate-200 text-secondary dark:border-white/[0.08]'} disabled:cursor-not-allowed disabled:opacity-45`}
               title={tf === 'Daily' ? 'Daily backend series' : `${tf} backend series is not returned yet`}
             >
               {tf}
             </button>
           ))}
-          <button type="button" onClick={() => zoom('in')} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Zoom in"><ZoomIn size={15} /></button>
-          <button type="button" onClick={() => zoom('out')} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Zoom out"><ZoomOut size={15} /></button>
-          <button type="button" onClick={() => pan('left')} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Pan left"><ChevronLeft size={15} /></button>
-          <button type="button" onClick={() => pan('right')} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Pan right"><ChevronRight size={15} /></button>
-          <button type="button" onClick={() => { setVisibleBars(points.length); setEndIndex(points.length) }} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Fit chart" title="Fit"><Maximize2 size={15} /></button>
-          <button type="button" onClick={resetView} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Reset chart" title="Reset"><RotateCcw size={15} /></button>
+          <button type="button" onClick={() => zoom('in')} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Zoom in"><ZoomIn size={15} /></button>
+          <button type="button" onClick={() => zoom('out')} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Zoom out"><ZoomOut size={15} /></button>
+          <button type="button" onClick={() => pan('left')} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Pan left"><ChevronLeft size={15} /></button>
+          <button type="button" onClick={() => pan('right')} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Pan right"><ChevronRight size={15} /></button>
+          <button type="button" onClick={() => { setVisibleBars(points.length); setEndIndex(points.length) }} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Fit chart" title="Fit"><Maximize2 size={15} /></button>
+          <button type="button" onClick={resetView} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Reset chart" title="Reset"><RotateCcw size={15} /></button>
           <div className="relative">
-            <button type="button" onClick={() => setIndicatorOpen(cur => !cur)} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Indicators" title="Indicators"><SlidersHorizontal size={15} /></button>
+            <button type="button" onClick={() => setIndicatorOpen(cur => !cur)} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Indicators" title="Indicators"><SlidersHorizontal size={15} /></button>
             {indicatorOpen && (
               <IndicatorDrawer
                 framework={framework}
@@ -1584,7 +1759,7 @@ function SwingPrimaryChart({
             )}
           </div>
           <div className="relative">
-            <button type="button" onClick={() => setOverlayOpen(cur => !cur)} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Chart overlays" title="Overlays"><Layers size={15} /></button>
+            <button type="button" onClick={() => setOverlayOpen(cur => !cur)} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Chart overlays" title="Overlays"><Layers size={15} /></button>
             {overlayOpen && (
               <div className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
                 {['fibonacci_retracement', 'fibonacci_extension', 'swing_pivots', 'structure', 'entry', 'stop', 'target1', 'target2'].map(id => {
@@ -1599,19 +1774,19 @@ function SwingPrimaryChart({
               </div>
             )}
           </div>
-          <button type="button" onClick={() => setFullScreen(cur => !cur)} className="rounded-lg border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Full screen chart" title="Full screen"><Maximize2 size={15} /></button>
+          <button type="button" onClick={() => setFullScreen(cur => !cur)} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Full screen chart" title="Full screen"><Maximize2 size={15} /></button>
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-white/[0.07] dark:bg-slate-900/60">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
+      <div className="flex min-h-0 flex-1 flex-col bg-slate-50 dark:bg-slate-900/60">
+        <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 px-2 py-1 text-[11px] dark:border-white/[0.08]">
           <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Active</span>
           {activeIndicators.length ? activeIndicators.map(item => (
             <button
               key={item.id}
               type="button"
               onClick={() => removeIndicator(item.id)}
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${item.recommended ? 'border-violet-300 bg-violet-500/10 text-violet-700 dark:border-violet-400/30 dark:text-violet-200' : 'border-slate-200 bg-white text-secondary dark:border-white/[0.08] dark:bg-slate-950'}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${item.recommended ? 'border-violet-300 bg-violet-500/10 text-violet-700 dark:border-violet-400/30 dark:text-violet-200' : 'border-slate-200 bg-white text-secondary dark:border-white/[0.08] dark:bg-slate-950'}`}
               title={item.mandatory ? 'Engine evidence for the current backend decision. Hiding changes only this visual view, not the backend verdict.' : item.reason || item.name}
             >
               {item.mandatory && <Lock size={10} />}
@@ -2463,11 +2638,174 @@ function SectionHero({ eyebrow, title, body, tone, badge }: { eyebrow: string; t
 }
 
 function RailCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.07] dark:bg-slate-950">
-      <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-tertiary">{title}</div>
+  const pinnedFullLength = title === 'Current Decision'
+  const widgetId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const [minimized, setMinimized] = useState(false)
+  const [maximized, setMaximized] = useState(false)
+  const [bodyMaxHeight, setBodyMaxHeight] = useState(pinnedFullLength ? 860 : 720)
+  const startWidgetDrag = (event: DragEvent<HTMLElement>) => {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/oa-widget-id', widgetId)
+  }
+  const dropWidget = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    const sourceId = event.dataTransfer.getData('text/oa-widget-id')
+    if (!sourceId || sourceId === widgetId) return
+    const target = event.currentTarget
+    const source = target.parentElement?.querySelector<HTMLElement>(`[data-widget-id="${sourceId}"]`)
+    if (!source || !target.parentElement) return
+    const rect = target.getBoundingClientRect()
+    const placeBefore = event.clientY < rect.top + rect.height / 2
+    target.parentElement.insertBefore(source, placeBefore ? target : target.nextSibling)
+  }
+  const resizeWidget = (event: PointerEvent<HTMLDivElement>) => {
+    const startY = event.clientY
+    const startHeight = bodyMaxHeight
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const handleMove = (moveEvent: globalThis.PointerEvent) => {
+      const viewportCap = Math.max(280, window.innerHeight - 180)
+      setBodyMaxHeight(Math.max(220, Math.min(Math.max(viewportCap, 420), startHeight + (moveEvent.clientY - startY))))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+  const body = (
+    <div
+      className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3"
+      style={{ maxHeight: `min(70vh, ${bodyMaxHeight}px)` }}
+    >
       {children}
+    </div>
+  )
+  return (
+    <>
+    <section
+      className="swing-trade-widget flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950"
+      data-widget-id={widgetId}
+      onDragOver={event => event.preventDefault()}
+      onDrop={dropWidget}
+    >
+      <div
+        className="flex shrink-0 cursor-grab items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 active:cursor-grabbing dark:border-white/[0.07] dark:bg-slate-900/60"
+        draggable
+        onDragStart={startWidgetDrag}
+      >
+        <div className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+          <GripVertical size={14} className="shrink-0" />
+          <span className="truncate">{title}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
+            Widget
+          </span>
+          {!pinnedFullLength && (
+            <button
+              type="button"
+              onClick={() => setMinimized(cur => !cur)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800"
+              aria-label={minimized ? `Restore ${title} widget` : `Minimize ${title} widget`}
+              title={minimized ? 'Restore widget' : 'Minimize widget'}
+            >
+              {minimized ? <Minimize2 size={13} /> : <Minus size={13} />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMaximized(true)}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800"
+            aria-label={`Maximize ${title} widget`}
+            title="Maximize widget"
+          >
+            <Maximize2 size={13} />
+          </button>
+        </div>
+      </div>
+      {(!minimized || pinnedFullLength) && (
+        <>
+          {body}
+          <div
+            className="h-2 shrink-0 cursor-row-resize border-t border-slate-100 bg-slate-50 transition hover:bg-violet-100 active:bg-violet-200 dark:border-white/[0.05] dark:bg-slate-900/70 dark:hover:bg-violet-950/50"
+            onPointerDown={resizeWidget}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={`Resize ${title} widget`}
+            title="Drag to resize widget"
+          />
+        </>
+      )}
     </section>
+    {maximized && (
+      <div className="fixed inset-y-3 right-3 z-50 flex w-[min(520px,calc(100vw-1.5rem))] max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label={`${title} widget`}>
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
+          <div className="text-sm font-black uppercase tracking-widest text-heading">{title}</div>
+          <button type="button" onClick={() => setMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized widget">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
+      </div>
+    )}
+    </>
+  )
+}
+
+function SwingProfessionalDecisionSummary({ decision }: { decision: ProfessionalDecisionPayload }) {
+  const h = decision.hierarchy
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <Value label="Market" value={h.marketContext.display} />
+        <Value label="Stock Bias" value={h.stockBias.display} />
+        <Value label="Setup" value={h.setup.display} />
+        <Value label="Current Phase" value={h.currentPhase.display} />
+        <Value label="Original Entry" value={h.originalEntry?.display || '—'} />
+        <Value label="Current Action" value={h.currentAction.display} />
+        <Value label="Next Opportunity" value={h.nextOpportunity.display} />
+        <Value label="Confidence" value={decision.confidence.tradeConfidence.display} />
+        <Value label="Bias Confidence" value={decision.confidence.biasConfidence.display} />
+        <Value label="Entry Quality" value={decision.confidence.entryQuality.display} />
+        <Value label="Entry Timing" value={decision.confidence.entryTiming.display} />
+        <Value label="Trade Score" value={decision.scores.overallTradeScore?.display || '—'} />
+      </div>
+      <SwingFactorGroup title="Positive" items={decision.why.positiveFactors} tone="positive" />
+      <SwingFactorGroup title="Negative" items={decision.why.negativeFactors} tone="danger" />
+      <div className="rounded-lg border border-slate-200 p-2 dark:border-white/[0.08]">
+        <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">What Changes The Decision</div>
+        <SwingFactorGroup title="Bullish If" items={decision.changesDecision.bullish} tone="positive" compact />
+        <SwingFactorGroup title="Bearish If" items={decision.changesDecision.bearish} tone="danger" compact />
+        <SwingFactorGroup title="Invalidated If" items={decision.changesDecision.invalidation} tone="danger" compact />
+      </div>
+      <div className="grid gap-1">
+        {decision.aiCoach.lines.slice(0, 6).map(line => (
+          <div key={line} className="rounded-md bg-slate-50 px-2 py-1 text-xs text-secondary dark:bg-slate-900">{line}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SwingFactorGroup({ title, items, tone, compact = false }: { title: string; items: ProfessionalDecisionPayload['why']['positiveFactors']; tone: string; compact?: boolean }) {
+  if (!items.length) return null
+  const iconClass = tone === 'positive' ? 'text-emerald-600 dark:text-emerald-300' : tone === 'danger' ? 'text-rose-600 dark:text-rose-300' : 'text-tertiary'
+  return (
+    <div className={compact ? 'mt-2' : ''}>
+      <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-tertiary">{title}</div>
+      <div className="grid gap-1">
+        {items.slice(0, compact ? 3 : 5).map(item => (
+          <div key={`${title}-${item.display}-${item.reason || ''}`} className="flex gap-2 rounded-md bg-slate-50 px-2 py-1 text-xs dark:bg-slate-900">
+            {tone === 'danger' ? <AlertTriangle size={13} className={`mt-0.5 shrink-0 ${iconClass}`} /> : <CheckCircle2 size={13} className={`mt-0.5 shrink-0 ${iconClass}`} />}
+            <span className="min-w-0">
+              <span className="font-semibold text-heading">{item.display}</span>
+              {item.reason && <span className="text-secondary"> — {item.reason}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -2477,7 +2815,7 @@ function RailActionButton({ label, icon, disabled, onClick }: { label: string; i
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-secondary transition hover:border-violet-400 hover:text-heading disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.08] dark:bg-slate-950"
+      className="inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-secondary transition hover:border-violet-400 hover:text-heading disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.08] dark:bg-slate-950"
     >
       {icon}
       <span className="truncate">{label}</span>
@@ -2496,8 +2834,8 @@ function InfoPanel({ title, children }: { title: string; children: ReactNode }) 
 
 function Value({ label, value, muted = false }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className="rounded-lg bg-slate-50 px-2 py-1.5 dark:bg-slate-900">
-      <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
+    <div className="min-w-0 rounded-lg bg-slate-50 px-2 py-1.5 dark:bg-slate-900">
+      <div className="truncate text-[10px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
       <div className={`mt-0.5 truncate font-mono text-sm font-semibold ${muted ? 'text-tertiary' : inferredSwingTextClass(label, value || '—')}`}>{value || '—'}</div>
     </div>
   )

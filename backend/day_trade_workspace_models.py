@@ -150,6 +150,102 @@ class DayTradeDecisionEngineView(BaseModel):
     reasoning: list[str] = Field(default_factory=list)
 
 
+class DayTradeMetricView(BaseModel):
+    value: Any = None
+    display: str
+    formula: str | None = None
+    inputs: list[str] = Field(default_factory=list)
+    reason: str | None = None
+    timestamp: str | None = None
+    confidence: float | None = None
+    source: str | None = None
+
+
+class DayTradeDecisionHierarchyView(BaseModel):
+    marketContext: DayTradeMetricView
+    stockBias: DayTradeMetricView
+    setup: DayTradeMetricView
+    currentPhase: DayTradeMetricView
+    nextOpportunity: DayTradeMetricView
+    originalEntry: DayTradeMetricView | None = None
+    currentAction: DayTradeMetricView
+
+
+class DayTradeReasoningEngineView(BaseModel):
+    positiveFactors: list[DayTradeMetricView] = Field(default_factory=list)
+    negativeFactors: list[DayTradeMetricView] = Field(default_factory=list)
+    neutralFactors: list[DayTradeMetricView] = Field(default_factory=list)
+
+
+class DayTradeDecisionChangeView(BaseModel):
+    bullish: list[DayTradeMetricView] = Field(default_factory=list)
+    bearish: list[DayTradeMetricView] = Field(default_factory=list)
+    invalidation: list[DayTradeMetricView] = Field(default_factory=list)
+
+
+class DayTradeConfidenceView(BaseModel):
+    biasConfidence: DayTradeMetricView
+    tradeConfidence: DayTradeMetricView
+    entryQuality: DayTradeMetricView
+    entryTiming: DayTradeMetricView
+
+
+class DayTradeEngineScoresView(BaseModel):
+    trendScore: DayTradeMetricView
+    structureScore: DayTradeMetricView
+    momentumScore: DayTradeMetricView
+    volumeScore: DayTradeMetricView
+    marketScore: DayTradeMetricView
+    entryScore: DayTradeMetricView
+    overallTradeScore: DayTradeMetricView
+
+
+class DayTradeRiskDecisionView(BaseModel):
+    entry: DayTradeMetricView
+    stop: DayTradeMetricView
+    risk: DayTradeMetricView
+    target: DayTradeMetricView
+    riskReward: DayTradeMetricView
+    rewardRemaining: DayTradeMetricView
+    riskRemaining: DayTradeMetricView
+    tradeQuality: DayTradeMetricView
+
+
+class DayTradeTimelineEventView(BaseModel):
+    id: str
+    label: str
+    phase: str
+    timestamp: str | None = None
+    price: float | None = None
+    status: str
+    reason: str | None = None
+
+
+class DayTradeMarketContextView(BaseModel):
+    spy: DayTradeMetricView
+    qqq: DayTradeMetricView
+    sector: DayTradeMetricView
+    vix: DayTradeMetricView
+    breadth: DayTradeMetricView
+    relativeStrength: DayTradeMetricView
+
+
+class DayTradeAiCoachView(BaseModel):
+    lines: list[str] = Field(default_factory=list)
+
+
+class DayTradeProfessionalDecisionView(BaseModel):
+    hierarchy: DayTradeDecisionHierarchyView
+    why: DayTradeReasoningEngineView
+    changesDecision: DayTradeDecisionChangeView
+    confidence: DayTradeConfidenceView
+    scores: DayTradeEngineScoresView
+    risk: DayTradeRiskDecisionView
+    marketContext: DayTradeMarketContextView
+    timeline: list[DayTradeTimelineEventView] = Field(default_factory=list)
+    aiCoach: DayTradeAiCoachView
+
+
 class DayTradeEvidenceItemView(BaseModel):
     id: str
     label: str
@@ -308,6 +404,7 @@ class DayTradeWorkspaceResponse(BaseModel):
     trigger: DayTradeTriggerView
     riskPlan: DayTradeRiskPlanView
     decisionEngine: DayTradeDecisionEngineView | None = None
+    professionalDecision: DayTradeProfessionalDecisionView | None = None
     evidence: list[DayTradeEvidenceItemView] = Field(default_factory=list)
     selectedContract: DayTradeSelectedContractView | None = None
     trapDetection: dict[str, Any] | None = None

@@ -1,6 +1,6 @@
 import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, BookOpen, BriefcaseBusiness, CheckCircle2, LayoutList, PanelRightOpen, RadioTower, TrendingUp, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, BriefcaseBusiness, CheckCircle2, GripVertical, LayoutList, Maximize2, Minimize2, Minus, PanelRightClose, PanelRightOpen, RadioTower, TrendingUp, X } from 'lucide-react'
 import type {
   DayTradeRiskMonitorFactor,
   DayTradeRiskMonitorItem,
@@ -8,6 +8,7 @@ import type {
   DayTradeWorkspaceDisplayValue,
   DayTradeWorkspaceResponse,
   DayTradeWorkspaceStatus,
+  ProfessionalDecisionPayload,
 } from '../api/client'
 import { workspaceToneBadgeClass, workspaceToneTextClass } from '../utils/workspaceTone'
 import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
@@ -16,6 +17,11 @@ type Props = {
   workspace: DayTradeWorkspaceResponse
   onAction?: (action: DayTradeWorkspaceAction) => void
   onIntervalChange?: (interval: '1m' | '5m' | '15m') => void
+  selectedInterval?: '1m' | '5m' | '15m'
+  rightRailOpen?: boolean
+  onToggleRightRail?: () => void
+  rightRailWidth?: number
+  onRightRailWidthChange?: (width: number) => void
 }
 
 function marketStructureBadgeClass(value?: string | null): string {
@@ -129,7 +135,16 @@ function buildActionCopy(workspace: DayTradeWorkspaceResponse): string {
   return workspace.decision.primaryAction.label || workspace.decision.headline
 }
 
-export default function DayTradeWorkspaceShell({ workspace, onAction, onIntervalChange }: Props) {
+export default function DayTradeWorkspaceShell({
+  workspace,
+  onAction,
+  onIntervalChange,
+  selectedInterval,
+  rightRailOpen = true,
+  onToggleRightRail,
+  rightRailWidth = 340,
+  onRightRailWidthChange,
+}: Props) {
   const action = workspace.decision.primaryAction
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   const [activeDetailTab, setActiveDetailTab] = useState<string | null>(null)
@@ -158,18 +173,52 @@ export default function DayTradeWorkspaceShell({ workspace, onAction, onInterval
     return () => window.removeEventListener('oa-timezone-changed', handleTimezoneChange)
   }, [workspace.session.marketTimeZone])
 
+  const resizeRightRail = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!onRightRailWidthChange) return
+    const startX = event.clientX
+    const startWidth = rightRailWidth
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const handleMove = (moveEvent: PointerEvent) => {
+      const next = Math.max(280, Math.min(560, startWidth - (moveEvent.clientX - startX)))
+      onRightRailWidthChange(next)
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+
   return (
-    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-visible rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full md:overflow-hidden">
+    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-visible rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full md:overflow-hidden md:rounded-none md:border-0 md:shadow-none">
       <SessionStatusBar workspace={workspace} displayTimeZone={displayTimeZone} />
       <TradeDecisionHeader
         workspace={workspace}
         action={action}
         onAction={onAction}
         onOpenDetails={() => setDetailDrawerOpen(true)}
+        rightRailOpen={rightRailOpen}
+        onToggleRightRail={onToggleRightRail}
       />
-      <div className="grid min-h-0 flex-1 gap-3 p-3 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_380px]">
-        <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} onIntervalChange={onIntervalChange} />
-        <TradeDecisionPanel workspace={workspace} onAction={onAction} />
+      <div
+        className={`grid min-h-0 flex-1 gap-1 p-1 ${rightRailOpen ? 'md:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'md:grid-cols-1'}`}
+        style={{ ['--right-rail-width' as string]: `${rightRailWidth}px` }}
+      >
+        <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} selectedInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+        {rightRailOpen && (
+          <>
+            <div
+              className="hidden cursor-col-resize rounded-full bg-slate-200 transition hover:bg-violet-400 active:bg-violet-500 dark:bg-white/[0.08] md:block"
+              onPointerDown={resizeRightRail}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize right info panel"
+              title="Drag to resize right panel"
+            />
+            <TradeDecisionPanel workspace={workspace} onAction={onAction} />
+          </>
+        )}
       </div>
       <WorkspaceDetailDrawer
         workspace={workspace}
@@ -195,10 +244,10 @@ export function SessionStatusBar({ workspace, displayTimeZone }: { workspace: Da
     })
   }, [displayTimeZone, workspace.generatedAt])
   return (
-    <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-1 text-xs dark:border-white/[0.07]">
+    <div className="hidden min-h-7 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-2 py-0.5 text-[11px] dark:border-white/[0.07] md:flex">
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill status={workspace.session.status} />
-        <span className="rounded-full border border-slate-200 px-2 py-0.5 font-semibold uppercase tracking-wide text-secondary dark:border-white/[0.08]">
+        <span className="rounded-full border border-slate-200 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-secondary dark:border-white/[0.08]">
           {workspace.session.mode}
         </span>
         <span className="font-mono text-tertiary">{workspace.session.displayDate}</span>
@@ -216,21 +265,25 @@ export function TradeDecisionHeader({
   action,
   onAction,
   onOpenDetails,
+  rightRailOpen = true,
+  onToggleRightRail,
 }: {
   workspace: DayTradeWorkspaceResponse
   action: DayTradeWorkspaceAction
   onAction?: (action: DayTradeWorkspaceAction) => void
   onOpenDetails?: () => void
+  rightRailOpen?: boolean
+  onToggleRightRail?: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const secondaryActions = workspace.decision.secondaryActions || []
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-white/[0.07]">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-2 py-1 dark:border-white/[0.07]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xl font-black text-heading">{workspace.symbol.ticker}</span>
+          <span className="font-mono text-lg font-black text-heading">{workspace.symbol.ticker}</span>
           <span className="truncate text-sm font-semibold text-secondary">{workspace.symbol.companyName}</span>
-          <span className="font-mono text-lg font-black text-heading">{workspace.symbol.price.display}</span>
+          <span className="font-mono text-base font-black text-heading">{workspace.symbol.price.display}</span>
           <span className={`font-mono text-sm font-bold ${workspaceToneTextClass(workspace.symbol.change.tone || 'neutral')}`}>{workspace.symbol.change.display}</span>
           {workspace.chart.marketStructure && (
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${marketStructureBadgeClass(`${workspace.chart.marketStructure.display} ${workspace.chart.marketStructure.trend}`)}`}>
@@ -246,18 +299,30 @@ export function TradeDecisionHeader({
           <button
             type="button"
             onClick={onOpenDetails}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
             aria-label="Open workspace sections"
           >
             <LayoutList size={16} />
             Sections
           </button>
         )}
+        {onToggleRightRail && (
+          <button
+            type="button"
+            onClick={onToggleRightRail}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+            aria-label={rightRailOpen ? 'Collapse right info panel' : 'Expand right info panel'}
+            title={rightRailOpen ? 'Collapse right panel' : 'Expand right panel'}
+          >
+            {rightRailOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+            <span className="hidden xl:inline">{rightRailOpen ? 'Hide Info' : 'Show Info'}</span>
+          </button>
+        )}
         <button
           type="button"
           disabled={!action.enabled}
           onClick={() => onAction?.(action)}
-          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-black uppercase tracking-wide transition ${
+          className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-black uppercase tracking-wide transition ${
             action.enabled
               ? 'bg-violet-600 text-white hover:bg-violet-500'
               : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-tertiary dark:border-white/[0.08] dark:bg-slate-900'
@@ -271,7 +336,7 @@ export function TradeDecisionHeader({
             <button
               type="button"
               onClick={() => setMoreOpen(cur => !cur)}
-              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+              className="shrink-0 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
               aria-haspopup="menu"
               aria-expanded={moreOpen}
             >
@@ -309,30 +374,72 @@ export function TradeDecisionHeader({
   )
 }
 
-export function WorkspaceChartPreview({ workspace, displayTimeZone, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
+export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInterval, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; selectedInterval?: '1m' | '5m' | '15m'; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
+  const [minimized, setMinimized] = useState(false)
+  const [maximized, setMaximized] = useState(false)
+  const [chartHeight, setChartHeight] = useState(680)
+  const resizeChart = (event: React.PointerEvent<HTMLDivElement>) => {
+    const startY = event.clientY
+    const startHeight = chartHeight
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const handleMove = (moveEvent: PointerEvent) => {
+      setChartHeight(Math.max(360, Math.min(1100, startHeight + (moveEvent.clientY - startY))))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+  const chartBody = (
+    <div className="min-h-0 flex-1" style={{ minHeight: minimized ? 0 : chartHeight }}>
+      <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+    </div>
+  )
   return (
-    <section className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60 md:min-h-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-xs font-black uppercase tracking-widest text-tertiary">Primary Chart</div>
-          <div className="mt-1 text-sm font-semibold text-secondary">
-            {workspace.chart.defaults.interval} · {workspace.chart.defaults.visibleRange} · {workspace.chart.defaults.scaleMode}
-          </div>
+    <>
+    <section className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-900/60">
+        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+          <GripVertical size={14} />
+          Chart Widget
         </div>
-        <div className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-secondary dark:border-white/[0.08]">
-          {workspace.chart.candles.length} candles · {workspace.chart.levels.length} levels · {workspace.chart.events.length} events
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setMinimized(cur => !cur)} className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label={minimized ? 'Restore chart widget' : 'Minimize chart widget'} title={minimized ? 'Restore chart' : 'Minimize chart'}>
+            {minimized ? <Minimize2 size={13} /> : <Minus size={13} />}
+          </button>
+          <button type="button" onClick={() => setMaximized(true)} className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Maximize chart widget" title="Maximize chart">
+            <Maximize2 size={13} />
+          </button>
         </div>
       </div>
-      <div className="mt-3 min-h-0 flex-1">
-        <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} onIntervalChange={onIntervalChange} />
-      </div>
+      {!minimized && chartBody}
+      {!minimized && (
+        <div className="h-2 shrink-0 cursor-row-resize border-t border-slate-100 bg-slate-50 transition hover:bg-violet-100 active:bg-violet-200 dark:border-white/[0.05] dark:bg-slate-900/70 dark:hover:bg-violet-950/50" onPointerDown={resizeChart} role="separator" aria-orientation="horizontal" aria-label="Resize chart widget" title="Drag to resize chart" />
+      )}
     </section>
+    {maximized && (
+      <div className="fixed inset-4 z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label="Chart widget">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
+          <div className="text-sm font-black uppercase tracking-widest text-heading">Chart Widget</div>
+          <button type="button" onClick={() => setMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized chart">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 p-2">
+          <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
 export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTradeWorkspaceResponse; onAction?: (action: DayTradeWorkspaceAction) => void }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const engine = workspace.decisionEngine
+  const professional = workspace.professionalDecision
   const rrKey = 'risk' + 'Reward'
   const rrValue = workspace.riskPlan[rrKey as keyof typeof workspace.riskPlan] as DayTradeWorkspaceDisplayValue
   const entry = rawNumber(workspace.riskPlan.entry)
@@ -343,9 +450,11 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
   const decisionChecks = buildDecisionChecks(workspace)
   const decisionWarnings = buildDecisionWarnings(workspace)
   return (
-    <aside className="grid max-h-[70vh] content-start gap-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none">
+    <aside className="grid max-h-[70vh] content-start gap-2 overflow-y-auto overscroll-contain pr-1 lg:max-h-none">
       <Panel title="Current Decision">
-        {engine ? (
+        {professional ? (
+          <ProfessionalDecisionSummary decision={professional} />
+        ) : engine ? (
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -440,13 +549,14 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
       </Panel>
       <Panel title="Entry / Stop / Targets">
         <div className="grid grid-cols-2 gap-2">
-          <Value label="Entry" value={workspace.riskPlan.entry.display} />
-          <Value label="Stop" value={workspace.riskPlan.stop.display} />
-          <Value label="T1" value={workspace.riskPlan.target1.display} />
-          <Value label="T2" value={workspace.riskPlan.target2.display} />
-          <Value label="Invalidation" value={(workspace.riskPlan as { invalidation?: DayTradeWorkspaceDisplayValue }).invalidation?.display ?? workspace.riskPlan.stop.display} />
-          <Value label="Size" value={workspace.riskPlan.positionSize.display} />
-          <Value label="R/R" value={rrValue.display} />
+          <Value label="Entry" value={professional?.risk.entry.display ?? workspace.riskPlan.entry.display} />
+          <Value label="Stop" value={professional?.risk.stop.display ?? workspace.riskPlan.stop.display} />
+          <Value label="Risk" value={professional?.risk.risk.display ?? moneyValue(risk)} />
+          <Value label="Target" value={professional?.risk.target.display ?? workspace.riskPlan.target2.display} />
+          <Value label="R/R" value={professional?.risk.riskReward.display ?? rrValue.display} />
+          <Value label="Reward Left" value={professional?.risk.rewardRemaining.display ?? moneyValue(reward)} />
+          <Value label="Risk Left" value={professional?.risk.riskRemaining.display ?? moneyValue(risk)} />
+          <Value label="Quality" value={professional?.risk.tradeQuality.display ?? '—'} />
         </div>
         <div className="mt-3 grid grid-cols-3 gap-1.5">
           <QuickTradeAction
@@ -549,16 +659,20 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
         </Panel>
       )}
       <Panel title="Why This State">
-        <button
-          type="button"
-          onClick={() => setEvidenceOpen(cur => !cur)}
-          className="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-          aria-expanded={evidenceOpen}
-        >
-          <span>{workspace.evidence.length} backend evidence item{workspace.evidence.length === 1 ? '' : 's'}</span>
-          <span>{evidenceOpen ? 'Hide' : 'Show'}</span>
-        </button>
-        {evidenceOpen && (
+        {professional ? (
+          <ProfessionalWhy decision={professional} />
+        ) : (
+          <>
+          <button
+            type="button"
+            onClick={() => setEvidenceOpen(cur => !cur)}
+            className="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+            aria-expanded={evidenceOpen}
+          >
+            <span>{workspace.evidence.length} backend evidence item{workspace.evidence.length === 1 ? '' : 's'}</span>
+            <span>{evidenceOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {evidenceOpen && (
           <div className="mt-2 grid gap-1">
             {workspace.evidence.length ? workspace.evidence.map(item => (
               <div key={item.id} className="rounded-md border border-slate-200 px-2 py-1 text-xs dark:border-white/[0.08]">
@@ -574,9 +688,82 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
               </div>
             )}
           </div>
+          )}
+          </>
         )}
       </Panel>
     </aside>
+  )
+}
+
+function ProfessionalDecisionSummary({ decision }: { decision: ProfessionalDecisionPayload }) {
+  const h = decision.hierarchy
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <Value label="Market" value={h.marketContext.display} />
+        <Value label="Stock Bias" value={h.stockBias.display} />
+        <Value label="Setup" value={h.setup.display} />
+        <Value label="Current Phase" value={h.currentPhase.display} />
+        <Value label="Original Entry" value={h.originalEntry?.display || '—'} />
+        <Value label="Current Action" value={h.currentAction.display} />
+        <Value label="Next Opportunity" value={h.nextOpportunity.display} />
+        <Value label="Confidence" value={decision.confidence.tradeConfidence.display} />
+        <Value label="Bias Confidence" value={decision.confidence.biasConfidence.display} />
+        <Value label="Entry Quality" value={decision.confidence.entryQuality.display} />
+        <Value label="Entry Timing" value={decision.confidence.entryTiming.display} />
+        <Value label="Trade Score" value={decision.scores.overallTradeScore?.display || '—'} />
+      </div>
+      {h.nextOpportunity.reason && (
+        <div className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-xs text-secondary">
+          <div className="text-[10px] font-black uppercase tracking-wide text-sky-700 dark:text-sky-200">Wait For</div>
+          <div className="mt-1 font-semibold text-heading">{h.nextOpportunity.display}</div>
+          <div className="mt-1 leading-relaxed">{h.nextOpportunity.reason}</div>
+        </div>
+      )}
+      <div className="grid gap-1">
+        {decision.aiCoach.lines.slice(0, 6).map(line => (
+          <div key={line} className="rounded-md bg-slate-50 px-2 py-1 text-xs text-secondary dark:bg-slate-900">{line}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ProfessionalWhy({ decision }: { decision: ProfessionalDecisionPayload }) {
+  return (
+    <div className="space-y-3">
+      <FactorGroup title="Positive" items={decision.why.positiveFactors} tone="positive" />
+      <FactorGroup title="Negative" items={decision.why.negativeFactors} tone="danger" />
+      <FactorGroup title="Neutral" items={decision.why.neutralFactors} tone="neutral" />
+      <div className="rounded-lg border border-slate-200 p-2 dark:border-white/[0.08]">
+        <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">What Changes The Decision</div>
+        <FactorGroup title="Bullish If" items={decision.changesDecision.bullish} tone="positive" compact />
+        <FactorGroup title="Bearish If" items={decision.changesDecision.bearish} tone="danger" compact />
+        <FactorGroup title="Invalidated If" items={decision.changesDecision.invalidation} tone="danger" compact />
+      </div>
+    </div>
+  )
+}
+
+function FactorGroup({ title, items, tone, compact = false }: { title: string; items: ProfessionalDecisionPayload['why']['positiveFactors']; tone: string; compact?: boolean }) {
+  const iconClass = tone === 'positive' ? 'text-emerald-600 dark:text-emerald-300' : tone === 'danger' ? 'text-rose-600 dark:text-rose-300' : 'text-tertiary'
+  if (!items.length) return null
+  return (
+    <div className={compact ? 'mt-2' : ''}>
+      <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-tertiary">{title}</div>
+      <div className="grid gap-1">
+        {items.slice(0, compact ? 3 : 6).map(item => (
+          <div key={`${title}-${item.display}-${item.reason || ''}`} className="flex gap-2 rounded-md bg-slate-50 px-2 py-1 text-xs dark:bg-slate-900">
+            {tone === 'danger' ? <AlertTriangle size={13} className={`mt-0.5 shrink-0 ${iconClass}`} /> : <CheckCircle2 size={13} className={`mt-0.5 shrink-0 ${iconClass}`} />}
+            <span className="min-w-0">
+              <span className="font-semibold text-heading">{item.display}</span>
+              {item.reason && <span className="text-secondary"> — {item.reason}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -947,19 +1134,126 @@ function StatusPill({ status }: { status: DayTradeWorkspaceStatus }) {
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.07] dark:bg-slate-950">
-      <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-tertiary">{title}</div>
+  const pinnedFullLength = title === 'Current Decision'
+  const widgetId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const [minimized, setMinimized] = useState(false)
+  const [maximized, setMaximized] = useState(false)
+  const [bodyMaxHeight, setBodyMaxHeight] = useState(pinnedFullLength ? 860 : 720)
+  const startWidgetDrag = (event: React.DragEvent<HTMLElement>) => {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/oa-widget-id', widgetId)
+  }
+  const dropWidget = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    const sourceId = event.dataTransfer.getData('text/oa-widget-id')
+    if (!sourceId || sourceId === widgetId) return
+    const target = event.currentTarget
+    const source = target.parentElement?.querySelector<HTMLElement>(`[data-widget-id="${sourceId}"]`)
+    if (!source || !target.parentElement) return
+    const rect = target.getBoundingClientRect()
+    const placeBefore = event.clientY < rect.top + rect.height / 2
+    target.parentElement.insertBefore(source, placeBefore ? target : target.nextSibling)
+  }
+  const resizeWidget = (event: React.PointerEvent<HTMLDivElement>) => {
+    const startY = event.clientY
+    const startHeight = bodyMaxHeight
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const handleMove = (moveEvent: PointerEvent) => {
+      const viewportCap = Math.max(280, window.innerHeight - 180)
+      setBodyMaxHeight(Math.max(220, Math.min(Math.max(viewportCap, 420), startHeight + (moveEvent.clientY - startY))))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+  const body = (
+    <div
+      className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3"
+      style={{ maxHeight: `min(70vh, ${bodyMaxHeight}px)` }}
+    >
       {children}
+    </div>
+  )
+  return (
+    <>
+    <section
+      className="day-trade-widget flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950"
+      data-widget-id={widgetId}
+      onDragOver={event => event.preventDefault()}
+      onDrop={dropWidget}
+    >
+      <div
+        className="flex shrink-0 cursor-grab items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 active:cursor-grabbing dark:border-white/[0.07] dark:bg-slate-900/60"
+        draggable
+        onDragStart={startWidgetDrag}
+      >
+        <div className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+          <GripVertical size={14} className="shrink-0" />
+          <span className="truncate">{title}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
+            Widget
+          </span>
+          {!pinnedFullLength && (
+            <button
+              type="button"
+              onClick={() => setMinimized(cur => !cur)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800"
+              aria-label={minimized ? `Restore ${title} widget` : `Minimize ${title} widget`}
+              title={minimized ? 'Restore widget' : 'Minimize widget'}
+            >
+              {minimized ? <Minimize2 size={13} /> : <Minus size={13} />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMaximized(true)}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800"
+            aria-label={`Maximize ${title} widget`}
+            title="Maximize widget"
+          >
+            <Maximize2 size={13} />
+          </button>
+        </div>
+      </div>
+      {(!minimized || pinnedFullLength) && (
+        <>
+          {body}
+          <div
+            className="h-2 shrink-0 cursor-row-resize border-t border-slate-100 bg-slate-50 transition hover:bg-violet-100 active:bg-violet-200 dark:border-white/[0.05] dark:bg-slate-900/70 dark:hover:bg-violet-950/50"
+            onPointerDown={resizeWidget}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={`Resize ${title} widget`}
+            title="Drag to resize widget"
+          />
+        </>
+      )}
     </section>
+    {maximized && (
+      <div className="fixed inset-y-3 right-3 z-50 flex w-[min(520px,calc(100vw-1.5rem))] max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label={`${title} widget`}>
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
+          <div className="text-sm font-black uppercase tracking-widest text-heading">{title}</div>
+          <button type="button" onClick={() => setMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized widget">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
+      </div>
+    )}
+    </>
   )
 }
 
 function Value({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-900">
-      <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
-      <div className={`font-mono text-sm font-semibold ${inferredValueTextClass(label, value)}`}>{value}</div>
+    <div className="min-w-0 rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-900">
+      <div className="truncate text-[10px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
+      <div className={`truncate font-mono text-sm font-semibold ${inferredValueTextClass(label, value)}`}>{value}</div>
     </div>
   )
 }
@@ -973,9 +1267,9 @@ function MiniMetric({ label, value, tone }: { label: string; value: string; tone
         ? 'text-amber-600 dark:text-amber-300'
         : 'text-heading'
   return (
-    <div className="rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-900">
-      <div className="text-[9px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
-      <div className={`font-mono text-xs font-semibold ${cls}`}>{value}</div>
+    <div className="min-w-0 rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-900">
+      <div className="truncate text-[9px] font-bold uppercase tracking-wide text-tertiary">{label}</div>
+      <div className={`truncate font-mono text-xs font-semibold ${cls}`}>{value}</div>
     </div>
   )
 }
@@ -985,7 +1279,7 @@ function QuickTradeAction({ label, icon, onClick }: { label: string; icon: React
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-secondary transition hover:border-violet-400 hover:text-heading dark:border-white/[0.08] dark:bg-slate-950"
+      className="inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-secondary transition hover:border-violet-400 hover:text-heading dark:border-white/[0.08] dark:bg-slate-950"
     >
       {icon}
       <span className="truncate">{label}</span>

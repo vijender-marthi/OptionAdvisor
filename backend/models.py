@@ -403,6 +403,7 @@ class SwingTradeResponse(BaseModel):
     expected_holding_period: str           = ""
     recommended_contract_duration: str     = ""
     explanation: dict = Field(default_factory=dict)
+    professional_decision: dict = Field(default_factory=dict)
     risk_reason: str = ""
     display_confidence: int = 0
     execution_fields: list[dict] = Field(default_factory=list)

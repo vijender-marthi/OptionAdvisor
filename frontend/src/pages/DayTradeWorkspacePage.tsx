@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, X, Activity, TrendingUp } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { saveToJournal } from '../api/client'
-import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse } from '../api/client'
+import { fetchOptionChainLiquidity, saveToJournal } from '../api/client'
+import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse, OptionChainRow } from '../api/client'
 import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
 import DayTradeWorkspaceShell from '../components/DayTradeWorkspaceShell'
 import { useApp } from '../contexts/AppContext'
@@ -41,6 +41,13 @@ const TRADE_TYPE_VALUES: Record<SidebarTickerGroupKey, string> = {
   swing: 'swing',
 }
 
+const DAY_TICKER_AUTO_REFRESH_MIN_MS = 5 * 60 * 1000
+const DAY_TICKER_AUTO_REFRESH_MAX_MS = 15 * 60 * 1000
+
+function nextDayTickerRefreshDelay(): number {
+  return DAY_TICKER_AUTO_REFRESH_MIN_MS + Math.round(Math.random() * (DAY_TICKER_AUTO_REFRESH_MAX_MS - DAY_TICKER_AUTO_REFRESH_MIN_MS))
+}
+
 function normalizeTickerGroup(value: string): SidebarTickerGroupKey | null {
   const v = String(value || '').trim().toUpperCase()
   if (v === 'DAY' || v === 'DAY_TRADE' || v === 'DAYTRADE') return 'day'
@@ -51,6 +58,10 @@ function normalizeTickerGroup(value: string): SidebarTickerGroupKey | null {
 
 function tickerGroupsFor(item: MyTickerEntry): Set<SidebarTickerGroupKey> {
   return new Set((item.trade_types || []).map(normalizeTickerGroup).filter(Boolean) as SidebarTickerGroupKey[])
+}
+
+function isDayTradeTicker(item: MyTickerEntry): boolean {
+  return tickerGroupsFor(item).has('day')
 }
 
 function sortSidebarTickers(items: MyTickerEntry[]): MyTickerEntry[] {
@@ -359,7 +370,7 @@ const DAY_TRADE_ACTION_LINKS = [
 
 function DayTradeActionLinks({ navigate, compact = false }: { navigate: (path: string) => void; compact?: boolean }) {
   return (
-    <div className={`flex ${compact ? 'overflow-x-auto pb-1' : 'flex-wrap justify-end'} gap-2`}>
+    <div className={`flex ${compact ? 'overflow-x-auto pb-1' : 'flex-nowrap justify-end'} gap-1.5`}>
       {DAY_TRADE_ACTION_LINKS.map(action => {
         const Icon = action.icon
         return (
@@ -367,7 +378,7 @@ function DayTradeActionLinks({ navigate, compact = false }: { navigate: (path: s
             key={action.route}
             href={action.route}
             onClick={event => handlePlainAnchorClick(event, () => navigate(action.route))}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
           >
             <Icon size={14} />
             {action.label}
@@ -473,16 +484,16 @@ function DayTradeWorkspaceToolbar({
   navigate: (path: string) => void
 }) {
   return (
-    <div className="mb-3 hidden items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:flex">
-      <div>
-        <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade Workspace</div>
-        <div className="font-mono text-lg font-black text-heading">{symbol}</div>
+    <div className="mb-1 hidden min-h-10 items-center justify-between gap-2 border border-slate-200 bg-white px-2 py-1 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:flex xl:border-x-0 xl:border-t-0">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade</span>
+        <span className="font-mono text-base font-black text-heading">{symbol}</span>
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-nowrap items-center justify-end gap-1.5 overflow-x-auto">
         <a
           href={getEngineRoute('swing', symbol)}
           onClick={event => handlePlainAnchorClick(event, () => navigate(getEngineRoute('swing', symbol)))}
-          className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-700 hover:border-emerald-400 dark:text-emerald-200"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] font-black text-emerald-700 hover:border-emerald-400 dark:text-emerald-200"
         >
           <TrendingUp size={14} />
           Swing Trade
@@ -492,7 +503,7 @@ function DayTradeWorkspaceToolbar({
           type="button"
           disabled={loading}
           onClick={onRefresh}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-secondary hover:border-violet-400 disabled:opacity-60 dark:border-white/[0.08]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-black text-secondary hover:border-violet-400 disabled:opacity-60 dark:border-white/[0.08]"
           aria-label="Refresh Day Trade workspace"
           title="Refresh Day Trade workspace"
         >
@@ -553,6 +564,45 @@ function workspaceStrategy(workspace: DayTradeWorkspaceResponse): string {
   return workspaceOptionType(workspace) === 'PUT' ? 'Long Put' : 'Long Call'
 }
 
+function optionRowMid(row: OptionChainRow): number {
+  const mid = Number(row.mid) || 0
+  if (mid > 0) return mid
+  const bid = Number(row.bid) || 0
+  const ask = Number(row.ask) || 0
+  return bid > 0 && ask > 0 ? (bid + ask) / 2 : Math.max(bid, ask, 0)
+}
+
+function closestOptionRow(rows: OptionChainRow[], strike: number): OptionChainRow | null {
+  return rows.reduce<OptionChainRow | null>((best, row) => {
+    if (!best) return row
+    const bestDistance = Math.abs(Number(best.strike) - strike)
+    const rowDistance = Math.abs(Number(row.strike) - strike)
+    if (rowDistance < bestDistance) return row
+    if (rowDistance === bestDistance && optionRowMid(row) > optionRowMid(best)) return row
+    return best
+  }, null)
+}
+
+async function resolveDayTradeOptionQuote(input: {
+  ticker: string
+  optionType: 'CALL' | 'PUT'
+  strike: number
+  expiry: string
+}): Promise<{ row: OptionChainRow; expiry: string } | null> {
+  const load = async (forceRefresh: boolean) => {
+    const chain = await fetchOptionChainLiquidity(input.ticker, input.expiry, forceRefresh)
+    const rows = input.optionType === 'PUT' ? chain.puts : chain.calls
+    const row = closestOptionRow(rows, input.strike)
+    return row ? { row, expiry: chain.selected_expiry || input.expiry } : null
+  }
+
+  const cached = await load(false)
+  if (cached && optionRowMid(cached.row) > 0) return cached
+  const refreshed = await load(true)
+  if (refreshed && optionRowMid(refreshed.row) > 0) return refreshed
+  return refreshed || cached
+}
+
 function workspaceRiskReward(workspace: DayTradeWorkspaceResponse): { entry: number; stop: number; target1: number; target2: number; risk: number; reward: number } {
   const entry = workspaceRawNumber(workspace.riskPlan.entry) ?? workspaceRawNumber(workspace.symbol.price) ?? 0
   const stop = workspaceRawNumber(workspace.riskPlan.stop) ?? entry
@@ -604,6 +654,21 @@ export default function DayTradeWorkspacePage() {
       return ''
     }
   })
+  const [rightRailOpen, setRightRailOpen] = useState(() => {
+    try {
+      return localStorage.getItem('day_trade_workspace_right_rail_open') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const [rightRailWidth, setRightRailWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('day_trade_workspace_right_rail_width'))
+      return Number.isFinite(saved) && saved >= 280 ? saved : 340
+    } catch {
+      return 340
+    }
+  })
   const [sidebarScrollTop, setSidebarScrollTop] = useState(() => {
     try {
       const saved = Number(localStorage.getItem('day_trade_workspace_sidebar_scroll_top'))
@@ -637,16 +702,29 @@ export default function DayTradeWorkspacePage() {
     try { localStorage.setItem('day_trade_workspace_sidebar_collapsed', sidebarCollapsed ? '1' : '0') } catch { /* quota */ }
   }, [sidebarCollapsed])
 
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_right_rail_open', rightRailOpen ? '1' : '0') } catch { /* quota */ }
+  }, [rightRailOpen])
+
+  useEffect(() => {
+    try { localStorage.setItem('day_trade_workspace_right_rail_width', String(rightRailWidth)) } catch { /* quota */ }
+  }, [rightRailWidth])
+
   const symbol = (searchParams.get('symbol') || searchParams.get('ticker') || tickerInput || 'AAPL').trim().toUpperCase()
   useDocumentTitle(formatTickerTitle(symbol, 'Day Trade'))
   const sessionDate = searchParams.get('sessionDate')
   const intervalParam = searchParams.get('interval')
   const interval = intervalParam === '5m' || intervalParam === '15m' ? intervalParam : '1m'
+  const [selectedInterval, setSelectedInterval] = useState<'1m' | '5m' | '15m'>(interval)
+
+  useEffect(() => {
+    setSelectedInterval(interval)
+  }, [interval])
 
   const workspaceState = useDayTradeWorkspace({
     symbol,
     sessionDate,
-    interval,
+    interval: selectedInterval,
   })
 
   useEffect(() => {
@@ -670,21 +748,46 @@ export default function DayTradeWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const refreshMyTickers = useCallback(async () => {
-    setTickersLoading(true)
+  const refreshMyTickers = useCallback(async (opts: { dayOnly?: boolean; silent?: boolean } = {}) => {
+    if (!opts.silent) setTickersLoading(true)
     setTickersError('')
     try {
       const res = await fetchMyTickers()
-      setMyTickers((res.data?.tickers ?? []).filter(item => item.symbol && (item.is_active ?? true)))
+      const activeTickers = (res.data?.tickers ?? []).filter(item => item.symbol && (item.is_active ?? true))
+      if (opts.dayOnly) {
+        const refreshedDayTickers = activeTickers.filter(isDayTradeTicker)
+        setMyTickers(prev => [
+          ...prev.filter(item => !isDayTradeTicker(item)),
+          ...refreshedDayTickers,
+        ])
+      } else {
+        setMyTickers(activeTickers)
+      }
     } catch (err) {
-      setTickersError(err instanceof Error ? err.message : 'Unable to load My Tickers.')
+      if (!opts.silent) setTickersError(err instanceof Error ? err.message : 'Unable to load My Tickers.')
     } finally {
-      setTickersLoading(false)
+      if (!opts.silent) setTickersLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void refreshMyTickers()
+  }, [refreshMyTickers])
+
+  useEffect(() => {
+    let active = true
+    let timeoutId: number | null = null
+    const schedule = () => {
+      if (!active) return
+      timeoutId = window.setTimeout(() => {
+        void refreshMyTickers({ dayOnly: true, silent: true }).finally(schedule)
+      }, nextDayTickerRefreshDelay())
+    }
+    schedule()
+    return () => {
+      active = false
+      if (timeoutId != null) window.clearTimeout(timeoutId)
+    }
   }, [refreshMyTickers])
 
   useEffect(() => {
@@ -764,6 +867,7 @@ export default function DayTradeWorkspacePage() {
   }, [setSearchParams, tickerInput])
 
   const handleIntervalChange = useCallback((nextInterval: '1m' | '5m' | '15m') => {
+    setSelectedInterval(nextInterval)
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
       next.set('interval', nextInterval)
@@ -771,7 +875,7 @@ export default function DayTradeWorkspacePage() {
     }, { replace: true })
   }, [setSearchParams])
 
-  const handleWorkspaceAction = useCallback((action: DayTradeWorkspaceAction) => {
+  const handleWorkspaceAction = useCallback(async (action: DayTradeWorkspaceAction) => {
     const workspace = workspaceState.data
     if (!workspace) return
     if (!action.enabled) {
@@ -882,6 +986,41 @@ export default function DayTradeWorkspacePage() {
     }
 
     if (action.type === 'alpaca') {
+      if (!strike || strike <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+        setNotice('Unable to create Alpaca draft: option strike or expiry is missing.')
+        return
+      }
+      let alpacaLeg = optionLeg
+      let alpacaExpiry = expiry
+      try {
+        setNotice(`Loading ${workspace.symbol.ticker} option quote for Alpaca...`)
+        const quote = await resolveDayTradeOptionQuote({
+          ticker: workspace.symbol.ticker,
+          optionType,
+          strike,
+          expiry,
+        })
+        if (!quote || optionRowMid(quote.row) <= 0) {
+          setNotice('Unable to create Alpaca draft: option quote pricing is missing.')
+          return
+        }
+        alpacaExpiry = quote.expiry
+        alpacaLeg = {
+          ...optionLeg,
+          strike: Number(quote.row.strike),
+          expiry: alpacaExpiry,
+          mid_price: optionRowMid(quote.row),
+          bid: Number(quote.row.bid) || 0,
+          ask: Number(quote.row.ask) || 0,
+          iv: Number(quote.row.iv) || 0,
+          oi: Number(quote.row.open_interest) || 0,
+          volume: Number(quote.row.volume) || 0,
+          bid_ask_spread_pct: Number(quote.row.spread_pct) || 0,
+        }
+      } catch {
+        setNotice('Unable to create Alpaca draft: option quote lookup failed.')
+        return
+      }
       try {
         window.sessionStorage.setItem(ALPACA_TRADE_DRAFT_KEY, JSON.stringify({
           source: 'day',
@@ -891,15 +1030,17 @@ export default function DayTradeWorkspacePage() {
           strategy,
           bias,
           contracts,
-          legs: [optionLeg],
+          legs: [alpacaLeg],
           entryPrice: rr.entry,
           stopLoss: rr.stop,
           target1: rr.target1,
           target2: rr.target2,
           notes,
+          optionExpiry: alpacaExpiry,
         }))
       } catch {
-        // Navigation still works; Auto Trade will open without a prefilled draft.
+        setNotice('Unable to create Alpaca draft in this browser session.')
+        return
       }
       navigate(`${ROUTES.autoTrade}?ticker=${encodeURIComponent(workspace.symbol.ticker)}&source=day`)
       return
@@ -950,9 +1091,9 @@ export default function DayTradeWorkspacePage() {
   const workspaceLoading = workspaceState.loading && !workspaceState.data
 
   return (
-    <div className="day-trade-page min-h-screen bg-surface-page p-3 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden xl:pb-3">
-      <div className="mx-auto flex max-w-[1920px] gap-3 md:h-[calc(100%-5.5rem)] md:overflow-hidden xl:h-full">
-        <aside className={`hidden h-full shrink-0 overflow-y-auto overscroll-contain md:block ${sidebarCollapsed ? 'w-16' : 'w-80'}`}>
+    <div className="day-trade-page min-h-screen bg-surface-page p-2 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden md:p-0">
+      <div className="flex w-full gap-1 md:h-full md:overflow-hidden">
+        <aside className={`hidden h-full shrink-0 overflow-y-auto overscroll-contain border-r border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950 md:block ${sidebarCollapsed ? 'w-14' : 'w-72 2xl:w-80'}`}>
           {sidebarCollapsed ? (
             <DayTradeCollapsedSidebar
               symbol={symbol}
@@ -1025,6 +1166,12 @@ export default function DayTradeWorkspacePage() {
             navigate={navigate}
           />
 
+          {notice && (
+            <div className="m-1 rounded-lg border border-semantic-info-border bg-semantic-info-bg px-3 py-2 text-xs text-semantic-info">
+              {notice}
+            </div>
+          )}
+
           <DayTradeWorkspaceToolbar
             symbol={symbol}
             loading={workspaceState.loading}
@@ -1032,14 +1179,8 @@ export default function DayTradeWorkspacePage() {
             navigate={navigate}
           />
 
-          {notice && (
-            <div className="mb-3 rounded-xl border border-semantic-info-border bg-semantic-info-bg px-4 py-3 text-sm text-semantic-info">
-              {notice}
-            </div>
-          )}
-
           {currentTickerItem && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-tertiary">
+            <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-tertiary md:hidden">
               {membershipsFor(currentTickerItem).map(key => (
                 <span key={key} className="rounded-full border border-slate-200 px-2 py-0.5 dark:border-white/[0.08]">{TRADE_TYPE_LABELS[key]}</span>
               ))}
@@ -1062,7 +1203,16 @@ export default function DayTradeWorkspacePage() {
             </div>
           ) : workspaceState.data ? (
             <div className="min-h-0 flex-1 md:overflow-hidden">
-              <DayTradeWorkspaceShell workspace={workspaceState.data} onAction={handleWorkspaceAction} onIntervalChange={handleIntervalChange} />
+              <DayTradeWorkspaceShell
+                workspace={workspaceState.data}
+                onAction={handleWorkspaceAction}
+                onIntervalChange={handleIntervalChange}
+                selectedInterval={selectedInterval}
+                rightRailOpen={rightRailOpen}
+                onToggleRightRail={() => setRightRailOpen(open => !open)}
+                rightRailWidth={rightRailWidth}
+                onRightRailWidthChange={setRightRailWidth}
+              />
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white p-6 text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">

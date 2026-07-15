@@ -3743,6 +3743,7 @@ def swing_trade_scan(
             expected_holding_period=str(getattr(r, "expected_holding_period", "") or ""),
             recommended_contract_duration=str(getattr(r, "recommended_contract_duration", "") or ""),
             explanation=dict(resolved.explanation or {}),
+            professional_decision=dict(getattr(r, "professional_decision", {}) or {}),
             risk_reason=resolved.risk_reason or "",
             display_confidence=int(resolved.display_confidence or 0),
             execution_fields=list(resolved.execution_fields or []),

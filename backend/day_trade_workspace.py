@@ -918,6 +918,267 @@ def _decision_engine(
     }
 
 
+def _metric(
+    *,
+    value: Any,
+    display: str | None = None,
+    formula: str | None = None,
+    inputs: list[str] | None = None,
+    reason: str | None = None,
+    timestamp: str | None = None,
+    confidence: float | None = None,
+    source: str = "day_trade_workspace",
+) -> dict[str, Any]:
+    return {
+        "value": value,
+        "display": str(display if display is not None else value if value not in (None, "") else "—"),
+        "formula": formula,
+        "inputs": inputs or [],
+        "reason": reason,
+        "timestamp": timestamp,
+        "confidence": round(float(confidence), 1) if confidence is not None else None,
+        "source": source,
+    }
+
+
+def _bias_from_structure(market_structure: dict[str, Any], metrics: dict[str, Any], risk_levels: dict[str, Any]) -> str:
+    direction = str(risk_levels.get("direction") or "").lower()
+    if direction == "bullish":
+        return "Bullish"
+    if direction == "bearish":
+        return "Bearish"
+    trend = str(market_structure.get("trend") or metrics.get("market_bias") or "").upper()
+    if "BULL" in trend:
+        return "Bullish"
+    if "BEAR" in trend:
+        return "Bearish"
+    return "Neutral"
+
+
+def _market_context_label(metrics: dict[str, Any], resolved: dict[str, Any]) -> str:
+    raw = str(_first_present(resolved.get("market_bias"), metrics.get("market_bias"), metrics.get("market_context"), "Neutral")).upper()
+    if "BULL" in raw or raw in {"LONG", "SUPPORTIVE", "MARKET_SUPPORTIVE"}:
+        return "Bullish"
+    if "BEAR" in raw or raw in {"SHORT", "WEAK", "MARKET_WEAK"}:
+        return "Bearish"
+    return "Neutral"
+
+
+def _setup_name(metrics: dict[str, Any]) -> str:
+    raw = str(metrics.get("trigger_setup") or metrics.get("opening_playbook") or "No Active Setup").replace("_", " ").strip()
+    return raw.title() if raw else "No Active Setup"
+
+
+def _entry_timing_label(metrics: dict[str, Any], reward_risk: dict[str, Any], current_action: dict[str, Any]) -> str:
+    raw = str(_first_present(metrics.get("entry_quality"), metrics.get("entry_recommendation_state"), current_action.get("recommendation"), "")).upper()
+    ratio = _num(reward_risk.get("ratio"))
+    if "CHASE" in raw or "AVOID" in raw or current_action.get("action") == "WAIT" and ratio is not None and ratio < 0.8:
+        return "Do Not Chase"
+    if "LATE" in raw:
+        return "Late"
+    if "EXTEND" in raw:
+        return "Extended"
+    if "GOOD" in raw or "GO" in raw:
+        return "Good"
+    if "PERFECT" in raw or "A+" in raw:
+        return "Perfect"
+    return "Good" if ratio is not None and ratio >= 1.2 else "Do Not Chase"
+
+
+def _entry_grade(score: float, timing: str) -> str:
+    if timing in {"Do Not Chase", "Too Late"}:
+        return "C"
+    if score >= 90:
+        return "A+"
+    if score >= 78:
+        return "A"
+    if score >= 62:
+        return "B"
+    return "C"
+
+
+def _factor(label: str, detail: str, confidence: float | None = None, source: str = "day_trade_workspace") -> dict[str, Any]:
+    return _metric(value=label, display=label, reason=detail, confidence=confidence, source=source)
+
+
+def _professional_factors(metrics: dict[str, Any], market_structure: dict[str, Any], risk_levels: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    positive: list[dict[str, Any]] = []
+    negative: list[dict[str, Any]] = []
+    neutral: list[dict[str, Any]] = []
+    last = _num(metrics.get("last_price"))
+    vwap = _num(metrics.get("vwap"))
+    or_high = _num(metrics.get("or_high"))
+    or_low = _num(metrics.get("or_low"))
+    bias = _bias_from_structure(market_structure, metrics, risk_levels)
+    sequence = [str(item) for item in market_structure.get("sequence", [])]
+    confidence = _num(market_structure.get("confidence"))
+    conf_pct = confidence * 100 if confidence is not None and confidence <= 1 else confidence
+
+    if last is not None and vwap is not None:
+        above = last >= vwap
+        aligned = (bias == "Bullish" and above) or (bias == "Bearish" and not above)
+        item = _factor("Above VWAP" if above else "Below VWAP", f"Last price {_display_money(last)['display']} versus VWAP {_display_money(vwap)['display']}.", conf_pct)
+        (positive if aligned else negative).append(item)
+        distance = abs(last - vwap) / vwap * 100 if vwap else 0
+        if distance >= 1.5:
+            negative.append(_factor("Extended from VWAP", f"Price is {distance:.1f}% from VWAP; the engine should not chase.", conf_pct))
+
+    if or_high is not None and last is not None and bias == "Bullish":
+        (positive if last >= or_high else neutral).append(_factor("ORH accepted" if last >= or_high else "ORH not reclaimed", f"ORH is {_display_money(or_high)['display']}.", conf_pct))
+    if or_low is not None and last is not None and bias == "Bearish":
+        (positive if last <= or_low else neutral).append(_factor("ORL accepted" if last <= or_low else "ORL not lost", f"ORL is {_display_money(or_low)['display']}.", conf_pct))
+
+    if bias == "Bullish" and {"HH", "HL"}.intersection(sequence):
+        positive.append(_factor("HH/HL structure", "Backend-confirmed bullish pivot sequence supports the stock bias.", conf_pct))
+    elif bias == "Bearish" and {"LH", "LL"}.intersection(sequence):
+        positive.append(_factor("LH/LL structure", "Backend-confirmed bearish pivot sequence supports the stock bias.", conf_pct))
+    elif sequence:
+        neutral.append(_factor("Mixed structure", f"Recent sequence: {' -> '.join(sequence[-5:])}.", conf_pct))
+
+    volume_ratio = _num(metrics.get("volume_ratio") or metrics.get("relative_volume") or metrics.get("rvol"))
+    if volume_ratio is not None:
+        if volume_ratio >= 1.3:
+            positive.append(_factor("Strong volume", f"Relative volume is {volume_ratio:.2f}x.", min(100, 45 + volume_ratio * 25)))
+        else:
+            neutral.append(_factor("Volume not decisive", f"Relative volume is {volume_ratio:.2f}x.", min(100, 45 + volume_ratio * 25)))
+
+    if not positive:
+        neutral.append(_factor("Waiting for confirmation", "Backend does not have enough positive factors for an entry.", 50))
+    return positive[:6], negative[:6], neutral[:6]
+
+
+def _professional_timeline(setup: dict[str, Any], risk_levels: dict[str, Any], metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    trigger_time = setup.get("triggerTime")
+    entry = _num(risk_levels.get("entry"))
+    return [
+        {"id": "opening-range", "label": "Opening Range", "phase": "Opening Range", "timestamp": None, "price": None, "status": "completed", "reason": "ORH/ORL are calculated by the backend."},
+        {"id": "trigger", "label": "Trigger", "phase": "Triggered", "timestamp": trigger_time, "price": entry, "status": "completed" if trigger_time else "pending", "reason": str(metrics.get("trigger_requirement") or "Waiting for trigger confirmation.")},
+        {"id": "confirmation", "label": "Confirmation", "phase": "Confirmed", "timestamp": trigger_time, "price": entry, "status": "completed" if _truthy(metrics.get("trigger_fired")) else "pending", "reason": "Backend trigger confirmation state."},
+        {"id": "retest", "label": "Retest", "phase": "Retest", "timestamp": None, "price": _num(metrics.get("vwap")), "status": "pending", "reason": "Next pullback/retest reference."},
+        {"id": "continuation", "label": "Continuation", "phase": "Continuation", "timestamp": None, "price": None, "status": "pending", "reason": "Continuation requires fresh structure confirmation."},
+        {"id": "target1", "label": "Target1", "phase": "Target1", "timestamp": None, "price": _num(risk_levels.get("t1")), "status": "pending", "reason": "First backend target."},
+        {"id": "target2", "label": "Target2", "phase": "Target2", "timestamp": None, "price": _num(risk_levels.get("t2")), "status": "pending", "reason": "Second backend target."},
+        {"id": "exhaustion", "label": "Exhaustion", "phase": "Exhausted", "timestamp": None, "price": None, "status": "pending", "reason": "Exhaustion appears when extension/risk rules block chasing."},
+    ]
+
+
+def _professional_decision(
+    *,
+    metrics: dict[str, Any],
+    resolved: dict[str, Any],
+    risk_levels: dict[str, Any],
+    market_structure: dict[str, Any],
+    decision_engine: dict[str, Any],
+    permission: dict[str, Any],
+    generated_at: str,
+) -> dict[str, Any]:
+    setup = decision_engine["setup"]
+    reward_risk = decision_engine["rewardRisk"]
+    current_action = decision_engine["currentAction"]
+    trend_health = decision_engine["trendHealth"]
+    next_opportunity = decision_engine["nextOpportunity"]
+    scores = trend_health.get("inputs") or {}
+    market_context = _market_context_label(metrics, resolved)
+    stock_bias = _bias_from_structure(market_structure, metrics, risk_levels)
+    entry_score = min(100.0, max(0.0, float(current_action.get("confidence") or decision_engine.get("confidence") or 50)))
+    overall_score = min(100.0, max(0.0, float(decision_engine.get("confidence") or entry_score)))
+    timing = _entry_timing_label(metrics, reward_risk, current_action)
+    grade = _entry_grade(overall_score, timing)
+    positive, negative, neutral = _professional_factors(metrics, market_structure, risk_levels)
+    last = _num(metrics.get("last_price"))
+    entry = _num(risk_levels.get("entry"))
+    stop = _num(risk_levels.get("stop"))
+    target = _num(risk_levels.get("t2")) or _num(risk_levels.get("t1"))
+    risk = abs(entry - stop) if entry is not None and stop is not None else None
+    reward_remaining = abs(target - last) if target is not None and last is not None else None
+    risk_remaining = abs(last - stop) if stop is not None and last is not None else None
+    vwap = _num(metrics.get("vwap"))
+    invalidation = market_structure.get("invalidationLevel") or risk_levels.get("invalidation")
+    next_name = str(next_opportunity.get("nextOpportunity") or "No Trade")
+    if stock_bias == "Bullish" and "Lower High" in next_name:
+        next_name = "Bullish Pullback"
+    if stock_bias == "Bearish" and "Higher Low" in next_name:
+        next_name = "Bearish Pullback"
+    action_label = str(current_action.get("action") or permission.get("label") or "WAIT").replace("GO LONG", "WAIT").replace("GO SHORT", "WAIT")
+
+    bullish_changes = [
+        _metric(value="VWAP Reclaim", display="VWAP Reclaim", reason="Price reclaims and holds VWAP.", timestamp=generated_at, source="day_trade_workspace"),
+        _metric(value="Breakout", display="Breakout", reason="Price breaks the next backend resistance with confirmation.", timestamp=generated_at, source="day_trade_workspace"),
+    ]
+    bearish_changes = [
+        _metric(value="VWAP Reject", display="VWAP Reject", reason="Price rejects VWAP and forms bearish continuation.", timestamp=generated_at, source="day_trade_workspace"),
+        _metric(value="Breakdown", display="Breakdown", reason="Price loses backend support or ORL.", timestamp=generated_at, source="day_trade_workspace"),
+    ]
+    invalidation_changes = [
+        _metric(value="Invalidation", display=f"Lost {_display_money(invalidation)['display']}", reason="Setup invalidates if structural stop or VWAP thesis level is lost.", timestamp=generated_at, source="day_trade_workspace"),
+    ]
+
+    coach_lines = [
+        f"What happened: {stock_bias} stock bias with {setup['setupType']} in {setup['status']} phase.",
+        f"Why: " + "; ".join(item["display"] for item in positive[:3]),
+        f"What to watch: {next_name} near {next_opportunity.get('trigger') or 'backend reference'}.",
+        f"What invalidates: lose {_display_money(invalidation)['display']} or backend structure flips.",
+        f"Next setup: wait for {next_name}; do not chase extended entries.",
+    ][:6]
+
+    return {
+        "hierarchy": {
+            "marketContext": _metric(value=market_context, display=market_context, formula="SPY/QQQ/sector/VIX/breadth context where available", inputs=["market_bias", "market_context"], reason="Broad market state affects confidence.", timestamp=generated_at, confidence=overall_score),
+            "stockBias": _metric(value=stock_bias, display=stock_bias, formula="5m structure + VWAP + OR + relative strength", inputs=["market_structure", "vwap", "opening_range"], reason=market_structure.get("explanation"), timestamp=generated_at, confidence=overall_score),
+            "setup": _metric(value=setup["setupType"], display=str(setup["setupType"]).replace("_", " ").title(), formula="Backend trigger setup classifier", inputs=["trigger_setup", "opening_playbook"], reason="Setup type is independent from action and phase.", timestamp=generated_at, confidence=overall_score),
+            "currentPhase": _metric(value=setup["status"], display=str(setup["status"]), formula="Universal setup lifecycle", inputs=["trigger_time", "latest_bar"], reason="Phase is derived from trigger timing and lifecycle state.", timestamp=generated_at, confidence=overall_score),
+            "nextOpportunity": _metric(value=next_name, display=next_name, formula="Current phase + structure + VWAP + reward/risk", inputs=["current_state", "vwap", "reward_risk"], reason=next_opportunity.get("explanation"), timestamp=generated_at, confidence=next_opportunity.get("probability")),
+            "originalEntry": _metric(value=entry, display="Completed" if setup.get("triggerTime") else "Pending", formula="Trigger entry state", inputs=["triggerTime", "entry"], reason="Shows whether the original entry window already happened.", timestamp=generated_at, confidence=overall_score),
+            "currentAction": _metric(value=action_label, display=action_label, formula="Permission + reward/risk + lifecycle", inputs=["permission", "rewardRisk", "setupLifecycle"], reason=current_action.get("reason"), timestamp=generated_at, confidence=current_action.get("confidence")),
+        },
+        "why": {
+            "positiveFactors": positive,
+            "negativeFactors": negative,
+            "neutralFactors": neutral,
+        },
+        "changesDecision": {
+            "bullish": bullish_changes,
+            "bearish": bearish_changes,
+            "invalidation": invalidation_changes,
+        },
+        "confidence": {
+            "biasConfidence": _metric(value=overall_score, display=f"{overall_score:.0f}%", formula="Structure + VWAP + market alignment", inputs=["trendHealth", "marketContext"], reason="Confidence in directional bias.", timestamp=generated_at, confidence=overall_score),
+            "tradeConfidence": _metric(value=current_action.get("confidence"), display=f"{float(current_action.get('confidence') or 0):.0f}%", formula="Action confidence from backend decision engine", inputs=["currentAction"], reason=current_action.get("reason"), timestamp=generated_at, confidence=current_action.get("confidence")),
+            "entryQuality": _metric(value=grade, display=grade, formula="Trade score mapped to A+/A/B/C", inputs=["overallTradeScore", "entryTiming"], reason="Letter grade replaces high/medium/low wording.", timestamp=generated_at, confidence=overall_score),
+            "entryTiming": _metric(value=timing, display=timing, formula="Entry timing guardrail", inputs=["rewardRisk", "extension", "currentAction"], reason="Engine should not recommend chasing.", timestamp=generated_at, confidence=entry_score),
+        },
+        "scores": {
+            "trendScore": _metric(value=scores.get("momentum"), display=f"{float(scores.get('momentum') or 0):.0f}", formula="Backend trend/momentum score", inputs=["trend_strength", "confidence"], timestamp=generated_at, confidence=scores.get("momentum")),
+            "structureScore": _metric(value=scores.get("structure"), display=f"{float(scores.get('structure') or 0):.0f}", formula="Backend pivot structure score", inputs=["HH", "HL", "LH", "LL"], timestamp=generated_at, confidence=scores.get("structure")),
+            "momentumScore": _metric(value=scores.get("momentum"), display=f"{float(scores.get('momentum') or 0):.0f}", formula="Backend momentum score", inputs=["momentum_score", "trend_strength"], timestamp=generated_at, confidence=scores.get("momentum")),
+            "volumeScore": _metric(value=scores.get("volume"), display=f"{float(scores.get('volume') or 0):.0f}", formula="Backend relative volume score", inputs=["volume_ratio", "rvol"], timestamp=generated_at, confidence=scores.get("volume")),
+            "marketScore": _metric(value=overall_score, display=f"{overall_score:.0f}", formula="Market context contribution", inputs=["SPY", "QQQ", "sector", "VIX", "breadth"], reason="Uses available market context fields.", timestamp=generated_at, confidence=overall_score),
+            "entryScore": _metric(value=entry_score, display=f"{entry_score:.0f}", formula="Entry confidence score", inputs=["currentAction", "rewardRisk"], timestamp=generated_at, confidence=entry_score),
+            "overallTradeScore": _metric(value=overall_score, display=f"{overall_score:.0f}", formula="Weighted backend decision score", inputs=["trend", "structure", "momentum", "volume", "market", "entry"], timestamp=generated_at, confidence=overall_score),
+        },
+        "risk": {
+            "entry": _metric(value=entry, display=_display_money(entry)["display"], formula="Backend structural entry", inputs=["ORH", "ORL", "entry_guidance"], timestamp=generated_at, confidence=overall_score),
+            "stop": _metric(value=stop, display=_display_money(stop)["display"], formula="Backend structural invalidation", inputs=["VWAP", "OR mid", "structure"], timestamp=generated_at, confidence=overall_score),
+            "risk": _metric(value=risk, display=_display_money(risk)["display"], formula="abs(entry - stop)", inputs=["entry", "stop"], timestamp=generated_at, confidence=overall_score),
+            "target": _metric(value=target, display=_display_money(target)["display"], formula="Backend target used for R:R", inputs=["target1", "target2"], timestamp=generated_at, confidence=overall_score),
+            "riskReward": _metric(value=reward_risk.get("ratio"), display=reward_risk.get("display"), formula="reward / risk", inputs=["entry", "stop", "target"], timestamp=generated_at, confidence=overall_score),
+            "rewardRemaining": _metric(value=reward_remaining, display=_display_money(reward_remaining)["display"], formula="abs(target - last)", inputs=["target", "last_price"], timestamp=generated_at, confidence=overall_score),
+            "riskRemaining": _metric(value=risk_remaining, display=_display_money(risk_remaining)["display"], formula="abs(last - stop)", inputs=["last_price", "stop"], timestamp=generated_at, confidence=overall_score),
+            "tradeQuality": _metric(value=grade, display=grade, formula="Entry grade + R:R + confidence", inputs=["entryQuality", "riskReward", "tradeConfidence"], timestamp=generated_at, confidence=overall_score),
+        },
+        "marketContext": {
+            "spy": _metric(value=metrics.get("spy_trend"), display=str(metrics.get("spy_trend") or "Unavailable"), formula="Market context feed", inputs=["SPY"], timestamp=generated_at, confidence=None),
+            "qqq": _metric(value=metrics.get("qqq_trend"), display=str(metrics.get("qqq_trend") or "Unavailable"), formula="Market context feed", inputs=["QQQ"], timestamp=generated_at, confidence=None),
+            "sector": _metric(value=metrics.get("sector_trend"), display=str(metrics.get("sector_trend") or "Unavailable"), formula="Sector ETF context", inputs=["sector"], timestamp=generated_at, confidence=None),
+            "vix": _metric(value=metrics.get("vix"), display=str(metrics.get("vix") or "Unavailable"), formula="VIX context", inputs=["VIX"], timestamp=generated_at, confidence=None),
+            "breadth": _metric(value=metrics.get("breadth"), display=str(metrics.get("breadth") or "Unavailable"), formula="Market breadth context", inputs=["breadth"], timestamp=generated_at, confidence=None),
+            "relativeStrength": _metric(value=metrics.get("relative_strength"), display=str(metrics.get("relative_strength") or "Unavailable"), formula="Ticker versus market context", inputs=["relative_strength"], timestamp=generated_at, confidence=None),
+        },
+        "timeline": _professional_timeline(setup, risk_levels, metrics),
+        "aiCoach": {"lines": coach_lines},
+    }
+
+
 def _vwap_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: str | None) -> dict[str, Any]:
     points: list[dict[str, Any]] = []
     latest_value: float | None = None
@@ -1205,6 +1466,7 @@ def build_day_trade_workspace_response(
     session_date: str | None = None,
     interval: str = "1m",
 ) -> dict[str, Any]:
+    generated_at = _now_iso()
     metrics = _as_dict(getattr(scan, "metrics", {}))
     entry_guidance = _as_dict(getattr(scan, "entry_guidance", {}))
     trader_decision = _as_dict(getattr(scan, "trader_decision", {}))
@@ -1251,6 +1513,15 @@ def build_day_trade_workspace_response(
         chart_bars=raw_chart_bars,
         reason=reason,
     )
+    professional_decision = _professional_decision(
+        metrics=metrics,
+        resolved=resolved,
+        risk_levels=risk_levels,
+        market_structure=market_structure,
+        decision_engine=decision_engine,
+        permission=permission,
+        generated_at=generated_at,
+    )
 
     trigger_view = {
         "status": _status("triggered" if metrics.get("trigger_fired") else "pending", "Triggered" if metrics.get("trigger_fired") else "Pending", "positive" if metrics.get("trigger_fired") else "warning"),
@@ -1270,7 +1541,7 @@ def build_day_trade_workspace_response(
 
     return {
         "schemaVersion": DAY_TRADE_WORKSPACE_SCHEMA_VERSION,
-        "generatedAt": _now_iso(),
+        "generatedAt": generated_at,
         "symbol": {
             "ticker": symbol,
             "companyName": str(getattr(scan, "company_name", "") or symbol),
@@ -1302,6 +1573,7 @@ def build_day_trade_workspace_response(
         "trigger": trigger_view,
         "riskPlan": risk_plan,
         "decisionEngine": decision_engine,
+        "professionalDecision": professional_decision,
         "evidence": _evidence(scan, resolved, metrics),
         "selectedContract": None,
         "trapDetection": trap_detection,

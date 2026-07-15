@@ -77,12 +77,21 @@ function formatVolume(value: number): string {
   return Math.round(value).toLocaleString()
 }
 
+function tradeTrackBadge(levelId: string): string | null {
+  const id = levelId.toLowerCase()
+  if (id === 'target1') return '+1'
+  if (id === 'target2') return '+2'
+  if (id === 'stop') return '-'
+  if (id === 'entry') return 'E'
+  return null
+}
+
 function ChartIconButton({ label, onClick, children }: ChartIconButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-secondary transition hover:border-violet-400 hover:bg-slate-50 hover:text-heading dark:border-white/[0.08] dark:hover:bg-slate-900"
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 text-secondary transition hover:border-violet-400 hover:bg-slate-50 hover:text-heading dark:border-white/[0.08] dark:hover:bg-slate-900"
       aria-label={label}
       title={label}
     >
@@ -91,7 +100,7 @@ function ChartIconButton({ label, onClick, children }: ChartIconButtonProps) {
   )
 }
 
-export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onIntervalChange }: { chart: WorkspaceChart; marketTimeZone?: string; onIntervalChange?: (interval: WorkspaceInterval) => void }) {
+export default function DayTradeWorkspaceChart({ chart, marketTimeZone, activeInterval, onIntervalChange }: { chart: WorkspaceChart; marketTimeZone?: string; activeInterval?: WorkspaceInterval; onIntervalChange?: (interval: WorkspaceInterval) => void }) {
   const firstCandleTime = chart.candles[0]?.time || ''
   const baseVisibleBars = clamp(safeNumber(chart.defaults.initialVisibleBars, 100), MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length || MIN_VISIBLE_BARS))
   const defaultOverlayIds = useMemo(() => new Set(chart.defaults.visibleOverlayIds), [chart.defaults.visibleOverlayIds])
@@ -106,6 +115,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   const dragRef = useRef<{ x: number; panOffsetBars: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const visibleBars = clamp(Math.round(baseVisibleBars / Math.max(0.1, zoomLevel)), MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length || MIN_VISIBLE_BARS))
+  const selectedInterval = activeInterval || chart.defaults.interval
 
   useEffect(() => {
     setZoomLevel(1)
@@ -425,9 +435,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
   }
 
   return (
-    <div className={`${fullscreen ? 'fixed inset-3 z-50 overflow-auto bg-white p-3 dark:bg-slate-950' : 'h-full min-h-0'}`}>
-    <div className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950/50">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 text-xs dark:border-white/[0.08]">
+    <div className={`${fullscreen ? 'fixed inset-3 z-50 overflow-auto bg-white/80 p-3 backdrop-blur-2xl dark:bg-slate-950/80' : 'h-full min-h-0'}`}>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/70 bg-white/75 shadow-[0_18px_60px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/[0.10] dark:bg-slate-950/60 dark:shadow-[0_18px_70px_rgba(0,0,0,0.38)] md:rounded-none">
+      <div className="flex flex-wrap items-center justify-between gap-1 border-b border-white/70 bg-white/50 px-2 py-1 text-[11px] backdrop-blur-xl dark:border-white/[0.08] dark:bg-slate-900/40">
         <div className="flex flex-wrap items-center gap-2 font-semibold text-secondary">
           <div className="flex overflow-hidden rounded-md border border-slate-200 dark:border-white/[0.08]" aria-label="Chart interval">
             {(['1m', '5m', '15m'] as WorkspaceInterval[]).map(interval => (
@@ -435,7 +445,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
                 key={interval}
                 type="button"
                 onClick={() => onIntervalChange?.(interval)}
-                className={`px-2 py-1 text-[10px] font-black ${chart.defaults.interval === interval ? 'bg-violet-600 text-white' : 'text-secondary hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                className={`px-2 py-0.5 text-[10px] font-black ${selectedInterval === interval ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/30' : 'text-secondary hover:bg-white/70 dark:hover:bg-slate-800/80'}`}
               >
                 {interval}
               </button>
@@ -444,7 +454,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           <select
             value={visibleRange}
             onChange={event => changeVisibleRange(event.target.value as WorkspaceRange)}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-secondary dark:border-white/[0.08] dark:bg-slate-900"
+            className="rounded-md border border-white/70 bg-white/70 px-2 py-0.5 text-[10px] font-bold text-secondary backdrop-blur dark:border-white/[0.08] dark:bg-slate-900/70"
             aria-label="Visible range"
           >
             <option value="30m">30m</option>
@@ -452,12 +462,12 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             <option value="2h">2h</option>
             <option value="session">Session</option>
           </select>
-          <span>{chart.defaults.scaleMode}</span>
+          <span className="hidden xl:inline">{chart.defaults.scaleMode}</span>
           <span className="font-mono text-[10px] text-tertiary">
-            Loaded Candles {chart.candles.length}
+            {chart.candles.length} candles
           </span>
-          <span className="font-mono text-[10px] text-tertiary">
-            Visible Candles {model.visibleCandles.length}
+          <span className="hidden font-mono text-[10px] text-tertiary xl:inline">
+            {model.visibleCandles.length} visible
           </span>
           {!followLive && (
             <button type="button" onClick={returnToLive} className="rounded-full border border-violet-400 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-200">
@@ -494,7 +504,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
             <Layers size={15} />
           </ChartIconButton>
           {overlayMenuOpen && (
-            <div className="absolute right-0 top-8 z-20 w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-white/[0.08] dark:bg-slate-900">
+            <div className="absolute right-0 top-8 z-20 w-56 rounded-lg border border-white/70 bg-white/85 p-2 shadow-xl backdrop-blur-xl dark:border-white/[0.08] dark:bg-slate-900/88">
               <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Backend overlays</div>
               {overlayOptions.length ? overlayOptions.map(option => (
                 <label key={option.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-secondary hover:bg-slate-50 dark:hover:bg-slate-800">
@@ -513,7 +523,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           )}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 px-3 py-2 text-xs dark:border-white/[0.08]">
+      <div className="flex flex-wrap items-center gap-1 border-b border-white/70 bg-white/40 px-2 py-1 text-[11px] backdrop-blur-xl dark:border-white/[0.08] dark:bg-slate-900/30">
         <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Active</span>
         {activeChips.map(chip => {
           const active = chip.id === 'volume' || visibleOverlayIds.has(chip.id)
@@ -523,9 +533,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
               type="button"
               disabled={!chip.removable}
               onClick={() => chip.removable && toggleOverlay(chip.id)}
-              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+              className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
                 active
-                  ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                  ? 'border-violet-500/35 bg-violet-500/10 text-violet-700 shadow-sm shadow-violet-500/10 dark:text-violet-200'
                   : 'border-slate-200 text-tertiary opacity-60 dark:border-white/[0.08]'
               }`}
             >
@@ -538,7 +548,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
         aria-label="Backend provided Day Trade workspace chart"
-        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'min-h-0 flex-1'} w-full`}
+        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'min-h-0 flex-1'} w-full bg-transparent`}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -547,20 +557,33 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         onMouseLeave={() => setCrosshair(null)}
         style={{ cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none' }}
       >
-        <rect x="0" y="0" width={WIDTH} height={HEIGHT} className="fill-white dark:fill-slate-950" />
+        <defs>
+          <linearGradient id="day-trade-chart-bg" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.94)" />
+            <stop offset="46%" stopColor="rgba(241,245,249,0.66)" />
+            <stop offset="100%" stopColor="rgba(226,232,240,0.42)" />
+          </linearGradient>
+          <linearGradient id="day-trade-chart-bg-dark" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="rgba(15,23,42,0.94)" />
+            <stop offset="48%" stopColor="rgba(2,6,23,0.82)" />
+            <stop offset="100%" stopColor="rgba(15,23,42,0.72)" />
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width={WIDTH} height={HEIGHT} rx="10" className="fill-[url(#day-trade-chart-bg)] dark:fill-[url(#day-trade-chart-bg-dark)]" />
+        <rect x="10" y="10" width={WIDTH - 20} height={HEIGHT - 20} rx="16" fill="none" className="stroke-white/70 dark:stroke-white/[0.05]" />
         {[0, 1, 2, 3].map(step => {
           const y = PRICE_TOP + step * ((PRICE_BOTTOM - PRICE_TOP) / 3)
           const price = model.maxPrice - step * ((model.maxPrice - model.minPrice) / 3)
           return (
             <g key={step}>
-              <line x1="0" x2={WIDTH} y1={y} y2={y} className="stroke-slate-200 dark:stroke-white/10" strokeDasharray="3 5" />
+              <line x1="0" x2={WIDTH} y1={y} y2={y} className="stroke-slate-300/70 dark:stroke-white/10" strokeDasharray="3 5" />
               <text x={WIDTH - 8} y={y - 4} textAnchor="end" className="fill-slate-500 text-[11px] dark:fill-slate-400">
                 ${price.toFixed(2)}
               </text>
             </g>
           )
         })}
-        <line x1="0" x2={WIDTH} y1={VOLUME_TOP} y2={VOLUME_TOP} className="stroke-slate-200 dark:stroke-white/10" />
+        <line x1="0" x2={WIDTH} y1={VOLUME_TOP} y2={VOLUME_TOP} className="stroke-slate-300/70 dark:stroke-white/10" />
         {model.points.map((point, index) => {
           const candleWidth = Math.max(3.5, Math.min(model.barWidth * 0.76, 20))
           const bodyTop = Math.min(point.openY, point.closeY)
@@ -568,8 +591,8 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           const candleColor = point.up ? BULLISH_CANDLE_COLOR : BEARISH_CANDLE_COLOR
           return (
             <g key={`${model.visibleCandles[index].time}-${index}`}>
-              <line x1={point.x} x2={point.x} y1={point.highY} y2={point.lowY} stroke={candleColor} strokeWidth={Math.max(1.5, Math.min(candleWidth * 0.22, 3))} />
-              <rect x={point.x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1" fill={candleColor} stroke={candleColor} />
+              <line x1={point.x} x2={point.x} y1={point.highY} y2={point.lowY} stroke={candleColor} strokeWidth={Math.max(1.5, Math.min(candleWidth * 0.22, 3))} opacity="0.9" />
+              <rect x={point.x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1.5" fill={candleColor} opacity="0.9" />
               <rect
                 x={point.x - candleWidth / 2}
                 y={point.volumeY}
@@ -626,8 +649,8 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
                     strokeWidth="1.5"
                     strokeDasharray={point.provisional ? '2 2' : undefined}
                   />
-                  <rect x={point.x - 15} y={labelY - 13} width={point.provisional ? 32 : 28} height="16" rx="5" className="fill-white/95 stroke-slate-200 dark:fill-slate-950/95 dark:stroke-white/10" />
-                  <text x={point.x} y={labelY - 2} textAnchor="middle" className={point.provisional ? 'fill-slate-400 text-[10px] font-black dark:fill-slate-500' : 'fill-violet-700 text-[10px] font-black dark:fill-violet-200'}>
+                  <rect x={point.x - 15} y={labelY - 13} width={point.provisional ? 32 : 28} height="16" rx="5" className="fill-white stroke-slate-300 dark:fill-slate-950 dark:stroke-white/10" />
+                  <text x={point.x} y={labelY - 2} textAnchor="middle" className={point.provisional ? 'fill-slate-600 text-[10px] font-black dark:fill-slate-400' : 'fill-violet-800 text-[10px] font-black dark:fill-violet-200'}>
                     {point.provisional ? `${point.label}?` : point.label}
                   </text>
                 </g>
@@ -643,13 +666,22 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
           const y = clamp(rawY, PRICE_TOP + 11, PRICE_BOTTOM - 11)
           const color = toneStroke(level.tone)
           const arrow = offscreen ? (rawY < PRICE_TOP ? ' ↑' : ' ↓') : ''
+          const badge = tradeTrackBadge(level.id)
           return (
             <g key={level.id} opacity={level.active ? (offscreen ? 0.6 : 1) : 0.46}>
               {!offscreen && <line x1="0" x2={WIDTH} y1={y} y2={y} stroke={color} strokeWidth="1.7" strokeDasharray={level.lineStyleToken.includes('dash') ? '6 5' : undefined} />}
-              <rect x="8" y={y - 11} width="172" height="22" rx="6" className="fill-white/90 dark:fill-slate-950/90" />
-              <text x="16" y={y + 4} className="fill-slate-700 text-[11px] font-bold dark:fill-slate-200">
+              <rect x="8" y={y - 11} width="172" height="22" rx="6" className="fill-white stroke-slate-300 dark:fill-slate-950 dark:stroke-white/10" />
+              <text x="16" y={y + 4} className="fill-slate-900 text-[11px] font-bold dark:fill-slate-100">
                 {level.label} ${level.price.toFixed(2)}{arrow}
               </text>
+              {badge && (
+                <>
+                  <rect x="184" y={y - 11} width="28" height="22" rx="6" fill={color} opacity="0.92" />
+                  <text x="198" y={y + 4} textAnchor="middle" className="fill-white text-[11px] font-black">
+                    {badge}
+                  </text>
+                </>
+              )}
             </g>
           )
         })}
@@ -669,15 +701,15 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         {vwapVisible && latestVwap != null && clampedLatestVwapY != null && (
           <g>
             <line x1={WIDTH - 120} x2={WIDTH} y1={clampedLatestVwapY} y2={clampedLatestVwapY} stroke={VWAP_STROKE} strokeWidth="2.4" />
-            <rect x={WIDTH - 116} y={clampedLatestVwapY - 12} width="112" height="24" rx="6" className="fill-amber-50 stroke-amber-300 dark:fill-slate-950/95 dark:stroke-amber-300/80" />
-            <text x={WIDTH - 60} y={clampedLatestVwapY + 4} textAnchor="middle" className="fill-amber-700 text-[11px] font-bold dark:fill-amber-200">
+            <rect x={WIDTH - 116} y={clampedLatestVwapY - 12} width="112" height="24" rx="6" className="fill-amber-50 stroke-amber-400 dark:fill-slate-950 dark:stroke-amber-300/80" />
+            <text x={WIDTH - 60} y={clampedLatestVwapY + 4} textAnchor="middle" className="fill-amber-900 text-[11px] font-bold dark:fill-amber-200">
               VWAP {formatUsd(latestVwap)}{latestVwapOffscreen ? (latestVwapY! < PRICE_TOP ? ' ↑' : ' ↓') : ''}
             </text>
           </g>
         )}
         {model.xAxisTicks.length > 0 && (
           <g>
-            <line x1="0" x2={WIDTH} y1={VOLUME_BOTTOM + 4} y2={VOLUME_BOTTOM + 4} className="stroke-slate-200 dark:stroke-white/10" />
+            <line x1="0" x2={WIDTH} y1={VOLUME_BOTTOM + 4} y2={VOLUME_BOTTOM + 4} className="stroke-slate-300/70 dark:stroke-white/10" />
             {model.xAxisTicks.map(tick => (
               <g key={`${tick.index}-${tick.label}`}>
                 <line x1={tick.x} x2={tick.x} y1={VOLUME_BOTTOM + 1} y2={VOLUME_BOTTOM + 8} className="stroke-slate-300 dark:stroke-slate-700" />
@@ -690,11 +722,11 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, onInterv
         )}
         {crosshair && (
           <g pointerEvents="none">
-            <line x1={crosshair.x} x2={crosshair.x} y1="0" y2={HEIGHT} className="stroke-slate-400 dark:stroke-slate-500" strokeDasharray="3 4" />
-            <line x1="0" x2={WIDTH} y1={crosshair.y} y2={crosshair.y} className="stroke-slate-400 dark:stroke-slate-500" strokeDasharray="3 4" />
+            <line x1={crosshair.x} x2={crosshair.x} y1="0" y2={HEIGHT} className="stroke-slate-500/80 dark:stroke-slate-400/70" strokeDasharray="3 4" />
+            <line x1="0" x2={WIDTH} y1={crosshair.y} y2={crosshair.y} className="stroke-slate-500/70 dark:stroke-slate-400/50" strokeDasharray="3 4" />
             {crosshairDetail && (
               <g transform={`translate(${clamp(crosshair.x + 14, 8, WIDTH - 178)}, ${clamp(crosshair.y + 14, 8, HEIGHT - 126)})`}>
-                <rect width="170" height="118" rx="8" className="fill-white/95 stroke-slate-200 dark:fill-slate-950/95 dark:stroke-white/10" />
+                <rect width="170" height="118" rx="8" fill="var(--chart-tooltip-bg)" stroke="var(--chart-tooltip-border)" strokeWidth="1" opacity="0.97" />
                 <text x="10" y="18" className="fill-slate-700 text-[11px] font-bold dark:fill-slate-200">Time: {displayTime(crosshairDetail.candle.time, marketTimeZone)}</text>
                 <text x="10" y="36" className="fill-slate-600 text-[11px] dark:fill-slate-300">Open: {formatUsd(crosshairDetail.candle.open)}</text>
                 <text x="10" y="52" className="fill-slate-600 text-[11px] dark:fill-slate-300">High: {formatUsd(crosshairDetail.candle.high)}</text>
