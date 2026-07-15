@@ -59,6 +59,11 @@ type Timeframe = 'Daily' | 'Weekly' | 'Monthly'
 type IndicatorCategory = 'trend' | 'momentum' | 'volatility' | 'volume' | 'levels' | 'context'
 type IndicatorPanel = 'price' | 'volume' | 'oscillator' | 'structure'
 type IndicatorPresetId = 'clean' | 'swing_core' | 'trend' | 'momentum' | 'volatility' | 'engine_recommended'
+type WidgetPlacement = 'right' | 'bottom'
+
+function widgetIdForTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
 
 function handlePlainAnchorClick(event: MouseEvent<HTMLAnchorElement>, action: () => void) {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -518,6 +523,8 @@ export default function SwingTradePage() {
       return 340
     }
   })
+  const [bottomDockOpen, setBottomDockOpen] = useState(false)
+  const [bottomWidgetIds, setBottomWidgetIds] = useState<string[]>([])
   const [mobileWatchlistOpen, setMobileWatchlistOpen] = useState(false)
   const [myTickers, setMyTickers] = useState<Array<{ symbol: string; company?: string; price?: number | null; changePct?: number | null }>>([])
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
@@ -639,6 +646,18 @@ export default function SwingTradePage() {
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
   }, [rightRailWidth])
+  const dockWidgetToBottom = useCallback((widgetId: string) => {
+    setBottomWidgetIds(current => current.includes(widgetId) ? current : [...current, widgetId])
+    setBottomDockOpen(true)
+  }, [])
+  const undockWidgetToRight = useCallback((widgetId: string) => {
+    setBottomWidgetIds(current => current.filter(id => id !== widgetId))
+  }, [])
+  const dropWidgetToBottom = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const sourceId = event.dataTransfer.getData('text/oa-widget-id')
+    if (sourceId) dockWidgetToBottom(sourceId)
+  }, [dockWidgetToBottom])
 
   const resizeChartWidget = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const startY = event.clientY
@@ -859,6 +878,9 @@ export default function SwingTradePage() {
             hasPosition={existingPositions.length > 0}
             rightRailOpen={rightRailOpen}
             onToggleRightRail={() => setRightRailOpen(open => !open)}
+            bottomDockOpen={bottomDockOpen}
+            bottomDockCount={bottomWidgetIds.length}
+            onToggleBottomDock={() => setBottomDockOpen(open => !open)}
           />
 
           {notice && (
@@ -879,10 +901,11 @@ export default function SwingTradePage() {
           )}
 
           <div
-            className={`grid min-h-0 flex-1 gap-1 p-1 md:overflow-hidden ${rightRailOpen ? 'xl:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'xl:grid-cols-1'}`}
+            className={`grid min-h-0 flex-1 auto-rows-max content-start items-start gap-1 overflow-auto p-1 xl:auto-rows-auto xl:content-stretch xl:items-stretch xl:overflow-hidden ${rightRailOpen ? 'xl:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'xl:grid-cols-1'}`}
             style={{ ['--right-rail-width' as string]: `${rightRailWidth}px` }}
           >
-            <section className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
+            <div className={`min-h-0 min-w-0 ${bottomDockOpen ? 'grid gap-1 xl:grid-rows-[minmax(0,3fr)_minmax(180px,1fr)]' : 'flex flex-col'}`}>
+            <section className="flex h-full min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
               <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-900/60">
                 <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
                   <GripVertical size={14} />
@@ -899,7 +922,7 @@ export default function SwingTradePage() {
               </div>
               {!chartMinimized && (
                 <>
-                  <div className="min-h-0 flex-1" style={{ minHeight: chartHeight }}>
+                  <div className="min-h-0 flex-1" style={{ minHeight: bottomDockOpen ? 0 : `clamp(320px, 62dvh, ${chartHeight}px)` }}>
                     <SwingPrimaryChart
                       result={result}
                       unified={unified}
@@ -912,8 +935,43 @@ export default function SwingTradePage() {
                 </>
               )}
             </section>
+            {bottomDockOpen && (
+              <section
+                className="flex min-h-[180px] min-w-0 flex-col overflow-hidden rounded-lg border border-dashed border-violet-300 bg-violet-50/40 dark:border-violet-500/35 dark:bg-violet-950/20"
+                onDragOver={event => event.preventDefault()}
+                onDrop={dropWidgetToBottom}
+              >
+                <div className="flex shrink-0 items-center justify-between border-b border-violet-200/70 px-3 py-2 dark:border-violet-500/20">
+                  <div className="text-[11px] font-black uppercase tracking-widest text-violet-700 dark:text-violet-200">
+                    Bottom Widget Tray · Drop right widgets here
+                  </div>
+                  <button type="button" onClick={() => setBottomDockOpen(false)} className="rounded-md p-1.5 text-secondary hover:bg-white hover:text-heading dark:hover:bg-slate-900" aria-label="Close bottom widget tray" title="Close bottom tray and expand chart">
+                    <X size={15} />
+                  </button>
+                </div>
+                {bottomWidgetIds.length ? (
+                  <SwingRightRail
+                    result={result}
+                    unified={unified}
+                    fibTargets={fibTargets}
+                    existingPositionCount={existingPositions.length}
+                    onAddToPortfolio={handleAddToPortfolio}
+                    onSaveJournal={() => void handleSaveToJournal()}
+                    onAddToAlpaca={handleAddToAlpaca}
+                    placement="bottom"
+                    dockedWidgetIds={bottomWidgetIds}
+                    onUndockWidget={undockWidgetToRight}
+                  />
+                ) : (
+                  <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs font-semibold text-violet-700 dark:text-violet-200">
+                    Drag widgets from the right info panel into this bottom tray.
+                  </div>
+                )}
+              </section>
+            )}
+            </div>
             {chartMaximized && (
-              <div className="fixed inset-4 z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label="Chart widget">
+              <div className="fixed inset-2 z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950 sm:inset-4" role="dialog" aria-modal="true" aria-label="Chart widget">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
                   <div className="text-sm font-black uppercase tracking-widest text-heading">Chart Widget</div>
                   <button type="button" onClick={() => setChartMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized chart">
@@ -950,6 +1008,10 @@ export default function SwingTradePage() {
                   onAddToPortfolio={handleAddToPortfolio}
                   onSaveJournal={() => void handleSaveToJournal()}
                   onAddToAlpaca={handleAddToAlpaca}
+                  placement="right"
+                  dockedWidgetIds={bottomWidgetIds}
+                  onDockWidget={dockWidgetToBottom}
+                  onUndockWidget={undockWidgetToRight}
                 />
               </>
             )}
@@ -1264,6 +1326,9 @@ function SwingTopBar({
   onOpenDayTrade,
   rightRailOpen,
   onToggleRightRail,
+  bottomDockOpen,
+  bottomDockCount,
+  onToggleBottomDock,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
@@ -1278,6 +1343,9 @@ function SwingTopBar({
   onOpenDayTrade: () => void
   rightRailOpen: boolean
   onToggleRightRail: () => void
+  bottomDockOpen: boolean
+  bottomDockCount: number
+  onToggleBottomDock: () => void
 }) {
   const dayTradeRoute = getEngineRoute('day', result?.ticker || ticker)
   return (
@@ -1321,6 +1389,17 @@ function SwingTopBar({
           {rightRailOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
           <span className="hidden xl:inline">{rightRailOpen ? 'Hide Info' : 'Show Info'}</span>
         </button>
+        <button
+          type="button"
+          onClick={onToggleBottomDock}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+          aria-label={bottomDockOpen ? 'Close bottom widget tray' : 'Open bottom widget tray'}
+          title={bottomDockOpen ? 'Close bottom tray and expand chart' : 'Open bottom widget tray'}
+        >
+          <LayoutList size={14} />
+          <span className="hidden sm:inline">{bottomDockOpen ? 'Hide Bottom' : 'Bottom'}</span>
+          {bottomDockCount > 0 && <span className="font-mono text-[10px] text-violet-600 dark:text-violet-300">{bottomDockCount}</span>}
+        </button>
         {hasPosition && (
           <button type="button" onClick={() => window.location.assign(ROUTES.positions)} className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-200">
             In Position
@@ -1351,6 +1430,10 @@ function SwingRightRail({
   onAddToPortfolio,
   onSaveJournal,
   onAddToAlpaca,
+  placement = 'right',
+  dockedWidgetIds = [],
+  onDockWidget,
+  onUndockWidget,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
@@ -1359,6 +1442,10 @@ function SwingRightRail({
   onAddToPortfolio: () => void
   onSaveJournal: () => void
   onAddToAlpaca: () => void
+  placement?: WidgetPlacement
+  dockedWidgetIds?: string[]
+  onDockWidget?: (widgetId: string) => void
+  onUndockWidget?: (widgetId: string) => void
 }) {
   const exec = getExec(result)
   const spread = getSpread(result, unified)
@@ -1370,9 +1457,14 @@ function SwingRightRail({
   const signalQuality = unified?.verdict_presentation?.signal_quality?.label || result?.setup_quality || result?.entry_quality || '—'
   const confidence = unified?.confidence ?? result?.confidence ?? null
   const professional = result?.professional_decision
+  const shouldRenderWidget = (title: string) => {
+    const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
+    return placement === 'bottom' ? docked : !docked
+  }
+  const cardProps = { placement, onDockWidget, onUndockWidget }
   return (
-    <aside className="hidden min-h-0 content-start gap-3 overflow-y-auto overscroll-contain pr-1 xl:grid">
-      <RailCard title="Current Decision">
+    <aside className={placement === 'bottom' ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2' : 'grid min-h-0 w-full content-start gap-3 overflow-visible overscroll-contain pr-0 xl:overflow-y-auto xl:pr-1'}>
+      {shouldRenderWidget('Current Decision') && <RailCard title="Current Decision" {...cardProps}>
         {professional ? (
           <SwingProfessionalDecisionSummary decision={professional} />
         ) : (
@@ -1390,9 +1482,9 @@ function SwingRightRail({
           </>
         )}
         {existingPositionCount > 0 && <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-700 dark:text-amber-200">Already tracked in Positions Center</div>}
-      </RailCard>
+      </RailCard>}
 
-      <RailCard title="Market Structure">
+      {shouldRenderWidget('Market Structure') && <RailCard title="Market Structure" {...cardProps}>
         <div className="grid gap-2">
           <Value label="Trend" value={compactLabel(text(metrics?.trend_direction) || result?.swing_bias || result?.bias)} />
           <Value label="Sequence" value={compactLabel(text(marketStructure?.display) || marketStructureSequence)} muted={!text(marketStructure?.display) && !marketStructureSequence} />
@@ -1400,9 +1492,9 @@ function SwingRightRail({
           <Value label="Expected Next" value={compactLabel(text(metrics?.preferred_entry_trigger) || text(metrics?.entry_quality_label) || result?.entry_quality)} />
           <Value label="Invalidation" value={money(exec.stop ?? unified?.stop_price)} />
         </div>
-      </RailCard>
+      </RailCard>}
 
-      <RailCard title="Entry Plan / Strategy">
+      {shouldRenderWidget('Entry Plan / Strategy') && <RailCard title="Entry Plan / Strategy" {...cardProps}>
         <div className="grid gap-3">
           <div>
             <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Entry Plan</div>
@@ -1449,9 +1541,9 @@ function SwingRightRail({
             />
           </div>
         </div>
-      </RailCard>
+      </RailCard>}
 
-      <RailCard title="AI Coach">
+      {shouldRenderWidget('AI Coach') && <RailCard title="AI Coach" {...cardProps}>
         <div className="space-y-2">
           {buildCoachBullets(unified, result).map(item => (
             <div key={item.label} className="flex gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-xs dark:bg-slate-900">
@@ -1463,9 +1555,9 @@ function SwingRightRail({
             </div>
           ))}
         </div>
-      </RailCard>
+      </RailCard>}
 
-      <RailCard title="Fib Summary">
+      {shouldRenderWidget('Fib Summary') && <RailCard title="Fib Summary" {...cardProps}>
         <div className="grid gap-2">
           <Value label="Active Anchors" value={fibTargets?.fib_swing_high && fibTargets?.fib_swing_low ? `${money(fibTargets.fib_swing_low)} → ${money(fibTargets.fib_swing_high)}` : 'Backend anchors not returned'} muted={!fibTargets?.fib_swing_high || !fibTargets?.fib_swing_low} />
           <Value label="Current Fib Zone" value={fibTargets?.fib_current_zone || 'Backend fib zone not returned'} muted={!fibTargets?.fib_current_zone} />
@@ -1473,7 +1565,7 @@ function SwingRightRail({
           <Value label="Nearest Confluence" value={fibTargets?.fib_nearest_confluence || compactLabel(result?.playbook_hint)} />
           <Value label="Invalidation" value={money(fibTargets?.fib_structural_invalidation ?? fibTargets?.suggested_stop_loss ?? exec.stop)} />
         </div>
-      </RailCard>
+      </RailCard>}
     </aside>
   )
 }
@@ -2637,9 +2729,21 @@ function SectionHero({ eyebrow, title, body, tone, badge }: { eyebrow: string; t
   )
 }
 
-function RailCard({ title, children }: { title: string; children: ReactNode }) {
+function RailCard({
+  title,
+  children,
+  placement = 'right',
+  onDockWidget,
+  onUndockWidget,
+}: {
+  title: string
+  children: ReactNode
+  placement?: WidgetPlacement
+  onDockWidget?: (widgetId: string) => void
+  onUndockWidget?: (widgetId: string) => void
+}) {
   const pinnedFullLength = title === 'Current Decision'
-  const widgetId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const widgetId = widgetIdForTitle(title)
   const [minimized, setMinimized] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [bodyMaxHeight, setBodyMaxHeight] = useState(pinnedFullLength ? 860 : 720)
@@ -2676,7 +2780,7 @@ function RailCard({ title, children }: { title: string; children: ReactNode }) {
   const body = (
     <div
       className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3"
-      style={{ maxHeight: `min(70vh, ${bodyMaxHeight}px)` }}
+      style={{ maxHeight: placement === 'bottom' ? 'none' : `min(70vh, ${bodyMaxHeight}px)` }}
     >
       {children}
     </div>
@@ -2684,7 +2788,7 @@ function RailCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <>
     <section
-      className="swing-trade-widget flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950"
+      className={`swing-trade-widget flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950 ${placement === 'bottom' ? 'h-full' : ''}`}
       data-widget-id={widgetId}
       onDragOver={event => event.preventDefault()}
       onDrop={dropWidget}
@@ -2702,6 +2806,28 @@ function RailCard({ title, children }: { title: string; children: ReactNode }) {
           <span className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
             Widget
           </span>
+          {placement === 'right' && onDockWidget && (
+            <button
+              type="button"
+              onClick={() => onDockWidget(widgetId)}
+              className="hidden rounded-md border border-slate-200 px-1.5 py-1 text-[9px] font-black uppercase tracking-wide text-tertiary hover:border-violet-400 hover:text-heading dark:border-white/[0.08] sm:inline-flex"
+              aria-label={`Move ${title} widget to bottom tray`}
+              title="Move widget to bottom tray"
+            >
+              Bottom
+            </button>
+          )}
+          {placement === 'bottom' && onUndockWidget && (
+            <button
+              type="button"
+              onClick={() => onUndockWidget(widgetId)}
+              className="rounded-md border border-slate-200 px-1.5 py-1 text-[9px] font-black uppercase tracking-wide text-tertiary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+              aria-label={`Move ${title} widget back to right panel`}
+              title="Move widget back to right panel"
+            >
+              Right
+            </button>
+          )}
           {!pinnedFullLength && (
             <button
               type="button"
@@ -2729,17 +2855,17 @@ function RailCard({ title, children }: { title: string; children: ReactNode }) {
           {body}
           <div
             className="h-2 shrink-0 cursor-row-resize border-t border-slate-100 bg-slate-50 transition hover:bg-violet-100 active:bg-violet-200 dark:border-white/[0.05] dark:bg-slate-900/70 dark:hover:bg-violet-950/50"
-            onPointerDown={resizeWidget}
+            onPointerDown={placement === 'bottom' ? undefined : resizeWidget}
             role="separator"
             aria-orientation="horizontal"
             aria-label={`Resize ${title} widget`}
-            title="Drag to resize widget"
+            title={placement === 'bottom' ? 'Bottom tray height is controlled by the center frame' : 'Drag to resize widget'}
           />
         </>
       )}
     </section>
     {maximized && (
-      <div className="fixed inset-y-3 right-3 z-50 flex w-[min(520px,calc(100vw-1.5rem))] max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label={`${title} widget`}>
+      <div className="fixed inset-x-2 inset-y-3 z-50 flex max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950 sm:left-auto sm:right-3 sm:w-[min(520px,calc(100vw-1.5rem))]" role="dialog" aria-modal="true" aria-label={`${title} widget`}>
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
           <div className="text-sm font-black uppercase tracking-widest text-heading">{title}</div>
           <button type="button" onClick={() => setMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized widget">

@@ -16,6 +16,7 @@ import OpenPositionsFeedTable, {
 } from '../components/OpenPositionsFeedTable'
 import { PositionCategoryPill } from '../components/PositionHubCard'
 import { exitActiveTrade, listActiveTrades, type ActiveTradeRow } from '../api/client'
+import { parseBrokerContractPosition } from '../api/commandCenter'
 import { inferPortfolioHubCategory } from '../utils/positionCategory'
 import {
   isPortfolioExpiryAnalysisFresh,
@@ -368,6 +369,9 @@ function ManualPositionEditor({
   const [notes,           setNotes]          = useState('')
   const [legStrikes,      setLegStrikes]     = useState<string[]>(['', '', '', ''])
   const [legPremiums,     setLegPremiums]    = useState<string[]>(['', '', '', ''])
+  const [brokerText,      setBrokerText]     = useState('')
+  const [brokerParseError, setBrokerParseError] = useState('')
+  const [brokerImporting, setBrokerImporting] = useState(false)
 
   useEffect(() => {
     if (!initialPosition) {
@@ -380,6 +384,9 @@ function ManualPositionEditor({
       setNotes('')
       setLegStrikes(['', '', '', ''])
       setLegPremiums(['', '', '', ''])
+      setBrokerText('')
+      setBrokerParseError('')
+      setBrokerImporting(false)
       return
     }
     const strat = resolveEditorStrategyForEdit(initialPosition)
@@ -393,6 +400,9 @@ function ManualPositionEditor({
     setNotes(initialPosition.notes ?? '')
     setLegStrikes(strikes)
     setLegPremiums(premiums)
+    setBrokerText('')
+    setBrokerParseError('')
+    setBrokerImporting(false)
   }, [initialPosition])
 
   const def = STRATEGY_DEFS[strategy]
@@ -416,6 +426,47 @@ function ManualPositionEditor({
   }
 
   const contractsParsed = parseContractCount(contractsInput)
+
+  const applyParsedContractToFields = (nextForm: {
+    ticker?: string
+    strategy?: string
+    expiry?: string
+    contractCount?: string
+    entryStockPrice?: string
+    legStrikes?: string[]
+    legPremiums?: string[]
+    notes?: string
+  }) => {
+    if (nextForm.ticker) {
+      setTicker(nextForm.ticker)
+      setCompanyName(nextForm.ticker)
+    }
+    if (nextForm.strategy) setStrategy(nextForm.strategy)
+    if (nextForm.expiry) setExpiry(nextForm.expiry)
+    if (nextForm.contractCount) setContractsInput(nextForm.contractCount)
+    if (nextForm.entryStockPrice) setEntryStock(nextForm.entryStockPrice)
+    if (nextForm.legStrikes) setLegStrikes(nextForm.legStrikes.slice(0, 4).concat(['', '', '', '']).slice(0, 4))
+    if (nextForm.legPremiums) setLegPremiums(nextForm.legPremiums.slice(0, 4).concat(['', '', '', '']).slice(0, 4))
+    if (nextForm.notes) setNotes(nextForm.notes)
+  }
+
+  const handleImportBrokerContract = async (autoAdd: boolean) => {
+    setBrokerParseError('')
+    setBrokerImporting(true)
+    try {
+      const response = await parseBrokerContractPosition({ text: brokerText, trade_source: 'manual' })
+      if (!response.data) throw new Error('No contract data returned.')
+      applyParsedContractToFields(response.data.form)
+      if (autoAdd) {
+        onCommit(response.data.position)
+        if (variant === 'modal') onCancel()
+      }
+    } catch (err) {
+      setBrokerParseError(err instanceof Error ? err.message : 'Could not read that contract.')
+    } finally {
+      setBrokerImporting(false)
+    }
+  }
 
   const legsComplete = def.legs.every((_, i) => strikesNum[i] > 0 && premiumsNum[i] > 0)
   const canSubmit =
@@ -486,6 +537,40 @@ function ManualPositionEditor({
 
   const fieldsBlock = (
     <div className={variant === 'modal' ? 'p-5 space-y-4 max-h-[75vh] overflow-y-auto' : 'space-y-4'}>
+      {!isEdit && (
+        <section className="rounded-xl border border-violet-500/25 bg-violet-950/20 p-3">
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-violet-300">Paste Broker Contract</div>
+          <textarea
+            className={`${inputCls} min-h-[92px] resize-y font-mono text-xs leading-relaxed`}
+            value={brokerText}
+            onChange={e => {
+              setBrokerText(e.target.value)
+              setBrokerParseError('')
+            }}
+            placeholder={'Buy to Open\n1 Contract TSLA Jul 24 2026 397.5 Put Limit at $15.30 (Day)\nFilled at $15.30'}
+          />
+          {brokerParseError && <div className="mt-2 text-xs font-semibold text-red-300">{brokerParseError}</div>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleImportBrokerContract(true)}
+              disabled={brokerImporting || !brokerText.trim()}
+              className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+            >
+              {brokerImporting ? 'Reading...' : 'Add Contract'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleImportBrokerContract(false)}
+              disabled={brokerImporting || !brokerText.trim()}
+              className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-bold text-gray-300 hover:border-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Fill Form
+            </button>
+          </div>
+        </section>
+      )}
+
       {isEdit && initialPosition && !STRATEGY_DEFS[initialPosition.strategy] && (
         <p className="text-xs text-amber-400/90 rounded-lg bg-amber-950/25 border border-amber-900/50 px-3 py-2">
           Saved strategy name &quot;{initialPosition.strategy}&quot; was matched to template <span className="font-semibold text-amber-200">{strategy}</span> from your legs. Change the dropdown if that is wrong.

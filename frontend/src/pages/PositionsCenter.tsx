@@ -21,7 +21,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { fetchPositionsCenter, fetchStockTargets } from '../api/commandCenter'
+import { fetchPositionsCenter, fetchStockTargets, parseBrokerContractPosition } from '../api/commandCenter'
 import type { StockTargetData } from '../api/commandCenter'
 import { ROUTES } from '../routing/routes'
 import { useApp } from '../contexts/AppContext'
@@ -3399,6 +3399,34 @@ function AddPositionModal({
     ...emptyForm(),
     tradeSource: sourceOptions[0]?.id ?? 'regular',
   }))
+  const [brokerText, setBrokerText] = useState('')
+  const [brokerParseError, setBrokerParseError] = useState('')
+  const [brokerImporting, setBrokerImporting] = useState(false)
+
+  const applyParsedContractToForm = (nextForm: Partial<FormState>) => {
+    setForm(current => ({
+      ...current,
+      ...nextForm,
+      tradeSource: sourceOptions.some(option => option.id === nextForm.tradeSource)
+        ? nextForm.tradeSource as FormState['tradeSource']
+        : current.tradeSource,
+    }))
+  }
+
+  const handleImportBrokerContract = async (autoAdd: boolean) => {
+    setBrokerParseError('')
+    setBrokerImporting(true)
+    try {
+      const response = await parseBrokerContractPosition({ text: brokerText, trade_source: form.tradeSource })
+      if (!response.data) throw new Error('No contract data returned.')
+      applyParsedContractToForm(response.data.form)
+      if (autoAdd) onSave(response.data.position)
+    } catch (err) {
+      setBrokerParseError(err instanceof Error ? err.message : 'Could not read that contract.')
+    } finally {
+      setBrokerImporting(false)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -3519,6 +3547,37 @@ function AddPositionModal({
       </div>
       <form onSubmit={handleSubmit}>
         <div className="px-6 py-5">
+          <section className="mb-4 rounded-xl border border-violet-500/25 bg-violet-500/10 p-3">
+            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-200">Paste Broker Contract</div>
+            <textarea
+              className="w-full min-h-[92px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-primary outline-none placeholder:text-tertiary focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-800"
+              value={brokerText}
+              onChange={e => {
+                setBrokerText(e.target.value)
+                setBrokerParseError('')
+              }}
+              placeholder={'Buy to Open\n1 Contract TSLA Jul 24 2026 397.5 Put Limit at $15.30 (Day)\nFilled at $15.30'}
+            />
+            {brokerParseError && <div className="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{brokerParseError}</div>}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleImportBrokerContract(true)}
+                disabled={brokerImporting || !brokerText.trim()}
+                className={`${getActionButtonClass('trade')} rounded-lg px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {brokerImporting ? 'Reading...' : 'Add Contract'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleImportBrokerContract(false)}
+                disabled={brokerImporting || !brokerText.trim()}
+                className={`${getActionButtonClass('surface')} rounded-lg px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                Fill Form
+              </button>
+            </div>
+          </section>
           <PositionFormFields form={form} onChange={patch => setForm(f => ({ ...f, ...patch }))} sourceOptions={sourceOptions} />
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import time
 import uuid
 from datetime import date, datetime, timezone, timedelta
@@ -1868,6 +1869,175 @@ def _sync_position_to_journal(email: str, pos: dict[str, Any]) -> None:
 
 class PortfolioAddBody(BaseModel):
     position: dict[str, Any]
+
+
+class BrokerContractParseBody(BaseModel):
+    text: str = Field(..., min_length=1)
+    trade_source: str = Field(default="regular")
+
+
+_BROKER_MONTHS = {
+    "jan": "01",
+    "january": "01",
+    "feb": "02",
+    "february": "02",
+    "mar": "03",
+    "march": "03",
+    "apr": "04",
+    "april": "04",
+    "may": "05",
+    "jun": "06",
+    "june": "06",
+    "jul": "07",
+    "july": "07",
+    "aug": "08",
+    "august": "08",
+    "sep": "09",
+    "sept": "09",
+    "september": "09",
+    "oct": "10",
+    "october": "10",
+    "nov": "11",
+    "november": "11",
+    "dec": "12",
+    "december": "12",
+}
+
+
+def _broker_strategy(action: str, option_type: str) -> tuple[str, str]:
+    if action == "BUY" and option_type == "CALL":
+        return "Long Call", "Bullish"
+    if action == "BUY" and option_type == "PUT":
+        return "Long Put", "Bearish"
+    if action == "SELL" and option_type == "CALL":
+        return "Short Call", "Bearish"
+    return "Short Put", "Bullish"
+
+
+def _broker_single_leg_metrics(action: str, option_type: str, strike: float, premium: float) -> dict[str, float]:
+    net_credit = premium if action == "SELL" else -premium
+    if action == "SELL":
+        max_profit = premium
+        max_loss = round(premium * 2, 2)
+        be_lower = round(strike - premium, 2) if option_type == "PUT" else 0.0
+        be_upper = round(strike + premium, 2) if option_type == "CALL" else 0.0
+    else:
+        max_profit = round(premium * 10, 2)
+        max_loss = premium
+        be_lower = round(strike - premium, 2) if option_type == "PUT" else 0.0
+        be_upper = round(strike + premium, 2) if option_type == "CALL" else 0.0
+    return {
+        "net_credit": round(net_credit, 2),
+        "spread_width": 0.0,
+        "max_profit": round(max_profit, 2),
+        "max_loss": round(max_loss, 2),
+        "breakeven_lower": be_lower,
+        "breakeven_upper": be_upper,
+    }
+
+
+@command_center_router.post("/portfolio/parse-contract")
+def post_portfolio_parse_contract(body: BrokerContractParseBody, auth_email: str = Depends(require_access_email)):
+    text = re.sub(r"\s+", " ", body.text).strip()
+    order_match = re.search(
+        r"\b(Buy|Sell)\s+to\s+Open\s+(\d+)\s+Contracts?\s+([A-Z]{1,6})\s+([A-Za-z]{3,9})\s+"
+        r"(\d{1,2})\s+(\d{4})\s+(\d+(?:\.\d+)?)\s+(Call|Put)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not order_match:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not read that contract. Expected Buy/Sell to Open, contracts, ticker, date, strike, call/put, and limit or filled price.",
+        )
+    fill_match = re.search(r"\bFilled\s+at\s+\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
+    limit_match = re.search(r"\bLimit\s+at\s+\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
+    premium_raw = fill_match.group(1) if fill_match else (limit_match.group(1) if limit_match else None)
+    month = _BROKER_MONTHS.get(order_match.group(4).lower())
+    if not month or premium_raw is None:
+        raise HTTPException(status_code=422, detail="Could not read the contract expiry month or premium.")
+
+    try:
+        contracts = int(order_match.group(2))
+        strike = float(order_match.group(7))
+        premium = float(premium_raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Contract quantity, strike, or premium is invalid.") from exc
+    if contracts < 1 or strike <= 0 or premium <= 0:
+        raise HTTPException(status_code=422, detail="Contract quantity, strike, and premium must be positive.")
+
+    action = "SELL" if order_match.group(1).upper() == "SELL" else "BUY"
+    option_type = "CALL" if order_match.group(8).upper() == "CALL" else "PUT"
+    ticker = order_match.group(3).upper()
+    expiry = f"{order_match.group(6)}-{month}-{order_match.group(5).zfill(2)}"
+    strategy, bias = _broker_strategy(action, option_type)
+    metrics = _broker_single_leg_metrics(action, option_type, strike, premium)
+    try:
+        exp_date = date.fromisoformat(expiry)
+        dte = (exp_date - date.today()).days
+    except ValueError:
+        dte = 0
+    source = body.trade_source if body.trade_source in {"day", "swing", "regular", "manual"} else "regular"
+    notes = f"Imported broker contract:\n{body.text.strip()}"
+    leg = {
+        "action": action,
+        "option_type": option_type,
+        "strike": strike,
+        "expiry": expiry,
+        "delta": 0,
+        "mid_price": premium,
+        "bid": premium,
+        "ask": premium,
+        "iv": 0,
+        "oi": 0,
+        "volume": 0,
+        "bid_ask_spread_pct": 0,
+    }
+    position = {
+        "ticker": ticker,
+        "companyName": ticker,
+        "strategy": strategy,
+        "bias": bias,
+        "legs": [leg],
+        "expiry": expiry,
+        "dte": dte,
+        "prob_of_profit": 0,
+        "expected_value": 0,
+        "scores_total": 0,
+        "contracts": contracts,
+        "entryPrice": strike,
+        "source": source,
+        "capital_at_risk": round(metrics["max_loss"] * 100 * contracts),
+        "notes": notes,
+        **metrics,
+    }
+    form = {
+        "ticker": ticker,
+        "tradeSource": source if source in {"day", "swing", "regular"} else "regular",
+        "strategy": strategy,
+        "expiry": expiry,
+        "backExpiry": "",
+        "contractCount": str(contracts),
+        "entryStockPrice": str(strike),
+        "legStrikes": [str(strike), "", "", ""],
+        "legPremiums": [str(premium), "", "", ""],
+        "notes": notes,
+    }
+    return api_envelope({
+        "ok": True,
+        "position": position,
+        "form": form,
+        "parsed": {
+            "action": action,
+            "contracts": contracts,
+            "ticker": ticker,
+            "expiry": expiry,
+            "strike": strike,
+            "option_type": option_type,
+            "premium": premium,
+            "price_source": "fill" if fill_match else "limit",
+        },
+    })
 
 
 @command_center_router.post("/portfolio/add")

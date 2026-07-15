@@ -24,6 +24,12 @@ type Props = {
   onRightRailWidthChange?: (width: number) => void
 }
 
+type WidgetPlacement = 'right' | 'bottom'
+
+function widgetIdForTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
+
 function marketStructureBadgeClass(value?: string | null): string {
   const text = String(value || '').toLowerCase()
   if (text.includes('bull') || text.includes('uptrend') || text.includes('higher')) {
@@ -148,6 +154,8 @@ export default function DayTradeWorkspaceShell({
   const action = workspace.decision.primaryAction
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   const [activeDetailTab, setActiveDetailTab] = useState<string | null>(null)
+  const [bottomDockOpen, setBottomDockOpen] = useState(false)
+  const [bottomWidgetIds, setBottomWidgetIds] = useState<string[]>([])
   const [displayTimeZone, setDisplayTimeZone] = useState(() => {
     try {
       return localStorage.getItem('oa_timezone') || workspace.session.marketTimeZone
@@ -189,9 +197,16 @@ export default function DayTradeWorkspaceShell({
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
   }
+  const dockWidgetToBottom = (widgetId: string) => {
+    setBottomWidgetIds(current => current.includes(widgetId) ? current : [...current, widgetId])
+    setBottomDockOpen(true)
+  }
+  const undockWidgetToRight = (widgetId: string) => {
+    setBottomWidgetIds(current => current.filter(id => id !== widgetId))
+  }
 
   return (
-    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-visible rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full md:overflow-hidden md:rounded-none md:border-0 md:shadow-none">
+    <div className="day-trade-workspace-shell relative flex min-h-0 flex-col overflow-visible rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 dark:text-slate-100 md:h-full md:overflow-auto md:rounded-none md:border-0 md:shadow-none xl:overflow-hidden">
       <SessionStatusBar workspace={workspace} displayTimeZone={displayTimeZone} />
       <TradeDecisionHeader
         workspace={workspace}
@@ -200,23 +215,44 @@ export default function DayTradeWorkspaceShell({
         onOpenDetails={() => setDetailDrawerOpen(true)}
         rightRailOpen={rightRailOpen}
         onToggleRightRail={onToggleRightRail}
+        bottomDockOpen={bottomDockOpen}
+        bottomDockCount={bottomWidgetIds.length}
+        onToggleBottomDock={() => setBottomDockOpen(open => !open)}
       />
       <div
-        className={`grid min-h-0 flex-1 gap-1 p-1 ${rightRailOpen ? 'md:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'md:grid-cols-1'}`}
+        className={`grid min-h-0 flex-1 auto-rows-max content-start items-start gap-1 p-1 xl:auto-rows-auto xl:content-stretch xl:items-stretch ${rightRailOpen ? 'xl:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'xl:grid-cols-1'}`}
         style={{ ['--right-rail-width' as string]: `${rightRailWidth}px` }}
       >
-        <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} selectedInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+        <WorkspaceCenterFrame
+          workspace={workspace}
+          displayTimeZone={displayTimeZone}
+          selectedInterval={selectedInterval}
+          onIntervalChange={onIntervalChange}
+          bottomDockOpen={bottomDockOpen}
+          bottomWidgetIds={bottomWidgetIds}
+          onCloseBottomDock={() => setBottomDockOpen(false)}
+          onDockWidget={dockWidgetToBottom}
+          onUndockWidget={undockWidgetToRight}
+          onAction={onAction}
+        />
         {rightRailOpen && (
           <>
             <div
-              className="hidden cursor-col-resize rounded-full bg-slate-200 transition hover:bg-violet-400 active:bg-violet-500 dark:bg-white/[0.08] md:block"
+              className="hidden cursor-col-resize rounded-full bg-slate-200 transition hover:bg-violet-400 active:bg-violet-500 dark:bg-white/[0.08] xl:block"
               onPointerDown={resizeRightRail}
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right info panel"
               title="Drag to resize right panel"
             />
-            <TradeDecisionPanel workspace={workspace} onAction={onAction} />
+            <TradeDecisionPanel
+              workspace={workspace}
+              onAction={onAction}
+              placement="right"
+              dockedWidgetIds={bottomWidgetIds}
+              onDockWidget={dockWidgetToBottom}
+              onUndockWidget={undockWidgetToRight}
+            />
           </>
         )}
       </div>
@@ -267,6 +303,9 @@ export function TradeDecisionHeader({
   onOpenDetails,
   rightRailOpen = true,
   onToggleRightRail,
+  bottomDockOpen = false,
+  bottomDockCount = 0,
+  onToggleBottomDock,
 }: {
   workspace: DayTradeWorkspaceResponse
   action: DayTradeWorkspaceAction
@@ -274,6 +313,9 @@ export function TradeDecisionHeader({
   onOpenDetails?: () => void
   rightRailOpen?: boolean
   onToggleRightRail?: () => void
+  bottomDockOpen?: boolean
+  bottomDockCount?: number
+  onToggleBottomDock?: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const secondaryActions = workspace.decision.secondaryActions || []
@@ -316,6 +358,19 @@ export function TradeDecisionHeader({
           >
             {rightRailOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
             <span className="hidden xl:inline">{rightRailOpen ? 'Hide Info' : 'Show Info'}</span>
+          </button>
+        )}
+        {onToggleBottomDock && (
+          <button
+            type="button"
+            onClick={onToggleBottomDock}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-black text-secondary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+            aria-label={bottomDockOpen ? 'Close bottom widget tray' : 'Open bottom widget tray'}
+            title={bottomDockOpen ? 'Close bottom tray and expand chart' : 'Open bottom widget tray'}
+          >
+            <LayoutList size={16} />
+            <span className="hidden sm:inline">{bottomDockOpen ? 'Hide Bottom' : 'Bottom'}</span>
+            {bottomDockCount > 0 && <span className="font-mono text-[10px] text-violet-600 dark:text-violet-300">{bottomDockCount}</span>}
           </button>
         )}
         <button
@@ -374,7 +429,71 @@ export function TradeDecisionHeader({
   )
 }
 
-export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInterval, onIntervalChange }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; selectedInterval?: '1m' | '5m' | '15m'; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void }) {
+export function WorkspaceCenterFrame({
+  workspace,
+  displayTimeZone,
+  selectedInterval,
+  onIntervalChange,
+  bottomDockOpen,
+  bottomWidgetIds,
+  onCloseBottomDock,
+  onDockWidget,
+  onUndockWidget,
+  onAction,
+}: {
+  workspace: DayTradeWorkspaceResponse
+  displayTimeZone: string
+  selectedInterval?: '1m' | '5m' | '15m'
+  onIntervalChange?: (interval: '1m' | '5m' | '15m') => void
+  bottomDockOpen: boolean
+  bottomWidgetIds: string[]
+  onCloseBottomDock: () => void
+  onDockWidget: (widgetId: string) => void
+  onUndockWidget: (widgetId: string) => void
+  onAction?: (action: DayTradeWorkspaceAction) => void
+}) {
+  const onDropBottom = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const sourceId = event.dataTransfer.getData('text/oa-widget-id')
+    if (sourceId) onDockWidget(sourceId)
+  }
+  return (
+    <div className={`min-h-0 min-w-0 ${bottomDockOpen ? 'grid gap-1 xl:grid-rows-[minmax(0,3fr)_minmax(180px,1fr)]' : 'flex flex-col'}`}>
+      <WorkspaceChartPreview workspace={workspace} displayTimeZone={displayTimeZone} selectedInterval={selectedInterval} onIntervalChange={onIntervalChange} fillFrame={bottomDockOpen} />
+      {bottomDockOpen && (
+        <section
+          className="flex min-h-[180px] min-w-0 flex-col overflow-hidden rounded-lg border border-dashed border-violet-300 bg-violet-50/40 dark:border-violet-500/35 dark:bg-violet-950/20"
+          onDragOver={event => event.preventDefault()}
+          onDrop={onDropBottom}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-violet-200/70 px-3 py-2 dark:border-violet-500/20">
+            <div className="text-[11px] font-black uppercase tracking-widest text-violet-700 dark:text-violet-200">
+              Bottom Widget Tray · Drop right widgets here
+            </div>
+            <button type="button" onClick={onCloseBottomDock} className="rounded-md p-1.5 text-secondary hover:bg-white hover:text-heading dark:hover:bg-slate-900" aria-label="Close bottom widget tray" title="Close bottom tray and expand chart">
+              <X size={15} />
+            </button>
+          </div>
+          {bottomWidgetIds.length ? (
+            <TradeDecisionPanel
+              workspace={workspace}
+              onAction={onAction}
+              placement="bottom"
+              dockedWidgetIds={bottomWidgetIds}
+              onUndockWidget={onUndockWidget}
+            />
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs font-semibold text-violet-700 dark:text-violet-200">
+              Drag widgets from the right info panel into this bottom tray.
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  )
+}
+
+export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInterval, onIntervalChange, fillFrame = false }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; selectedInterval?: '1m' | '5m' | '15m'; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void; fillFrame?: boolean }) {
   const [minimized, setMinimized] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [chartHeight, setChartHeight] = useState(680)
@@ -393,13 +512,13 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
     window.addEventListener('pointerup', handleUp)
   }
   const chartBody = (
-    <div className="min-h-0 flex-1" style={{ minHeight: minimized ? 0 : chartHeight }}>
+    <div className="min-h-0 flex-1" style={{ minHeight: minimized ? 0 : fillFrame ? 0 : `clamp(320px, 62dvh, ${chartHeight}px)` }}>
       <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
     </div>
   )
   return (
     <>
-    <section className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
+    <section className="flex h-full min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-900/60">
         <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
           <GripVertical size={14} />
@@ -420,7 +539,7 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
       )}
     </section>
     {maximized && (
-      <div className="fixed inset-4 z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label="Chart widget">
+      <div className="fixed inset-2 z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950 sm:inset-4" role="dialog" aria-modal="true" aria-label="Chart widget">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
           <div className="text-sm font-black uppercase tracking-widest text-heading">Chart Widget</div>
           <button type="button" onClick={() => setMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized chart">
@@ -436,7 +555,21 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
   )
 }
 
-export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTradeWorkspaceResponse; onAction?: (action: DayTradeWorkspaceAction) => void }) {
+export function TradeDecisionPanel({
+  workspace,
+  onAction,
+  placement = 'right',
+  dockedWidgetIds = [],
+  onDockWidget,
+  onUndockWidget,
+}: {
+  workspace: DayTradeWorkspaceResponse
+  onAction?: (action: DayTradeWorkspaceAction) => void
+  placement?: WidgetPlacement
+  dockedWidgetIds?: string[]
+  onDockWidget?: (widgetId: string) => void
+  onUndockWidget?: (widgetId: string) => void
+}) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const engine = workspace.decisionEngine
   const professional = workspace.professionalDecision
@@ -449,9 +582,14 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
   const reward = entry != null && target2 != null ? Math.abs(target2 - entry) : null
   const decisionChecks = buildDecisionChecks(workspace)
   const decisionWarnings = buildDecisionWarnings(workspace)
+  const shouldRenderWidget = (title: string) => {
+    const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
+    return placement === 'bottom' ? docked : !docked
+  }
+  const panelProps = { placement, onDockWidget, onUndockWidget }
   return (
-    <aside className="grid max-h-[70vh] content-start gap-2 overflow-y-auto overscroll-contain pr-1 lg:max-h-none">
-      <Panel title="Current Decision">
+    <aside className={placement === 'bottom' ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2' : 'grid w-full max-h-none content-start gap-2 overflow-visible overscroll-contain pr-0 xl:max-h-none xl:overflow-y-auto xl:pr-1'}>
+      {shouldRenderWidget('Current Decision') && <Panel title="Current Decision" {...panelProps}>
         {professional ? (
           <ProfessionalDecisionSummary decision={professional} />
         ) : engine ? (
@@ -546,8 +684,8 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
             </div>
           </div>
         )}
-      </Panel>
-      <Panel title="Entry / Stop / Targets">
+      </Panel>}
+      {shouldRenderWidget('Entry / Stop / Targets') && <Panel title="Entry / Stop / Targets" {...panelProps}>
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={professional?.risk.entry.display ?? workspace.riskPlan.entry.display} />
           <Value label="Stop" value={professional?.risk.stop.display ?? workspace.riskPlan.stop.display} />
@@ -575,8 +713,8 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
             onClick={() => onAction?.({ id: 'quick_alpaca', type: 'alpaca', label: 'Open Alpaca Trading', enabled: true })}
           />
         </div>
-      </Panel>
-      <Panel title="Setup">
+      </Panel>}
+      {shouldRenderWidget('Setup') && <Panel title="Setup" {...panelProps}>
         {engine ? (
           <div className="grid gap-2">
             <Value label="Today's Setup" value={engine.setup.setupType} />
@@ -595,8 +733,8 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
             </div>
           </div>
         )}
-      </Panel>
-      <Panel title="Market Structure">
+      </Panel>}
+      {shouldRenderWidget('Market Structure') && <Panel title="Market Structure" {...panelProps}>
         {workspace.chart.marketStructure ? (
           <div className="grid gap-2">
             <div className="flex items-center justify-between gap-2">
@@ -621,8 +759,8 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
         ) : (
           <div className="text-xs text-tertiary">No backend market structure payload for this workspace.</div>
         )}
-      </Panel>
-      <Panel title="Trigger">
+      </Panel>}
+      {shouldRenderWidget('Trigger') && <Panel title="Trigger" {...panelProps}>
         <StatusPill status={workspace.trigger.status} />
         <div className="mt-2 text-xs text-secondary">{workspace.trigger.summary}</div>
         {engine && (
@@ -641,10 +779,10 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
             </div>
           ))}
         </div>
-      </Panel>
-      <RiskMonitorPanel workspace={workspace} />
+      </Panel>}
+      <RiskMonitorPanel workspace={workspace} placement={placement} dockedWidgetIds={dockedWidgetIds} onDockWidget={onDockWidget} onUndockWidget={onUndockWidget} />
       {workspace.selectedContract && (
-        <Panel title="Contract / Risk">
+        shouldRenderWidget('Contract / Risk') && <Panel title="Contract / Risk" {...panelProps}>
           <div className="grid grid-cols-2 gap-2">
             <Value label="Expiry" value={workspace.selectedContract.expiration.display} />
             <Value label="DTE" value={workspace.selectedContract.dte.display} />
@@ -658,7 +796,7 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
           </div>
         </Panel>
       )}
-      <Panel title="Why This State">
+      {shouldRenderWidget('Why This State') && <Panel title="Why This State" {...panelProps}>
         {professional ? (
           <ProfessionalWhy decision={professional} />
         ) : (
@@ -691,7 +829,7 @@ export function TradeDecisionPanel({ workspace, onAction }: { workspace: DayTrad
           )}
           </>
         )}
-      </Panel>
+      </Panel>}
     </aside>
   )
 }
@@ -802,15 +940,30 @@ function displayBackendText(value?: unknown): string {
   return text || 'Unavailable'
 }
 
-function RiskMonitorPanel({ workspace }: { workspace: DayTradeWorkspaceResponse }) {
+function RiskMonitorPanel({
+  workspace,
+  placement = 'right',
+  dockedWidgetIds = [],
+  onDockWidget,
+  onUndockWidget,
+}: {
+  workspace: DayTradeWorkspaceResponse
+  placement?: WidgetPlacement
+  dockedWidgetIds?: string[]
+  onDockWidget?: (widgetId: string) => void
+  onUndockWidget?: (widgetId: string) => void
+}) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const monitor = workspace.trapDetection?.riskMonitor
   const items = monitor?.items || []
+  const title = monitor?.title || 'Risk Monitor'
+  const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
 
   if (!workspace.trapDetection?.enabled) return null
+  if (placement === 'bottom' ? !docked : docked) return null
 
   return (
-    <Panel title={monitor?.title || 'Risk Monitor'}>
+    <Panel title={title} placement={placement} onDockWidget={onDockWidget} onUndockWidget={onUndockWidget}>
       {items.length ? (
         <div className="grid gap-2">
           {items.map((item, index) => {
@@ -1133,9 +1286,21 @@ function StatusPill({ status }: { status: DayTradeWorkspaceStatus }) {
   )
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  children,
+  placement = 'right',
+  onDockWidget,
+  onUndockWidget,
+}: {
+  title: string
+  children: React.ReactNode
+  placement?: WidgetPlacement
+  onDockWidget?: (widgetId: string) => void
+  onUndockWidget?: (widgetId: string) => void
+}) {
   const pinnedFullLength = title === 'Current Decision'
-  const widgetId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const widgetId = widgetIdForTitle(title)
   const [minimized, setMinimized] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [bodyMaxHeight, setBodyMaxHeight] = useState(pinnedFullLength ? 860 : 720)
@@ -1172,7 +1337,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   const body = (
     <div
       className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3"
-      style={{ maxHeight: `min(70vh, ${bodyMaxHeight}px)` }}
+      style={{ maxHeight: placement === 'bottom' ? 'none' : `min(70vh, ${bodyMaxHeight}px)` }}
     >
       {children}
     </div>
@@ -1180,7 +1345,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   return (
     <>
     <section
-      className="day-trade-widget flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950"
+      className={`day-trade-widget flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-950 ${placement === 'bottom' ? 'h-full' : ''}`}
       data-widget-id={widgetId}
       onDragOver={event => event.preventDefault()}
       onDrop={dropWidget}
@@ -1198,6 +1363,28 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
           <span className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
             Widget
           </span>
+          {placement === 'right' && onDockWidget && (
+            <button
+              type="button"
+              onClick={() => onDockWidget(widgetId)}
+              className="hidden rounded-md border border-slate-200 px-1.5 py-1 text-[9px] font-black uppercase tracking-wide text-tertiary hover:border-violet-400 hover:text-heading dark:border-white/[0.08] sm:inline-flex"
+              aria-label={`Move ${title} widget to bottom tray`}
+              title="Move widget to bottom tray"
+            >
+              Bottom
+            </button>
+          )}
+          {placement === 'bottom' && onUndockWidget && (
+            <button
+              type="button"
+              onClick={() => onUndockWidget(widgetId)}
+              className="rounded-md border border-slate-200 px-1.5 py-1 text-[9px] font-black uppercase tracking-wide text-tertiary hover:border-violet-400 hover:text-heading dark:border-white/[0.08]"
+              aria-label={`Move ${title} widget back to right panel`}
+              title="Move widget back to right panel"
+            >
+              Right
+            </button>
+          )}
           {!pinnedFullLength && (
             <button
               type="button"
@@ -1225,17 +1412,17 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
           {body}
           <div
             className="h-2 shrink-0 cursor-row-resize border-t border-slate-100 bg-slate-50 transition hover:bg-violet-100 active:bg-violet-200 dark:border-white/[0.05] dark:bg-slate-900/70 dark:hover:bg-violet-950/50"
-            onPointerDown={resizeWidget}
+            onPointerDown={placement === 'bottom' ? undefined : resizeWidget}
             role="separator"
             aria-orientation="horizontal"
             aria-label={`Resize ${title} widget`}
-            title="Drag to resize widget"
+            title={placement === 'bottom' ? 'Bottom tray height is controlled by the center frame' : 'Drag to resize widget'}
           />
         </>
       )}
     </section>
     {maximized && (
-      <div className="fixed inset-y-3 right-3 z-50 flex w-[min(520px,calc(100vw-1.5rem))] max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950" role="dialog" aria-modal="true" aria-label={`${title} widget`}>
+      <div className="fixed inset-x-2 inset-y-3 z-50 flex max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-slate-950 sm:left-auto sm:right-3 sm:w-[min(520px,calc(100vw-1.5rem))]" role="dialog" aria-modal="true" aria-label={`${title} widget`}>
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-slate-900">
           <div className="text-sm font-black uppercase tracking-widest text-heading">{title}</div>
           <button type="button" onClick={() => setMaximized(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label="Close maximized widget">

@@ -1,6 +1,8 @@
+import axios from 'axios'
 import { api, generatedApiPath } from './client'
 import type { ApiOperationId, ApiSchemas } from './generated/openapi-types'
 import type { AlertCenterPayload, AlertCenterSummaryResponse, ApiEnvelope, TradeCommandCenterPayload, SignalFeedPayload } from '../types/commandCenter'
+import type { PortfolioPosition } from '../types'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -229,6 +231,40 @@ export async function addPortfolioPosition(payload: {
     body,
   )
   return data
+}
+
+export interface ParsedBrokerContractPositionResponse {
+  ok: boolean
+  position: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>
+  form: {
+    ticker?: string
+    tradeSource?: 'day' | 'swing' | 'regular'
+    strategy?: string
+    expiry?: string
+    backExpiry?: string
+    contractCount?: string
+    entryStockPrice?: string
+    legStrikes?: string[]
+    legPremiums?: string[]
+    notes?: string
+  }
+  parsed: Record<string, unknown>
+}
+
+export async function parseBrokerContractPosition(payload: {
+  text: string
+  trade_source?: 'day' | 'swing' | 'regular' | 'manual'
+}): Promise<ApiEnvelope<ParsedBrokerContractPositionResponse>> {
+  try {
+    const { data } = await api.post<ApiEnvelope<ParsedBrokerContractPositionResponse>>('/portfolio/parse-contract', payload)
+    return data
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const detail = err.response?.data?.detail
+      if (typeof detail === 'string') throw new Error(detail)
+    }
+    throw err
+  }
 }
 
 export interface StockTargetData {
