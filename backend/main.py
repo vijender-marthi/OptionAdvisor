@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Optional
 from urllib.parse import quote, urlparse
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -106,6 +106,7 @@ from storage import (
     exit_active_trade,
     get_ticker_state_last,
     get_eod_journal_snapshot,
+    list_eod_journal_snapshots,
     upsert_ticker_state_last,
     list_eod_journal_dates,
     upsert_eod_journal_snapshot,
@@ -6526,6 +6527,407 @@ def get_history_bars(
     return {"ticker": t, "date": date, "bars": bars}
 
 
+class JournalHistoryScenarioCheck(BaseModel):
+    entry: Optional[float] = None
+    stop: Optional[float] = None
+    t1: Optional[float] = None
+    t2: Optional[float] = None
+    prob: Optional[float] = None
+
+
+class JournalHistoryMorningRow(BaseModel):
+    id: str = ""
+    date: Optional[str] = None
+    mode: str = "day"
+    ticker: str
+    bias: Optional[str] = None
+    close: Optional[float] = None
+    bull: Optional[JournalHistoryScenarioCheck] = None
+    bear: Optional[JournalHistoryScenarioCheck] = None
+
+
+class JournalHistoryMorningRequest(BaseModel):
+    rows: list[JournalHistoryMorningRow] = Field(default_factory=list)
+    evaluation_date: Optional[str] = None
+
+
+_JOURNAL_PT_ZONE = ZoneInfo("America/Los_Angeles")
+_JOURNAL_MORNING_CUTOFFS = (("07:00", dt_time(7, 0)), ("07:30", dt_time(7, 30)))
+
+
+def _journal_number(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        n = float(value)
+        if not np.isfinite(n) or n <= 0:
+            return None
+        return n
+    except Exception:
+        return None
+
+
+def _journal_round(value: Any, digits: int = 2) -> Optional[float]:
+    try:
+        n = float(value)
+        if not np.isfinite(n):
+            return None
+        return round(n, digits)
+    except Exception:
+        return None
+
+
+def _journal_prepare_intraday(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    out = df.copy()
+    if out.index.tz is None:
+        out.index = out.index.tz_localize("America/New_York")
+    out.index = out.index.tz_convert(_JOURNAL_PT_ZONE)
+    out = out.sort_index()
+    required = {"Open", "High", "Low", "Close"}
+    if not required.issubset(set(map(str, out.columns))):
+        return pd.DataFrame()
+    return out.dropna(subset=["Open", "High", "Low", "Close"])
+
+
+def _journal_fetch_eval_bars(ticker: str, evaluation_date: str) -> pd.DataFrame:
+    start = evaluation_date
+    end = (datetime.strptime(evaluation_date, "%Y-%m-%d").date() + timedelta(days=1)).isoformat()
+    return _journal_prepare_intraday(get_history(ticker, interval="1m", start=start, end=end))
+
+
+def _journal_bars_until_cutoff(df: pd.DataFrame, evaluation_date: str, cutoff: dt_time) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame()
+    start = datetime.combine(datetime.strptime(evaluation_date, "%Y-%m-%d").date(), dt_time(6, 30), _JOURNAL_PT_ZONE)
+    end = datetime.combine(datetime.strptime(evaluation_date, "%Y-%m-%d").date(), cutoff, _JOURNAL_PT_ZONE)
+    return df[(df.index >= start) & (df.index <= end)]
+
+
+def _journal_outcome_label(status: str) -> str:
+    return {
+        "T2_HIT": "T2 hit",
+        "T1_HIT": "T1 hit",
+        "TRIGGERED_OPEN": "Triggered, open",
+        "NOT_TRIGGERED": "Not triggered",
+        "STOPPED": "Stopped",
+        "MISSING_PLAN": "Missing plan",
+        "NO_INTRADAY_DATA": "No bars",
+    }.get(status, status.replace("_", " ").title())
+
+
+def _journal_evaluate_plan(bars: pd.DataFrame, scenario: Optional[JournalHistoryScenarioCheck], side: str) -> dict:
+    plan = scenario.model_dump() if scenario is not None and hasattr(scenario, "model_dump") else (
+        scenario.dict() if scenario is not None else {}
+    )
+    entry = _journal_number(plan.get("entry"))
+    stop = _journal_number(plan.get("stop"))
+    t1 = _journal_number(plan.get("t1"))
+    t2 = _journal_number(plan.get("t2"))
+    if entry is None or stop is None or t1 is None:
+        return {"status": "MISSING_PLAN", "display": _journal_outcome_label("MISSING_PLAN"), "triggered": False}
+    if bars.empty:
+        return {"status": "NO_INTRADAY_DATA", "display": _journal_outcome_label("NO_INTRADAY_DATA"), "triggered": False}
+
+    triggered = False
+    trigger_time = None
+    status = "NOT_TRIGGERED"
+    status_time = None
+    last_close = _journal_round(bars.iloc[-1]["Close"])
+
+    for ts, row in bars.iterrows():
+        high = float(row["High"])
+        low = float(row["Low"])
+        if not triggered:
+            if side == "bull" and high >= entry:
+                triggered = True
+                trigger_time = ts
+            elif side == "bear" and low <= entry:
+                triggered = True
+                trigger_time = ts
+            else:
+                continue
+
+        # Conservative same-bar ordering: risk is counted before reward.
+        if side == "bull":
+            if low <= stop:
+                status, status_time = "STOPPED", ts
+                break
+            if t2 is not None and high >= t2:
+                status, status_time = "T2_HIT", ts
+                break
+            if high >= t1 and status != "T1_HIT":
+                status, status_time = "T1_HIT", ts
+        else:
+            if high >= stop:
+                status, status_time = "STOPPED", ts
+                break
+            if t2 is not None and low <= t2:
+                status, status_time = "T2_HIT", ts
+                break
+            if low <= t1 and status != "T1_HIT":
+                status, status_time = "T1_HIT", ts
+
+    if triggered and status == "NOT_TRIGGERED":
+        status = "TRIGGERED_OPEN"
+    move_pct = None
+    if last_close is not None:
+        raw_move = (last_close - entry) / entry * 100
+        move_pct = raw_move if side == "bull" else -raw_move
+    return {
+        "status": status,
+        "display": _journal_outcome_label(status),
+        "triggered": triggered,
+        "trigger_time": trigger_time.isoformat() if trigger_time is not None else None,
+        "status_time": status_time.isoformat() if status_time is not None else None,
+        "entry": _journal_round(entry),
+        "stop": _journal_round(stop),
+        "t1": _journal_round(t1),
+        "t2": _journal_round(t2),
+        "probability": _journal_round(plan.get("prob"), 0),
+        "move_from_entry_pct": _journal_round(move_pct, 2),
+    }
+
+
+def _journal_best_takeaway(bull: dict, bear: dict) -> dict:
+    rank = {
+        "T2_HIT": 5,
+        "T1_HIT": 4,
+        "TRIGGERED_OPEN": 3,
+        "NOT_TRIGGERED": 2,
+        "MISSING_PLAN": 1,
+        "NO_INTRADAY_DATA": 1,
+        "STOPPED": 0,
+    }
+    bull_rank = rank.get(bull.get("status"), 0)
+    bear_rank = rank.get(bear.get("status"), 0)
+    if bull.get("status") == "NO_INTRADAY_DATA" or bear.get("status") == "NO_INTRADAY_DATA":
+        return {"side": "none", "label": "No morning bars available yet.", "tone": "neutral"}
+    if bull_rank == bear_rank and bull.get("status") == "NOT_TRIGGERED":
+        return {"side": "flat", "label": "No entry before this cutoff. Patience worked.", "tone": "neutral"}
+    if bull_rank > bear_rank:
+        return {"side": "bull", "label": f"Bull plan led: {bull.get('display')}.", "tone": "bull"}
+    if bear_rank > bull_rank:
+        return {"side": "bear", "label": f"Bear plan led: {bear.get('display')}.", "tone": "bear"}
+    return {"side": "mixed", "label": "Mixed result. Wait for cleaner confirmation.", "tone": "neutral"}
+
+
+def _journal_history_probs(bias: str) -> dict[str, int]:
+    b = str(bias or "").strip().lower()
+    if b in {"bull", "bullish", "long"}:
+        return {"bull": 50, "bear": 20, "flat": 30}
+    if b in {"bear", "bearish", "short"}:
+        return {"bull": 20, "bear": 50, "flat": 30}
+    return {"bull": 30, "bear": 30, "flat": 40}
+
+
+def _journal_float_optional(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        n = float(value)
+        if not np.isfinite(n):
+            return None
+        return round(n, 4)
+    except Exception:
+        return None
+
+
+def _build_day_trade_next_day_history_record(scan: Any, *, date_key: str, generated_at_ms: int) -> dict[str, Any]:
+    ticker = str(getattr(scan, "ticker", "") or "").strip().upper()
+    metrics = getattr(scan, "metrics", {}) or {}
+    bias_raw = str(getattr(scan, "bias", "") or "").strip().lower()
+    bias = "bull" if bias_raw in {"long", "bull", "bullish"} else "bear" if bias_raw in {"short", "bear", "bearish"} else "neutral"
+
+    close = _journal_float_optional(metrics.get("last_price") or metrics.get("current_price") or metrics.get("close"))
+    or_high = _journal_float_optional(metrics.get("or_high") or metrics.get("opening_range_high"))
+    or_low = _journal_float_optional(metrics.get("or_low") or metrics.get("opening_range_low"))
+    vwap = _journal_float_optional(metrics.get("vwap"))
+    or_mid = _journal_float_optional(metrics.get("or_mid"))
+    if or_mid is None and or_high is not None and or_low is not None:
+        or_mid = round((or_high + or_low) / 2.0, 4)
+
+    p = _journal_history_probs(bias)
+    pad_high = max((or_high or 0) * 0.0005, 0.05) if or_high else 0.05
+    pad_low = max((or_low or 0) * 0.0005, 0.05) if or_low else 0.05
+    bull_entry = round((or_high or close or 0) + pad_high, 4) if (or_high or close) else None
+    bull_stop = or_mid
+    bear_entry = round((or_low or close or 0) - pad_low, 4) if (or_low or close) else None
+    bear_stop = or_mid
+    bull_r = (bull_entry - bull_stop) if bull_entry is not None and bull_stop is not None else None
+    bear_r = (bear_stop - bear_entry) if bear_entry is not None and bear_stop is not None else None
+
+    record = {
+        "id": f"day|{date_key}|{ticker}",
+        "date": date_key,
+        "mode": "day",
+        "ticker": ticker,
+        "bias": bias,
+        "close": close,
+        "levels": {"orHigh": or_high, "orLow": or_low, "orMid": or_mid, "vwap": vwap},
+        "bull": {
+            "entry": bull_entry,
+            "stop": bull_stop,
+            "t1": round(bull_entry + bull_r, 4) if bull_entry is not None and bull_r is not None else None,
+            "t2": round(bull_entry + 2 * bull_r, 4) if bull_entry is not None and bull_r is not None else None,
+            "rr": "1 : 2",
+            "prob": p["bull"],
+        },
+        "bear": {
+            "entry": bear_entry,
+            "stop": bear_stop,
+            "t1": round(bear_entry - bear_r, 4) if bear_entry is not None and bear_r is not None else None,
+            "t2": round(bear_entry - 2 * bear_r, 4) if bear_entry is not None and bear_r is not None else None,
+            "rr": "1 : 2",
+            "prob": p["bear"],
+        },
+        "flat": {"prob": p["flat"]},
+        "savedAt": generated_at_ms,
+        "source": "auto_eod",
+    }
+    return {
+        "kind": "next_day_plan",
+        "schema_version": 1,
+        "generated_by": "day_trade_eod_history_job",
+        "generated_at_ms": generated_at_ms,
+        "record": record,
+        "engine": {
+            "verdict": str(getattr(scan, "verdict", "") or ""),
+            "final_decision": str(getattr(scan, "final_decision", "") or ""),
+            "bull_score": _journal_float_optional(getattr(scan, "bull_score", None)),
+            "bear_score": _journal_float_optional(getattr(scan, "bear_score", None)),
+            "session_date": str(metrics.get("session_date") or date_key)[:10],
+        },
+    }
+
+
+def _save_day_trade_next_day_history_for_state(user_state: dict[str, Any], *, force_refresh: bool = False) -> dict[str, Any]:
+    email = normalize_email(str(user_state.get("email") or ""))
+    if not email:
+        return {"email": "", "saved": 0, "failed": 0, "tickers": []}
+    tickers = _day_trade_tickers_from_user_state(user_state)
+    if not tickers:
+        return {"email": email, "saved": 0, "failed": 0, "tickers": []}
+
+    now_pt = datetime.now(ZoneInfo("America/Los_Angeles"))
+    date_key = now_pt.date().isoformat()
+    generated_at_ms = int(time.time() * 1000)
+    saved = 0
+    failed = 0
+    saved_tickers: list[str] = []
+    for idx, ticker in enumerate(tickers):
+        if idx:
+            time.sleep(0.4)
+        try:
+            scan = run_day_trade_scan(ticker, force_refresh=force_refresh)
+            snapshot = _build_day_trade_next_day_history_record(scan, date_key=date_key, generated_at_ms=generated_at_ms)
+            record = snapshot.get("record") or {}
+            if not record.get("ticker"):
+                raise ValueError("Missing ticker in generated record")
+            upsert_eod_journal_snapshot(
+                email,
+                "day",
+                date_key,
+                str(record["ticker"]),
+                snapshot,
+                notes={"auto": True, "description": "Auto-generated after market close for tomorrow's day-trade plan."},
+                checks={},
+            )
+            saved += 1
+            saved_tickers.append(str(record["ticker"]))
+        except Exception as exc:
+            failed += 1
+            print(f"[day-eod-history] {email} {ticker} failed: {exc}", flush=True)
+    return {"email": email, "saved": saved, "failed": failed, "tickers": saved_tickers}
+
+
+@app.post("/api/journal/history-morning-check")
+def journal_history_morning_check(
+    request: JournalHistoryMorningRequest,
+    auth_email: str = Depends(require_access_email),
+):
+    """Compare saved journal history plans with today's 7:00 and 7:30 AM PT price path."""
+    eval_date = request.evaluation_date or datetime.now(_JOURNAL_PT_ZONE).date().isoformat()
+    try:
+        datetime.strptime(eval_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="evaluation_date must be YYYY-MM-DD")
+
+    rows = request.rows[:80]
+    tickers = sorted({r.ticker.strip().upper() for r in rows if r.ticker and r.ticker.strip()})[:40]
+    bars_by_ticker = {ticker: _journal_fetch_eval_bars(ticker, eval_date) for ticker in tickers}
+
+    out_rows = []
+    for row in rows:
+        ticker = row.ticker.strip().upper()
+        df = bars_by_ticker.get(ticker, pd.DataFrame())
+        snapshots = []
+        for label, cutoff in _JOURNAL_MORNING_CUTOFFS:
+            sample = _journal_bars_until_cutoff(df, eval_date, cutoff)
+            price = _journal_round(sample.iloc[-1]["Close"]) if not sample.empty else None
+            price_time = sample.index[-1].isoformat() if not sample.empty else None
+            bull = _journal_evaluate_plan(sample, row.bull, "bull")
+            bear = _journal_evaluate_plan(sample, row.bear, "bear")
+            snapshots.append({
+                "time": label,
+                "price": price,
+                "price_time": price_time,
+                "bull": bull,
+                "bear": bear,
+                "takeaway": _journal_best_takeaway(bull, bear),
+            })
+        out_rows.append({
+            "id": row.id,
+            "saved_date": row.date,
+            "mode": row.mode,
+            "ticker": ticker,
+            "saved_bias": row.bias or "",
+            "saved_close": _journal_round(row.close),
+            "evaluation_date": eval_date,
+            "snapshots": snapshots,
+        })
+
+    return {
+        "evaluation_date": eval_date,
+        "timezone": "America/Los_Angeles",
+        "cutoffs": [label for label, _ in _JOURNAL_MORNING_CUTOFFS],
+        "row_count": len(out_rows),
+        "rows": out_rows,
+    }
+
+
+@app.get("/api/journal/history-log")
+def journal_history_log(
+    mode: str = "day",
+    limit: int = Query(300, ge=1, le=1000),
+    auth_email: str = Depends(require_access_email),
+):
+    """Return backend-generated Journal Tool history rows for the authenticated user."""
+    m = mode.strip().lower()
+    rows = list_eod_journal_snapshots(
+        normalize_email(auth_email),
+        m,
+        limit=limit,
+        kind="next_day_plan",
+    )
+    records = []
+    for row in rows:
+        snapshot = row.get("snapshot") or {}
+        record = snapshot.get("record") if isinstance(snapshot, dict) else None
+        if isinstance(record, dict):
+            records.append(record)
+    return {"mode": m, "rows": records, "count": len(records)}
+
+
+@app.post("/api/journal/history-log/auto-generate")
+def journal_history_log_auto_generate(auth_email: str = Depends(require_access_email)):
+    """Generate today's next-day day-trade history rows for the authenticated user's day tickers."""
+    state = get_user_state(normalize_email(auth_email))
+    result = _save_day_trade_next_day_history_for_state(state, force_refresh=True)
+    return {"ok": True, "result": result}
+
+
 # ── TRADE JOURNAL ──────────────────────────────────────────────────────────────
 
 from storage import (
@@ -7593,6 +7995,77 @@ def _swing_alert_batch_loop() -> None:
 _swing_batch_thread = threading.Thread(target=_swing_alert_batch_loop, daemon=True, name="swing-alert-batch")
 _swing_batch_thread.start()
 print(f"[swing-alert-batch] background scanner started (interval={SWING_ALERT_SCAN_INTERVAL_SECONDS}s, window=6AM–2PM PT)", flush=True)
+
+
+# ─── Day trade EOD Journal History auto-generator ────────────────────────────
+
+DAY_TRADE_EOD_HISTORY_INTERVAL_SECONDS = int(os.getenv("DAY_TRADE_EOD_HISTORY_INTERVAL_SECONDS", "900"))
+DAY_TRADE_EOD_HISTORY_START_DELAY_SECONDS = int(os.getenv("DAY_TRADE_EOD_HISTORY_START_DELAY_SECONDS", "180"))
+_day_trade_eod_history_last_run_date = ""
+
+
+def _is_day_trade_eod_history_window_pt() -> bool:
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    if now.weekday() >= 5:
+        return False
+    return now.hour >= 16
+
+
+def _run_day_trade_eod_history_batch() -> None:
+    """Generate next-day History Log entries once per PT date after the 4 PM close."""
+    global _day_trade_eod_history_last_run_date
+    now_pt = datetime.now(ZoneInfo("America/Los_Angeles"))
+    date_key = now_pt.date().isoformat()
+    if not _is_day_trade_eod_history_window_pt():
+        print("[day-eod-history] outside EOD window (after 4 PM PT weekdays) — skipping", flush=True)
+        return
+    if _day_trade_eod_history_last_run_date == date_key:
+        return
+
+    try:
+        users = list_user_states()
+    except Exception as exc:
+        print(f"[day-eod-history] failed to load users: {exc}", flush=True)
+        return
+
+    total_saved = 0
+    total_failed = 0
+    for user_state in users:
+        role = (user_state.get("role") or "").lower()
+        if role not in ("day", "admin", "super_user"):
+            continue
+        result = _save_day_trade_next_day_history_for_state(user_state, force_refresh=True)
+        total_saved += int(result.get("saved") or 0)
+        total_failed += int(result.get("failed") or 0)
+
+    _day_trade_eod_history_last_run_date = date_key
+    print(
+        f"[day-eod-history] generated next-day history for {date_key}: saved={total_saved} failed={total_failed}",
+        flush=True,
+    )
+
+
+def _day_trade_eod_history_loop() -> None:
+    time.sleep(DAY_TRADE_EOD_HISTORY_START_DELAY_SECONDS)
+    while True:
+        try:
+            _run_day_trade_eod_history_batch()
+        except Exception as exc:
+            print(f"[day-eod-history] unhandled error: {exc}", flush=True)
+        time.sleep(DAY_TRADE_EOD_HISTORY_INTERVAL_SECONDS)
+
+
+_day_trade_eod_history_thread = threading.Thread(
+    target=_day_trade_eod_history_loop,
+    daemon=True,
+    name="day-trade-eod-history",
+)
+_day_trade_eod_history_thread.start()
+print(
+    f"[day-eod-history] background generator started "
+    f"(interval={DAY_TRADE_EOD_HISTORY_INTERVAL_SECONDS}s, window=after 4 PM PT weekdays)",
+    flush=True,
+)
 
 
 # ─── Day trade quote cache warmer ────────────────────────────────────────────

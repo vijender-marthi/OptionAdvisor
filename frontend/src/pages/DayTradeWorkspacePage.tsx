@@ -43,9 +43,15 @@ const TRADE_TYPE_VALUES: Record<SidebarTickerGroupKey, string> = {
 
 const DAY_TICKER_AUTO_REFRESH_MIN_MS = 5 * 60 * 1000
 const DAY_TICKER_AUTO_REFRESH_MAX_MS = 15 * 60 * 1000
+const DAY_TRADE_PAGE_AUTO_REFRESH_MS = 5 * 60 * 1000
 
 function nextDayTickerRefreshDelay(): number {
   return DAY_TICKER_AUTO_REFRESH_MIN_MS + Math.round(Math.random() * (DAY_TICKER_AUTO_REFRESH_MAX_MS - DAY_TICKER_AUTO_REFRESH_MIN_MS))
+}
+
+function formatRefreshTimestamp(value: Date | null): string {
+  if (!value) return 'not refreshed yet'
+  return value.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
 function normalizeTickerGroup(value: string): SidebarTickerGroupKey | null {
@@ -95,6 +101,7 @@ function DayTradeSidebarContent({
   tickersLoading,
   tickersError,
   refreshMyTickers,
+  tickerListLastRefreshedAt,
   workspaceLoading,
   listRef,
   handleListScroll,
@@ -116,6 +123,7 @@ function DayTradeSidebarContent({
   tickersLoading: boolean
   tickersError: string
   refreshMyTickers: () => void
+  tickerListLastRefreshedAt: Date | null
   workspaceLoading: boolean
   listRef: React.RefObject<HTMLDivElement>
   handleListScroll: (scrollTop: number) => void
@@ -134,6 +142,9 @@ function DayTradeSidebarContent({
           <div className="mt-1 flex items-center gap-2">
             <Activity size={16} className="text-violet-500" />
             <span className="text-lg font-black text-heading">Day Trade</span>
+          </div>
+          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
+            Tickers refreshed {formatRefreshTimestamp(tickerListLastRefreshedAt)}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -396,6 +407,7 @@ function DayTradeMobileSearchBar({
   workspaceLoading,
   loadTicker,
   onRefresh,
+  lastRefreshedAt,
   onOpenTickers,
   navigate,
 }: {
@@ -405,6 +417,7 @@ function DayTradeMobileSearchBar({
   workspaceLoading: boolean
   loadTicker: (symbol?: string) => void
   onRefresh: () => void
+  lastRefreshedAt: Date | null
   onOpenTickers: () => void
   navigate: (path: string) => void
 }) {
@@ -465,6 +478,9 @@ function DayTradeMobileSearchBar({
           <RefreshCw size={16} className={workspaceLoading ? 'animate-spin' : ''} />
         </button>
       </div>
+      <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
+        Workspace refreshed {formatRefreshTimestamp(lastRefreshedAt)}
+      </div>
       <div className="mt-3 hidden sm:block">
         <DayTradeActionLinks navigate={navigate} compact />
       </div>
@@ -476,11 +492,13 @@ function DayTradeWorkspaceToolbar({
   symbol,
   loading,
   onRefresh,
+  lastRefreshedAt,
   navigate,
 }: {
   symbol: string
   loading: boolean
   onRefresh: () => void
+  lastRefreshedAt: Date | null
   navigate: (path: string) => void
 }) {
   return (
@@ -488,6 +506,9 @@ function DayTradeWorkspaceToolbar({
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade</span>
         <span className="font-mono text-base font-black text-heading">{symbol}</span>
+        <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-tertiary lg:inline">
+          Refreshed {formatRefreshTimestamp(lastRefreshedAt)}
+        </span>
       </div>
       <div className="flex flex-nowrap items-center justify-end gap-1.5 overflow-x-auto">
         <a
@@ -639,6 +660,8 @@ export default function DayTradeWorkspacePage() {
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [tickersLoading, setTickersLoading] = useState(false)
   const [tickersError, setTickersError] = useState('')
+  const [tickerListLastRefreshedAt, setTickerListLastRefreshedAt] = useState<Date | null>(null)
+  const [workspaceLastRefreshedAt, setWorkspaceLastRefreshedAt] = useState<Date | null>(null)
   const [sidebarTab, setSidebarTab] = useState<TickerListTab>(() => {
     try {
       const saved = localStorage.getItem('day_trade_workspace_sidebar_tab') as TickerListTab | null
@@ -685,6 +708,7 @@ export default function DayTradeWorkspacePage() {
   const [addTypes, setAddTypes] = useState<Record<SidebarTickerGroupKey, boolean>>({ day: true, regular: false, swing: false })
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState('')
+  const autoRefreshInFlightRef = useRef(false)
 
   useEffect(() => {
     try { localStorage.setItem('day_trade_workspace_sidebar_tab', sidebarTab) } catch { /* quota */ }
@@ -724,8 +748,12 @@ export default function DayTradeWorkspacePage() {
   const workspaceState = useDayTradeWorkspace({
     symbol,
     sessionDate,
-    interval: selectedInterval,
+    interval,
   })
+
+  useEffect(() => {
+    if (workspaceState.data) setWorkspaceLastRefreshedAt(new Date())
+  }, [workspaceState.data])
 
   useEffect(() => {
     setTickerInput(symbol)
@@ -763,6 +791,7 @@ export default function DayTradeWorkspacePage() {
       } else {
         setMyTickers(activeTickers)
       }
+      setTickerListLastRefreshedAt(new Date())
     } catch (err) {
       if (!opts.silent) setTickersError(err instanceof Error ? err.message : 'Unable to load My Tickers.')
     } finally {
@@ -773,6 +802,29 @@ export default function DayTradeWorkspacePage() {
   useEffect(() => {
     void refreshMyTickers()
   }, [refreshMyTickers])
+
+  const refreshWorkspace = useCallback(async () => {
+    await workspaceState.reload()
+  }, [workspaceState.reload])
+
+  useEffect(() => {
+    const runAutoRefresh = async () => {
+      if (autoRefreshInFlightRef.current || document.hidden) return
+      autoRefreshInFlightRef.current = true
+      try {
+        await Promise.all([
+          workspaceState.reload({ forceRefresh: true }),
+          refreshMyTickers({ dayOnly: true, silent: true }),
+        ])
+      } finally {
+        autoRefreshInFlightRef.current = false
+      }
+    }
+    const id = window.setInterval(() => {
+      void runAutoRefresh()
+    }, DAY_TRADE_PAGE_AUTO_REFRESH_MS)
+    return () => window.clearInterval(id)
+  }, [refreshMyTickers, workspaceState.reload])
 
   useEffect(() => {
     let active = true
@@ -1114,6 +1166,7 @@ export default function DayTradeWorkspacePage() {
               tickersLoading={tickersLoading}
               tickersError={tickersError}
               refreshMyTickers={refreshMyTickers}
+              tickerListLastRefreshedAt={tickerListLastRefreshedAt}
               workspaceLoading={workspaceLoading}
               listRef={listRef}
               handleListScroll={handleListScroll}
@@ -1141,6 +1194,7 @@ export default function DayTradeWorkspacePage() {
                 tickersLoading={tickersLoading}
                 tickersError={tickersError}
                 refreshMyTickers={refreshMyTickers}
+                tickerListLastRefreshedAt={tickerListLastRefreshedAt}
                 workspaceLoading={workspaceLoading}
                 listRef={listRef}
                 handleListScroll={handleListScroll}
@@ -1161,7 +1215,8 @@ export default function DayTradeWorkspacePage() {
             symbol={symbol}
             workspaceLoading={workspaceLoading}
             loadTicker={loadTicker}
-            onRefresh={() => void workspaceState.reload()}
+            onRefresh={() => void refreshWorkspace()}
+            lastRefreshedAt={workspaceLastRefreshedAt}
             onOpenTickers={() => setMobileSidebarOpen(true)}
             navigate={navigate}
           />
@@ -1175,7 +1230,8 @@ export default function DayTradeWorkspacePage() {
           <DayTradeWorkspaceToolbar
             symbol={symbol}
             loading={workspaceState.loading}
-            onRefresh={() => void workspaceState.reload()}
+            onRefresh={() => void refreshWorkspace()}
+            lastRefreshedAt={workspaceLastRefreshedAt}
             navigate={navigate}
           />
 

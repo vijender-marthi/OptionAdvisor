@@ -378,6 +378,7 @@ function pruneHistory(arr){
 }
 let history = pruneHistory(loadHistory());
 persistHistory();   // write back the pruned set
+let historyMorningCheck = {mode:null, status:"idle", data:null, error:""};
 
 function fmtHistDate(iso){
   const d = new Date(iso+"T00:00:00");
@@ -409,6 +410,29 @@ function saveScenarioToHistory(){
 function deleteHistoryRow(id){ history = history.filter(r=>r.id!==id); persistHistory(); }
 function deleteHistoryDate(date, mode){ history = history.filter(r=>!(r.date===date && r.mode===mode)); persistHistory(); }
 
+async function loadHistoryMorningCheck(mode){
+  const rows = history.filter(r=>r.mode===mode);
+  if(!rows.length){
+    historyMorningCheck = {mode, status:"done", data:{rows:[]}, error:""};
+    renderMain();
+    return;
+  }
+  if(!TOKEN){
+    historyMorningCheck = {mode, status:"error", data:null, error:"Open this page inside OptionAdvisor to compare against live morning prices."};
+    renderMain();
+    return;
+  }
+  historyMorningCheck = {mode, status:"loading", data:null, error:""};
+  renderMain();
+  try{
+    const data = await apiCall("/journal/history-morning-check", {rows});
+    historyMorningCheck = {mode, status:"done", data, error:""};
+  }catch(err){
+    historyMorningCheck = {mode, status:"error", data:null, error:String(err && err.message || err)};
+  }
+  renderMain();
+}
+
 /* ================= BACKEND (OptionAdvisor API) =================
    Same-origin iframe: reads the app's bearer token from localStorage and
    uses the same endpoints as the EOD Journal page. Without a token (file
@@ -428,6 +452,34 @@ async function apiCall(path, body){
   }
   if(!resp.ok) throw new Error("HTTP "+resp.status);
   return resp.json();
+}
+
+function mergeHistoryRows(rows){
+  if(!Array.isArray(rows) || !rows.length) return false;
+  const byId = new Map(history.map(r=>[r.id, r]));
+  rows.forEach(r=>{
+    if(!r || !r.id) return;
+    const existing = byId.get(r.id);
+    if(!existing || Number(r.savedAt||0) >= Number(existing.savedAt||0)) byId.set(r.id, r);
+  });
+  history = pruneHistory(Array.from(byId.values()));
+  persistHistory();
+  return true;
+}
+
+async function loadBackendHistory(mode){
+  if(!TOKEN) return false;
+  try{
+    const r = await apiCall("/journal/history-log?mode="+encodeURIComponent(mode)+"&limit=300");
+    return mergeHistoryRows((r && r.rows) || []);
+  }catch(e){
+    return false;
+  }
+}
+
+async function loadAllBackendHistory(){
+  const changed = await Promise.all([loadBackendHistory("day"), loadBackendHistory("swing")]);
+  if(changed.some(Boolean)) renderAll();
 }
 
 function makeTickerStub(px, prev){
@@ -670,6 +722,7 @@ function liveBadge(){
 async function boot(){
   if(!TOKEN) return;
   try{
+    await loadAllBackendHistory();
     const ok = await loadWatchlist();
     if(ok){ renderAll(); loadTickerDetails(state.ticker); }
   }catch(e){ /* backend unreachable — stay on demo data */ }
@@ -692,6 +745,7 @@ async function refreshAll(){
       await boot();           // backend may have come up since load
     } else {
       Object.keys(detailState).forEach(k=>delete detailState[k]);
+      await loadAllBackendHistory();
       try{
         const r = await apiCall("/my-tickers");
         const list = ((r.data||{}).tickers||[]).filter(t=>t.is_active!==false);
@@ -998,8 +1052,8 @@ function renderSidebar(){
 
 /* ================= TABS ================= */
 const TABS = {
-  day:[["eod","EOD Review"],["prep","Pre-Market Prep"],["scen","Scenarios"],["log","Trade Log"],["hist","History Log"],["rules","Rules Check"]],
-  swing:[["eod","EOD Review"],["prep","Next Day Prep"],["scen","Scenarios"],["options","Options Plan"],["hist","History Log"],["rules","Rules Check"]]
+  day:[["eod","EOD Review"],["prep","Pre-Market Prep"],["scen","Scenarios"],["log","Trade Log"],["hist","History Log"],["histcheck","Morning Check"],["rules","Rules Check"]],
+  swing:[["eod","EOD Review"],["prep","Next Day Prep"],["scen","Scenarios"],["options","Options Plan"],["hist","History Log"],["histcheck","Morning Check"],["rules","Rules Check"]]
 };
 function renderTabs(){
   $("#tabs").innerHTML = TABS[state.mode].map(([id,lbl])=>
@@ -1680,6 +1734,96 @@ function historyTable(mode){
     </div>`;
   }).join("");
 }
+
+function histOutcomeClass(status){
+  if(status==="T2_HIT" || status==="T1_HIT" || status==="TRIGGERED_OPEN") return "pos";
+  if(status==="STOPPED") return "neg";
+  return "muted";
+}
+
+function histToneClass(tone){
+  return tone==="bull" ? "pos" : tone==="bear" ? "neg" : "muted";
+}
+
+function histScenarioCell(snap, side){
+  const plan = snap && snap[side] ? snap[side] : {};
+  const status = plan.status || "—";
+  const cls = histOutcomeClass(status);
+  const move = plan.move_from_entry_pct==null ? "" : ` <span class="muted">(${fmt(plan.move_from_entry_pct)}%)</span>`;
+  const level = plan.entry==null ? "" : `<div class="muted" style="font-size:11px">E ${fmt(plan.entry)} · S ${fmt(plan.stop)} · T1 ${fmt(plan.t1)}</div>`;
+  return `<td>
+    <b class="${cls}">${esc(plan.display || status)}</b>${move}
+    ${level}
+  </td>`;
+}
+
+function histMorningSnapshot(row, time){
+  return (row.snapshots||[]).find(s=>s.time===time) || {};
+}
+
+function historyMorningCheckTable(mode){
+  const rows = history.filter(r=>r.mode===mode);
+  const stateOk = historyMorningCheck.mode===mode ? historyMorningCheck : {status:"idle", data:null, error:""};
+  if(!rows.length)
+    return `<p class="small muted">No saved ${mode==="day"?"day-trade":"swing"} plans to compare yet.</p>`;
+
+  if(stateOk.status==="loading")
+    return `<div class="card"><p class="small muted">Checking saved plans against today's 7:00 and 7:30 AM price path...</p></div>`;
+  if(stateOk.status==="error")
+    return `<div class="danger-box"><h3>Morning Check Failed</h3><p class="small">${esc(stateOk.error)}</p></div>`;
+  if(stateOk.status!=="done" || !stateOk.data)
+    return `<div class="card"><p class="small muted">Run the check to map saved history rows against today's intraday price before 7:00 and 7:30 AM PT.</p></div>`;
+
+  const checkedRows = stateOk.data.rows || [];
+  if(!checkedRows.length)
+    return `<p class="small muted">No saved ${mode==="day"?"day-trade":"swing"} plans to compare yet.</p>`;
+
+  const body = checkedRows.map(r=>{
+    const s7 = histMorningSnapshot(r, "07:00");
+    const s730 = histMorningSnapshot(r, "07:30");
+    const t7 = s7.takeaway || {};
+    const t730 = s730.takeaway || {};
+    const biasCls = r.saved_bias==="bear"?"neg":r.saved_bias==="bull"?"pos":"neu";
+    return `<tr>
+      <td><b>${esc(r.ticker)}</b><div class="muted" style="font-size:11px">${fmtHistDate(r.saved_date||"")}</div></td>
+      <td class="${biasCls}" style="text-transform:uppercase">${esc(r.saved_bias||"—")}</td>
+      <td class="num">${fmt(r.saved_close)}</td>
+      <td class="num"><b>${fmt(s7.price)}</b><div class="muted" style="font-size:11px">${esc(s7.price_time ? new Date(s7.price_time).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "—")}</div></td>
+      ${histScenarioCell(s7, "bull")}
+      ${histScenarioCell(s7, "bear")}
+      <td class="${histToneClass(t7.tone)}">${esc(t7.label || "—")}</td>
+      <td class="num"><b>${fmt(s730.price)}</b><div class="muted" style="font-size:11px">${esc(s730.price_time ? new Date(s730.price_time).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "—")}</div></td>
+      ${histScenarioCell(s730, "bull")}
+      ${histScenarioCell(s730, "bear")}
+      <td class="${histToneClass(t730.tone)}">${esc(t730.label || "—")}</td>
+    </tr>`;
+  }).join("");
+
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h3 style="margin:0">Morning Result Map</h3>
+      <span class="small muted">Evaluation date: ${esc(stateOk.data.evaluation_date || "today")} · Times: 7:00 / 7:30 AM PT</span>
+    </div>
+    <div style="overflow-x:auto"><table>
+      <tr>
+        <th>Ticker</th><th>Saved Bias</th><th>Saved Close</th>
+        <th>7:00 Price</th><th>7:00 Bull</th><th>7:00 Bear</th><th>7:00 Takeaway</th>
+        <th>7:30 Price</th><th>7:30 Bull</th><th>7:30 Bear</th><th>7:30 Takeaway</th>
+      </tr>
+      ${body}
+    </table></div>
+  </div>`;
+}
+
+function historyMorningCheckTab(mode){
+  return `<div class="action-box action-flat" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap">
+      <div><b>History vs This Morning.</b> Backend compares saved bull/bear plans with today's 1-minute path through 7:00 and 7:30 AM PT so you can see which decisions aged well.</div>
+      <button class="btn-accent" data-act="runHistCheck">Run 7:00 / 7:30 Check</button>
+    </div>
+  </div>${historyMorningCheckTable(mode)}`;
+}
+
 function dayHistoryTab(){
   return `<div class="action-box action-flat" style="margin-bottom:14px">
     <b>Next-Day Plan History — Day Trade.</b> Saved scenario snapshots (entry / stop / targets / probability) by date and ticker, kept for the last 7 days for future reference.
@@ -1694,8 +1838,8 @@ function swingHistoryTab(){
 /* ================= MAIN RENDER ================= */
 function renderMain(){
   const tab = state.tab[state.mode];
-  // Rules Check and History Log do not need a selected ticker.
-  if(tab!=="rules" && tab!=="hist" && (!state.ticker || !tickers[state.ticker])){
+  // Rules Check, History Log, and Morning Check do not need a selected ticker.
+  if(tab!=="rules" && tab!=="hist" && tab!=="histcheck" && (!state.ticker || !tickers[state.ticker])){
     $("#content").innerHTML = `<div class="card"><p class="small muted">No ${state.mode==="day"?"day-trade":"swing"} ticker selected. Add a ${state.mode} ticker to your watchlist to start journaling.</p></div>`;
     return;
   }
@@ -1706,6 +1850,7 @@ function renderMain(){
     else if(tab==="scen") html = dayScenTab();
     else if(tab==="log") html = dayLogTab();
     else if(tab==="hist") html = dayHistoryTab();
+    else if(tab==="histcheck") html = historyMorningCheckTab("day");
     else html = rulesTab("day-rules", DAY_RULE_CATS, DAY_TRUTHS);
   } else {
     if(tab==="eod") html = swingEodTab();
@@ -1713,6 +1858,7 @@ function renderMain(){
     else if(tab==="scen") html = swingScenTab();
     else if(tab==="options") html = swingOptionsTab();
     else if(tab==="hist") html = swingHistoryTab();
+    else if(tab==="histcheck") html = historyMorningCheckTab("swing");
     else html = rulesTab("swing-rules", SWING_RULE_CATS, SWING_TRUTHS);
   }
   $("#content").innerHTML = html;
@@ -1797,6 +1943,7 @@ document.addEventListener("click", e=>{
   else if(act==="tab"){ state.tab[state.mode] = el.dataset.tab; renderTabs(); renderMain(); }
   else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); loadTickerDetails(state.ticker); if(window.innerWidth<900) document.querySelector("aside").classList.remove("open"); }
   else if(act==="saveHist"){ saveScenarioToHistory(); state.tab[state.mode]="hist"; renderTabs(); renderMain(); }
+  else if(act==="runHistCheck"){ loadHistoryMorningCheck(state.mode); }
   else if(act==="delHistRow"){ deleteHistoryRow(el.dataset.id); renderMain(); }
   else if(act==="delHistDate"){
     const d = el.dataset.date;

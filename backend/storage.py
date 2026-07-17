@@ -681,6 +681,60 @@ def get_eod_journal_snapshot(email: str, mode: str, session_date: str, ticker: s
     }
 
 
+def list_eod_journal_snapshots(
+    email: str,
+    mode: str,
+    *,
+    limit: int = 300,
+    kind: str = "",
+) -> list[dict[str, Any]]:
+    normalized = normalize_email(email)
+    m = mode.lower().strip()
+    lim = max(1, min(int(limit or 300), 1000))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM eod_journal_snapshots
+            WHERE email = ? AND mode = ?
+            ORDER BY session_date DESC, ticker ASC
+            LIMIT ?
+            """,
+            (normalized, m, lim),
+        ).fetchall()
+
+    out: list[dict[str, Any]] = []
+    wanted_kind = kind.strip()
+    for row in rows:
+        try:
+            snapshot = json.loads(row["snapshot_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            snapshot = {}
+        if wanted_kind and str(snapshot.get("kind") or "") != wanted_kind:
+            continue
+        try:
+            notes = json.loads(row["notes_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            notes = {}
+        try:
+            checks = json.loads(row["checks_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            checks = {}
+        out.append(
+            {
+                "email": normalized,
+                "mode": row["mode"],
+                "date": row["session_date"],
+                "ticker": row["ticker"],
+                "snapshot": snapshot,
+                "notes": notes,
+                "checks": checks,
+                "saved_at_ms": int(row["saved_at_ms"] or 0),
+            }
+        )
+    return out
+
+
 def upsert_iv_atm_snapshot(ticker: str, session_date: str, iv_pct: float) -> None:
     """Store one ATM-implied-vol snapshot per ticker per US session date (for IV Rank)."""
     t = ticker.upper().strip()

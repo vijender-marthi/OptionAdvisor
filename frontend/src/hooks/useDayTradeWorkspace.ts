@@ -5,7 +5,7 @@ type DayTradeWorkspaceHookState = {
   data: DayTradeWorkspaceResponse | null
   loading: boolean
   error: string
-  reload: () => Promise<void>
+  reload: (options?: { forceRefresh?: boolean }) => Promise<void>
 }
 
 export function useDayTradeWorkspace(query: DayTradeWorkspaceQuery | null): DayTradeWorkspaceHookState {
@@ -18,7 +18,7 @@ export function useDayTradeWorkspace(query: DayTradeWorkspaceQuery | null): DayT
   const interval = query?.interval ?? '1m'
   const forceRefresh = Boolean(query?.forceRefresh)
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (options: { forceRefresh?: boolean } = {}) => {
     const cleanSymbol = symbol.trim()
     if (!cleanSymbol) {
       setData(null)
@@ -33,7 +33,7 @@ export function useDayTradeWorkspace(query: DayTradeWorkspaceQuery | null): DayT
         symbol: cleanSymbol,
         sessionDate,
         interval,
-        forceRefresh,
+        forceRefresh: options.forceRefresh ?? forceRefresh,
       })
       setData(response)
     } catch (err) {

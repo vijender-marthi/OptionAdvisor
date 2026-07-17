@@ -409,7 +409,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, activeIn
     if (!drag || chart.candles.length <= visibleBars) return
     const rect = event.currentTarget.getBoundingClientRect()
     const barsPerPx = visibleBars / Math.max(1, rect.width)
-    const deltaBars = Math.round((drag.x - event.clientX) * barsPerPx)
+    const deltaBars = Math.round((event.clientX - drag.x) * barsPerPx)
     setPanOffsetBars(clamp(drag.panOffsetBars + deltaBars, 0, Math.max(0, chart.candles.length - visibleBars)))
   }
 
