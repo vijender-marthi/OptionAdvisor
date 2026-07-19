@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate as useRouterNavigate } from 'react-router-dom'
-import { Search, Database, Layers, AlertTriangle, BookOpen, ArrowUpRight } from 'lucide-react'
-import { analyzeOptions } from '../api/client'
+import { Search, Database, Layers, AlertTriangle, BookOpen, ArrowUpRight, BarChart2, RefreshCw } from 'lucide-react'
+import { analyzeOptions, fetchPositionSessionChart } from '../api/client'
+import type { PositionSessionChartResponse } from '../api/client'
 import type { AnalyzeResponse, Recommendation, Signals, StrategyMode, TickerCacheEntry } from '../types'
 import { deriveRegularTradeState } from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import SignalPanel from '../components/SignalPanel'
-import PriceChart from '../components/PriceChart'
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
+import DayTradeWorkspaceChart from '../components/DayTradeWorkspaceChart'
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
@@ -159,6 +160,9 @@ interface DecisionSummary {
   rows: RecommendationView[]
 }
 
+type PositionWorkspaceTab = 'session' | 'recommendations'
+type PositionChartInterval = '1m' | '5m' | '15m'
+
 const sentence = (value: string | undefined, fallback: string) => {
   const clean = (value ?? '').trim()
   if (!clean) return fallback
@@ -172,6 +176,13 @@ const strategyFamily = (strategy: string) => {
   if (/credit|condor/i.test(strategy)) return 'Income'
   if (/call|put|debit/i.test(strategy)) return 'Directional'
   return 'Auto'
+}
+
+const strategyExpectation = (strategy: string) => {
+  if (/bull put|put credit|bull call|long call|short put|cash secured put/i.test(strategy)) return 'Bullish expectation'
+  if (/bear call|call credit|bear put|long put|short call/i.test(strategy)) return 'Bearish expectation'
+  if (/condor|straddle|strangle/i.test(strategy)) return 'Range-bound expectation'
+  return 'Neutral expectation'
 }
 
 const eligibilityFor = (rec: Recommendation) => {
@@ -619,6 +630,223 @@ function GuideRule({ C, label, value, color }: { C: Palette; label: string; valu
   )
 }
 
+function PositionSessionChartPanel({
+  chart,
+  loading,
+  error,
+  interval,
+  onIntervalChange,
+  onRefresh,
+  C,
+}: {
+  chart: PositionSessionChartResponse | null
+  loading: boolean
+  error: string
+  interval: PositionChartInterval
+  onIntervalChange: (interval: PositionChartInterval) => void
+  onRefresh: () => void
+  C: Palette
+}) {
+  const structure = chart?.structureSummary
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ color: C.accent, fontSize: '0.68rem', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Session Chart</div>
+            <div style={{ color: C.text, fontSize: '0.9rem', fontWeight: 850, marginTop: 3 }}>Structure view · 1 hour to 7 days</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {(['1m', '5m', '15m'] as PositionChartInterval[]).map(option => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onIntervalChange(option)}
+                style={{
+                  border: `1px solid ${interval === option ? C.violet : C.border}`,
+                  background: interval === option ? `${C.violet}22` : C.bgCard,
+                  color: interval === option ? C.text : C.muted,
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontSize: '0.72rem',
+                  fontWeight: 900,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {option}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                border: `1px solid ${C.border}`,
+                background: C.bgCard,
+                color: C.text,
+                borderRadius: 8,
+                padding: '6px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+      {loading && !chart && (
+        <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, color: C.muted, textAlign: 'center' }}>
+          Loading backend session chart...
+        </div>
+      )}
+      {error && (
+        <div style={{ background: 'rgba(255,77,109,0.08)', border: `1px solid rgba(255,77,109,0.25)`, borderRadius: 14, padding: 14, color: C.red, fontSize: '0.82rem', fontWeight: 700 }}>
+          {error}
+        </div>
+      )}
+      {chart && (
+        <>
+          <div style={{ height: 560, minHeight: 420 }}>
+            <DayTradeWorkspaceChart
+              chart={chart.chart}
+              marketTimeZone={chart.session.marketTimeZone}
+              activeInterval={interval}
+              onIntervalChange={onIntervalChange}
+              rangeOptions={['1h', '2h', '7d']}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+            {[
+              ['Trend', structure?.trend || '—', C.accent],
+              ['Structure', structure?.display || '—', C.violet],
+              ['Sequence', structure?.sequence?.join(' → ') || '—', C.green],
+              ['Expected Next', structure?.expectedNext || '—', C.amber],
+              ['Confidence', structure?.confidence != null ? `${Math.round(Number(structure.confidence) * 100)}%` : '—', C.text],
+              ['Invalidation', structure?.invalidationLevel != null ? fmtMoney(structure.invalidationLevel) : '—', C.red],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 12px' }}>
+                <div style={{ color: C.muted, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 900 }}>{label}</div>
+                <div style={{ color: color as string, fontSize: '0.82rem', fontWeight: 850, marginTop: 4, fontFamily: /Confidence|Invalidation/.test(label) ? 'monospace' : undefined }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PositionRightFrame({
+  displayData,
+  selectedData,
+  decisionSummary,
+  advancedSignalsOpen,
+  onToggleAdvancedSignals,
+  C,
+}: {
+  displayData: AnalyzeResponse | null
+  selectedData: AnalyzeResponse | null
+  decisionSummary: DecisionSummary | null
+  advancedSignalsOpen: boolean
+  onToggleAdvancedSignals: () => void
+  C: Palette
+}) {
+  const selected = decisionSummary?.selected?.rec ?? displayData?.recommendations?.[0]
+  const verdictColor =
+    decisionSummary?.action === 'GO' ? C.green :
+    decisionSummary?.action === 'WAIT' ? C.amber :
+    decisionSummary?.action === 'MANAGE POSITION' ? C.accent :
+    decisionSummary ? C.red : C.muted
+  return (
+    <aside className="min-h-0 max-h-[calc(100dvh-8rem)] w-full overflow-x-hidden overflow-y-auto overscroll-contain pr-1 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:w-[360px] xl:shrink-0">
+      <div style={{ display: 'grid', gap: 12 }}>
+        <section style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}>
+          <div style={{ color: C.muted, fontSize: '0.66rem', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Right Frame</div>
+          <div style={{ marginTop: 8, color: verdictColor, fontSize: '1.5rem', fontWeight: 950, lineHeight: 1 }}>{decisionSummary?.action || '—'}</div>
+          <div style={{ marginTop: 5, color: C.text, fontSize: '0.86rem', fontWeight: 850 }}>{decisionSummary?.bestSetup || selected?.strategy || 'No setup selected'}</div>
+          <p style={{ margin: '8px 0 0', color: C.muted, fontSize: '0.76rem', lineHeight: 1.45 }}>
+            {decisionSummary?.primaryReason || 'Run a ticker analysis to load the current decision details.'}
+          </p>
+        </section>
+
+        {selected && displayData && (
+          <section style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ borderBottom: `1px solid ${C.border}`, padding: '10px 12px' }}>
+              <div style={{ color: C.accent, fontSize: '0.66rem', fontWeight: 900, letterSpacing: '0.09em', textTransform: 'uppercase' }}>Profit and Loss</div>
+              <div style={{ color: C.muted, fontSize: '0.72rem', marginTop: 2 }}>Selected recommendation payoff.</div>
+            </div>
+            <div style={{ padding: 12 }}>
+              <OptionProfitCalculator
+                recommendations={selectedData?.recommendations ?? displayData.recommendations}
+                currentPrice={displayData.signals.current_price}
+              />
+            </div>
+          </section>
+        )}
+
+        {selected && (
+          <section style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}>
+            <div style={{ color: C.muted, fontSize: '0.66rem', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Selected Trade</div>
+            <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+              {[
+                ['Strategy', selected.strategy],
+                ['Expiry', `${selected.expiry.slice(5)} · ${selected.dte} DTE`],
+                ['Max Profit', fmtMoney(selected.max_profit * 100)],
+                ['Max Loss', fmtMoney(selected.max_loss * 100)],
+                ['PoP', fmtPct(selected.prob_of_profit)],
+                ['EV', fmtMoney(selected.expected_value * 100)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: `1px solid ${C.border}`, paddingBottom: 6 }}>
+                  <span style={{ color: C.muted, fontSize: '0.72rem', fontWeight: 750 }}>{label}</span>
+                  <span style={{ color: C.text, fontSize: '0.74rem', fontWeight: 850, fontFamily: /Profit|Loss|EV|PoP/.test(label) ? 'monospace' : undefined, textAlign: 'right' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {displayData && (
+          <section style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}>
+            <button
+              type="button"
+              onClick={onToggleAdvancedSignals}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                color: C.muted,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '0.72rem',
+                fontWeight: 900,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: 0,
+              }}
+            >
+              Advanced signals
+              <span style={{ color: C.accent }}>{advancedSignalsOpen ? 'Hide' : 'Show'}</span>
+            </button>
+            {advancedSignalsOpen && (
+              <div style={{ marginTop: 12 }}>
+                <SignalPanel signals={displayData.signals} />
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+    </aside>
+  )
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────
 
 export default function TickerPage() {
@@ -635,7 +863,7 @@ export default function TickerPage() {
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | null>(null)
+  const [workspaceTab,  setWorkspaceTab]  = useState<PositionWorkspaceTab>('session')
   const [pageTab,       setPageTab]       = useState<'active' | 'strategy'>('active')
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
   const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
@@ -647,6 +875,10 @@ export default function TickerPage() {
   const [selectedWeeksOut, setSelectedWeeksOut] = useState(4)
   const [staleBannerOpen, setStaleBannerOpen] = useState(false)
   const [yahooBannerOpen, setYahooBannerOpen] = useState(false)
+  const [positionChartInterval, setPositionChartInterval] = useState<PositionChartInterval>('5m')
+  const [positionChart, setPositionChart] = useState<PositionSessionChartResponse | null>(null)
+  const [positionChartLoading, setPositionChartLoading] = useState(false)
+  const [positionChartError, setPositionChartError] = useState('')
 
   const didRun = useRef(false)
   const didRestoreLastAnalysis = useRef(false)
@@ -682,14 +914,14 @@ export default function TickerPage() {
     try {
       const result = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode, ceKey)
       setData(result)
-      setActiveTab('chart')
+      setWorkspaceTab('session')
       setCached(ticker, result, weeksOut, spreadWidth, strategyMode, ceKey)
     } catch (e: unknown) {
       const msg = analyzeErrorDetail(e)
       const cached = getCached(tickerUpper)
       if (cached?.data) {
         setData(cached.data)
-        setActiveTab('chart')
+        setWorkspaceTab('session')
         setLastWeeks(cached.weeksOut)
         setLastWidth(cached.spreadWidth)
         setLastMode(cached.strategyMode ?? 'all')
@@ -731,7 +963,7 @@ export default function TickerPage() {
         (cached.strategyMode ?? 'all') === strategyMode &&
         (cached.chainExpiry ?? null) === (ceKey ?? null)) {
       setData(cached.data)
-      setActiveTab('chart')
+      setWorkspaceTab('session')
       setFromCache({ age: cacheAge(cached), fresh: true })
       setError(null)
       setStaleSnapshotInfo(null)
@@ -809,6 +1041,35 @@ export default function TickerPage() {
     return getTradeWorksheetRoute({ ticker: displayData?.ticker || inputTicker, direction, strategy, source: 'regular' })
   }, [displayData, inputTicker, selectedRank])
   const decisionSummary = useMemo(() => buildDecisionSummary(displayData, selectedRank), [displayData, selectedRank])
+  const positionChartTicker = (displayData?.ticker || inputTicker || '').trim().toUpperCase()
+  const loadPositionChart = useCallback(async (forceRefresh = false) => {
+    if (!positionChartTicker) {
+      setPositionChart(null)
+      setPositionChartError('')
+      return
+    }
+    setPositionChartLoading(true)
+    setPositionChartError('')
+    try {
+      const response = await fetchPositionSessionChart({
+        symbol: positionChartTicker,
+        interval: positionChartInterval,
+        forceRefresh,
+      })
+      setPositionChart(response)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load Position Trading session chart.'
+      setPositionChart(null)
+      setPositionChartError(message)
+    } finally {
+      setPositionChartLoading(false)
+    }
+  }, [positionChartInterval, positionChartTicker])
+
+  useEffect(() => {
+    if (!displayData?.ticker) return
+    void loadPositionChart(false)
+  }, [displayData?.ticker, loadPositionChart])
 
   useEffect(() => {
     const pending = pendingRecFocusRef.current
@@ -824,14 +1085,6 @@ export default function TickerPage() {
     pendingRecFocusRef.current = null
     if (match) setScrollFocusRank(match.rank)
   }, [loading, selectedData, data])
-
-  const cardStyle: React.CSSProperties = {
-    background: C.bgPanel,
-    border: `1px solid ${C.border}`,
-    borderRadius: 14,
-    padding: '16px 20px',
-    marginTop: 14,
-  }
 
   const [searchOpen, setSearchOpen] = useState(false)
   const [advancedSignalsOpen, setAdvancedSignalsOpen] = useState(false)
@@ -899,7 +1152,7 @@ export default function TickerPage() {
           </div>
         </div>
       ) : (
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-start">
         {/* Mobile/tablet search toggle */}
         <button
           type="button"
@@ -911,7 +1164,7 @@ export default function TickerPage() {
         </button>
 
         {/* Left: Search panel */}
-        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-72 xl:w-80 shrink-0 lg:sticky lg:top-6`}>
           {/* Page header */}
           <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
             <div className="min-w-0 flex-1">
@@ -1025,7 +1278,7 @@ export default function TickerPage() {
 
         </div>
 
-        {/* Right: Content */}
+        {/* Center: Content */}
         <div className="flex-1 min-w-0 w-full">
 
         {/* Loading */}
@@ -1097,6 +1350,49 @@ export default function TickerPage() {
               </div>
             </div>
 
+            <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 6, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                {[
+                  { id: 'session' as const, label: 'Session Chart', icon: <BarChart2 size={14} /> },
+                  { id: 'recommendations' as const, label: 'Recommendations', icon: <Layers size={14} /> },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setWorkspaceTab(tab.id)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      border: `1px solid ${workspaceTab === tab.id ? `${C.violet}66` : 'transparent'}`,
+                      background: workspaceTab === tab.id ? `${C.violet}18` : 'transparent',
+                      color: workspaceTab === tab.id ? C.text : C.muted,
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      fontSize: '0.82rem',
+                      fontWeight: 900,
+                    }}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {workspaceTab === 'session' ? (
+              <PositionSessionChartPanel
+                chart={positionChart}
+                loading={positionChartLoading}
+                error={positionChartError}
+                interval={positionChartInterval}
+                onIntervalChange={setPositionChartInterval}
+                onRefresh={() => void loadPositionChart(true)}
+                C={C}
+              />
+            ) : (
+            <>
             {decisionSummary && (() => {
               const verdictColor =
                 decisionSummary.action === 'GO' ? C.green :
@@ -1244,14 +1540,14 @@ export default function TickerPage() {
               ) : (
                 <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflowX: 'auto', background: C.bgPanel }}>
-                  <table style={{ minWidth: 980, width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.78rem', tableLayout: 'fixed' }}>
+                  <table style={{ minWidth: 1120, width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.78rem', tableLayout: 'fixed' }}>
                     <thead>
                       <tr style={{ background: C.bgPanel }}>
-                        {['Rank', 'Strategy', 'Eligibility', 'Action', 'Strike / Expiry', 'Credit / Debit', 'Max Profit', 'Max Loss', 'Breakeven', 'PoP', 'Status'].map((header, idx) => (
+                        {['Rank', 'Strategy', 'Expectation', 'Eligibility', 'Action', 'Strike / Expiry', 'Credit / Debit', 'Max Profit', 'Max Loss', 'Breakeven', 'PoP', 'Status'].map((header, idx) => (
                           <th key={header} style={{
-                            width: idx === 1 ? '18%' : idx === 4 ? '14%' : idx === 8 ? '12%' : '8%',
+                            width: idx === 1 ? '16%' : idx === 2 ? '13%' : idx === 5 ? '14%' : idx === 9 ? '12%' : '7%',
                             padding: '10px 10px',
-                            textAlign: idx >= 5 && idx <= 9 ? 'right' : idx === 10 ? 'center' : 'left',
+                            textAlign: idx >= 6 && idx <= 10 ? 'right' : idx === 11 ? 'center' : 'left',
                             color: C.muted,
                             fontWeight: 800,
                             fontSize: '0.66rem',
@@ -1273,6 +1569,7 @@ export default function TickerPage() {
                         const statusColor = status === 'GO' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WAIT' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         const eligibility = eligibilityFor(rec)
+                        const expectation = strategyExpectation(rec.strategy)
                         const firstLeg = rec.legs[0]
                         const breakeven = rec.breakeven_lower && rec.breakeven_upper && Math.abs(rec.breakeven_lower - rec.breakeven_upper) > 0.01
                           ? `${fmtMoney(rec.breakeven_lower)} - ${fmtMoney(rec.breakeven_upper)}`
@@ -1284,6 +1581,9 @@ export default function TickerPage() {
                                 <td style={{ padding: '11px 10px' }}>
                                   <div style={{ color: C.text, fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
                                   <div style={{ color: C.muted, fontSize: '0.66rem', marginTop: 2 }}>{strategyFamily(rec.strategy)} · Score <span style={{ color: scoreColor(score, C), fontFamily: 'monospace', fontWeight: 800 }}>{score || '—'}</span></div>
+                                </td>
+                                <td style={{ padding: '11px 10px', color: /Bullish/i.test(expectation) ? C.green : /Bearish/i.test(expectation) ? C.red : C.amber, fontWeight: 700, fontSize: '0.72rem' }}>
+                                  {expectation}
                                 </td>
                                 <td style={{ padding: '11px 10px' }}>
                                   <span style={{ color: eligibility.status === 'ok' ? C.green : C.amber, border: `1px solid ${eligibility.status === 'ok' ? C.green : C.amber}55`, background: eligibility.status === 'ok' ? 'rgba(0,229,160,0.08)' : 'rgba(245,166,35,0.08)', borderRadius: 999, padding: '2px 8px', fontSize: '0.66rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{eligibility.label}</span>
@@ -1307,7 +1607,7 @@ export default function TickerPage() {
                               </tr>
                             {isExpanded && (
                               <tr style={{ background: 'rgba(74,124,255,0.02)', borderBottom: `1px solid ${C.border}` }}>
-                                <td colSpan={11} style={{ padding: '12px 14px' }}>
+                                <td colSpan={12} style={{ padding: '12px 14px' }}>
                                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
                                     <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, padding: 10 }}>
                                       <div style={{ color: C.muted, fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase' }}>Option Legs</div>
@@ -1401,63 +1701,8 @@ export default function TickerPage() {
               )}
             </div>
 
-            {/* Chart / Calculator (collapsed by default) */}
-            <div style={{
-              background: C.bgPanel, border: `1px solid ${C.border}`,
-              borderRadius: 14, overflow: 'hidden', marginTop: 14,
-            }}>
-              {activeTab ? (
-                <>
-                <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
-                  {(['chart', 'calculator'] as const).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setActiveTab(t)}
-                      style={{
-                        flex: 1,
-                        minWidth: 140,
-                        padding: '10px 16px',
-                        background: activeTab === t ? 'rgba(74,124,255,0.05)' : 'transparent',
-                        border: 'none',
-                        borderBottom: activeTab === t ? `2px solid ${C.accent}` : '2px solid transparent',
-                        color: activeTab === t ? C.text : C.muted,
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ padding: '16px 20px' }}>
-                  {activeTab === 'chart' ? (
-                    <PriceChart history={displayData.price_history} />
-                  ) : (
-                    <OptionProfitCalculator
-                      recommendations={selectedData?.recommendations ?? []}
-                      currentPrice={displayData.signals.current_price}
-                    />
-                  )}
-                </div>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('chart')}
-                  style={{
-                    width: '100%', padding: '10px 16px',
-                    background: 'transparent', border: 'none',
-                    color: C.muted, fontSize: '0.78rem', fontWeight: 600,
-                    cursor: 'pointer', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', gap: 6,
-                  }}
-                >
-                  📊 Show Chart &amp; P&amp;L Calculator
-                </button>
-              )}
-            </div>
+            </>
+            )}
           </>
         )}
 
@@ -1487,38 +1732,6 @@ export default function TickerPage() {
           </div>
         )}
 
-        {!loading && data && displayData && (
-        <div style={cardStyle}>
-          <button
-            type="button"
-            onClick={() => setAdvancedSignalsOpen(p => !p)}
-            style={{
-              width: '100%',
-              background: 'transparent',
-              border: 'none',
-              color: C.muted,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '0.76rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: 0,
-            }}
-          >
-            Advanced signal details
-            <span style={{ color: C.accent }}>{advancedSignalsOpen ? 'Hide' : 'Show'}</span>
-          </button>
-          {advancedSignalsOpen && (
-            <div style={{ marginTop: 12 }}>
-              <SignalPanel signals={displayData.signals} />
-            </div>
-          )}
-        </div>
-        )}
-
         {/* Disclaimer */}
         <div style={{
           textAlign: 'center', fontSize: '0.65rem', color: C.muted, opacity: 0.5,
@@ -1532,6 +1745,16 @@ export default function TickerPage() {
           @keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }
         `}</style>
       </div>
+      {!loading && data && displayData && (
+        <PositionRightFrame
+          displayData={displayData}
+          selectedData={selectedData}
+          decisionSummary={decisionSummary}
+          advancedSignalsOpen={advancedSignalsOpen}
+          onToggleAdvancedSignals={() => setAdvancedSignalsOpen(p => !p)}
+          C={C}
+        />
+      )}
       </div>
       )}
     </div>

@@ -5,7 +5,7 @@ import type { DayTradeSemanticTone, DayTradeWorkspaceResponse } from '../api/cli
 
 type WorkspaceChart = DayTradeWorkspaceResponse['chart']
 type WorkspaceInterval = '1m' | '5m' | '15m'
-type WorkspaceRange = '30m' | '1h' | '2h' | 'session'
+type WorkspaceRange = '30m' | '1h' | '2h' | 'session' | '7d'
 
 type Point = {
   x: number
@@ -100,7 +100,19 @@ function ChartIconButton({ label, onClick, children }: ChartIconButtonProps) {
   )
 }
 
-export default function DayTradeWorkspaceChart({ chart, marketTimeZone, activeInterval, onIntervalChange }: { chart: WorkspaceChart; marketTimeZone?: string; activeInterval?: WorkspaceInterval; onIntervalChange?: (interval: WorkspaceInterval) => void }) {
+export default function DayTradeWorkspaceChart({
+  chart,
+  marketTimeZone,
+  activeInterval,
+  onIntervalChange,
+  rangeOptions = ['30m', '1h', '2h', 'session'],
+}: {
+  chart: WorkspaceChart
+  marketTimeZone?: string
+  activeInterval?: WorkspaceInterval
+  onIntervalChange?: (interval: WorkspaceInterval) => void
+  rangeOptions?: WorkspaceRange[]
+}) {
   const firstCandleTime = chart.candles[0]?.time || ''
   const baseVisibleBars = clamp(safeNumber(chart.defaults.initialVisibleBars, 100), MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length || MIN_VISIBLE_BARS))
   const defaultOverlayIds = useMemo(() => new Set(chart.defaults.visibleOverlayIds), [chart.defaults.visibleOverlayIds])
@@ -110,7 +122,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, activeIn
   const [overlayMenuOpen, setOverlayMenuOpen] = useState(false)
   const [visibleOverlayIds, setVisibleOverlayIds] = useState(defaultOverlayIds)
   const [fullscreen, setFullscreen] = useState(false)
-  const [visibleRange, setVisibleRange] = useState<WorkspaceRange>(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' ? chart.defaults.visibleRange : '1h')
+  const [visibleRange, setVisibleRange] = useState<WorkspaceRange>(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' || chart.defaults.visibleRange === '7d' ? chart.defaults.visibleRange : '1h')
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
   const dragRef = useRef<{ x: number; panOffsetBars: number } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -122,7 +134,7 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, activeIn
     setPanOffsetBars(0)
     setFollowLive(chart.defaults.followLive)
     setVisibleOverlayIds(defaultOverlayIds)
-    setVisibleRange(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' ? chart.defaults.visibleRange : '1h')
+    setVisibleRange(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' || chart.defaults.visibleRange === '7d' ? chart.defaults.visibleRange : '1h')
   }, [chart.defaults.followLive, chart.defaults.interval, chart.defaults.visibleRange, defaultOverlayIds, firstCandleTime])
 
   const model = useMemo(() => {
@@ -457,10 +469,9 @@ export default function DayTradeWorkspaceChart({ chart, marketTimeZone, activeIn
             className="rounded-md border border-white/70 bg-white/70 px-2 py-0.5 text-[10px] font-bold text-secondary backdrop-blur dark:border-white/[0.08] dark:bg-slate-900/70"
             aria-label="Visible range"
           >
-            <option value="30m">30m</option>
-            <option value="1h">1h</option>
-            <option value="2h">2h</option>
-            <option value="session">Session</option>
+            {rangeOptions.map(option => (
+              <option key={option} value={option}>{option === 'session' ? 'Session' : option}</option>
+            ))}
           </select>
           <span className="hidden xl:inline">{chart.defaults.scaleMode}</span>
           <span className="font-mono text-[10px] text-tertiary">

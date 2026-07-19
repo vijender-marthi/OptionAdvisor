@@ -198,18 +198,18 @@ export default function Sidebar() {
   const w = collapsed ? 'w-16' : 'w-56'
   /** Bottom rail (< xl): workflow-ordered primary 5 */
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'my-tickers',           label: 'Tickers',   icon: <ListTodo size={23} /> },
-    { id: 'ticker-scanner',       label: 'Scanner',   icon: <ScanLine size={23} /> },
+    { id: 'day-trade',            label: 'Day Trade', icon: <Zap size={23} /> },
+    { id: 'swing-trade',          label: 'Swing',     icon: <TrendingUp size={23} /> },
     { id: 'trade-command-center', label: 'Command',   icon: <Command size={23} /> },
     { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
     { id: 'ticker',               label: 'Regular',   icon: <Layers size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
     // Research
+    { id: 'my-tickers',    label: 'My Tickers',     icon: <ListTodo size={18} /> },
+    { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
     { id: 'watchlist',      label: 'Signal Feed',    icon: <SatelliteDish size={18} /> },
     // Trade
-    { id: 'day-trade',      label: 'Day Trade',   icon: <Zap size={18} /> },
-    { id: 'swing-trade',    label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
     { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },
     { id: 'trade-worksheet',  label: 'Pre-Trade Analysis',   icon: <Link2 size={18} /> },

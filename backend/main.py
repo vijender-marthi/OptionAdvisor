@@ -62,7 +62,11 @@ from unified_analysis import serialize_day_trade, serialize_swing_trade, seriali
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
-from day_trade_workspace import build_day_trade_workspace_response, build_day_trade_workspace_unavailable_response
+from day_trade_workspace import (
+    build_day_trade_workspace_response,
+    build_day_trade_workspace_unavailable_response,
+    build_position_session_chart_response,
+)
 from day_trade_workspace_models import DayTradeWorkspaceResponse as DayTradeWorkspaceResponseModel
 from auth_routes import auth_router, ensure_same_user, require_access_email
 import exit_monitor
@@ -3271,6 +3275,86 @@ def day_trade_workspace(
             interval=interval,
             reason=f"Unable to build Day Trade workspace: {exc}",
         )
+
+
+def _position_session_chart_bars(raw: pd.DataFrame) -> list[dict[str, Any]]:
+    if raw is None or raw.empty:
+        return []
+    df = raw.copy()
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index, errors="coerce")
+    df = df[df.index.notna()]
+    if df.empty:
+        return []
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+    df = df.tz_convert("America/New_York")
+    try:
+        df = df.between_time("09:30", "16:00")
+    except Exception:
+        pass
+    if df.empty:
+        return []
+    required = ["Open", "High", "Low", "Close"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        return []
+    if "Volume" not in df.columns:
+        df["Volume"] = 0
+    typical = (df["High"].astype(float) + df["Low"].astype(float) + df["Close"].astype(float)) / 3.0
+    volume = df["Volume"].fillna(0).astype(float).clip(lower=0)
+    session_key = df.index.date
+    cumulative_volume = volume.groupby(session_key).cumsum()
+    cumulative_pv = (typical * volume).groupby(session_key).cumsum()
+    vwap = cumulative_pv / cumulative_volume.replace(0, np.nan)
+    rows: list[dict[str, Any]] = []
+    for ts, row in df.iterrows():
+        close_value = row.get("Close")
+        if pd.isna(close_value):
+            continue
+        vwap_value = vwap.loc[ts] if ts in vwap.index else np.nan
+        rows.append(
+            {
+                "t": ts.tz_convert("UTC").isoformat().replace("+00:00", "Z"),
+                "o": round(float(row["Open"]), 4),
+                "h": round(float(row["High"]), 4),
+                "l": round(float(row["Low"]), 4),
+                "c": round(float(close_value), 4),
+                "v": round(float(row.get("Volume") or 0), 4),
+                "vwap": None if pd.isna(vwap_value) else round(float(vwap_value), 4),
+                "sessionDate": ts.date().isoformat(),
+            }
+        )
+    return rows
+
+
+@app.get("/api/position-trade/session-chart")
+def position_trade_session_chart(
+    symbol: str = Query(..., min_length=1),
+    interval: str = Query(default="5m", regex="^(1m|5m|15m)$"),
+    force_refresh: bool = Query(default=False, alias="force_refresh"),
+) -> dict[str, Any]:
+    ticker = symbol.strip().upper()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="symbol is required")
+    try:
+        raw = bar_cache.get_history(ticker, period="7d", interval="1m", auto_adjust=True, force_refresh=force_refresh)
+        chart_bars = _position_session_chart_bars(raw)
+        if not chart_bars:
+            raise ValueError("No regular-session intraday bars returned for the last 7 days.")
+        try:
+            info = bar_cache.get_info(ticker, force_refresh=force_refresh)
+        except Exception:
+            info = {}
+        return build_position_session_chart_response(
+            symbol=ticker,
+            company_name=str(info.get("longName") or info.get("shortName") or ticker),
+            chart_bars=chart_bars,
+            interval=interval,
+        )
+    except Exception as exc:
+        log.warning("POSITION_SESSION_CHART_UNAVAILABLE symbol=%s interval=%s error=%s", ticker, interval, exc)
+        raise HTTPException(status_code=502, detail=f"Position session chart unavailable for {ticker}: {exc}") from exc
 
 
 def _build_day_trade_workspace_payload(

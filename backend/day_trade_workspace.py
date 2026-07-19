@@ -1624,6 +1624,87 @@ def build_day_trade_workspace_response(
     }
 
 
+def build_position_session_chart_response(
+    *,
+    symbol: str,
+    company_name: str | None,
+    chart_bars: list[Any],
+    interval: str = "5m",
+) -> dict[str, Any]:
+    """Build a backend-owned Position Trading session chart DTO."""
+    generated_at = _now_iso()
+    interval_value = interval if interval in {"1m", "5m", "15m"} else "5m"
+    last_bar = chart_bars[-1] if chart_bars and isinstance(chart_bars[-1], dict) else {}
+    last_price = _num(last_bar.get("c", last_bar.get("close")))
+    metrics = {
+        "last_price": last_price,
+        "vwap": _num(last_bar.get("vwap")),
+        "session_date": str(last_bar.get("sessionDate") or date.today().isoformat()),
+        "confidence": None,
+    }
+    market_structure = _market_structure(chart_bars, metrics)
+    interval_bars = _interval_chart_bars(chart_bars, interval_value)
+    candles = _chart_candles(interval_bars)
+    vwap_overlay = _vwap_overlay(interval_bars, metrics, None)
+    visible_ids = []
+    if vwap_overlay.get("visibleByDefault"):
+        visible_ids.append(vwap_overlay["id"])
+    if market_structure.get("visibleByDefault"):
+        visible_ids.append(market_structure["id"])
+
+    return {
+        "schemaVersion": DAY_TRADE_WORKSPACE_SCHEMA_VERSION,
+        "generatedAt": generated_at,
+        "symbol": {
+            "ticker": symbol.upper(),
+            "companyName": company_name or symbol.upper(),
+            "price": _display_money(last_price),
+            "change": _display_percent(None),
+        },
+        "session": {
+            "mode": "position_review",
+            "status": _status("SEVEN_DAY", "7 Day Session Chart", "info"),
+            "sessionDate": str(metrics["session_date"]),
+            "displayDate": "Last 7 trading days",
+            "marketTimeZone": "America/New_York",
+            "isExecutionAllowed": False,
+            "reviewCopy": "Position Trading chart view. Trade decisions remain owned by the Position Trading engine.",
+        },
+        "chart": {
+            "candles": candles,
+            "levels": [],
+            "events": [],
+            "vwapOverlay": vwap_overlay,
+            "marketStructure": market_structure,
+            "defaults": {
+                "interval": interval_value,
+                "visibleRange": "1h",
+                "initialVisibleBars": 84,
+                "initialBarSpacing": 10,
+                "minBarSpacing": 3,
+                "maxBarSpacing": 20,
+                "rightOffsetBars": 6,
+                "scaleMode": "trade_focus",
+                "followLive": True,
+                "visibleOverlayIds": visible_ids,
+            },
+            "tradeFocus": {
+                "scalePaddingPercent": 8,
+                "levelIdsAllowedToAffectScale": [],
+            },
+        },
+        "structureSummary": {
+            "trend": market_structure.get("trend"),
+            "display": market_structure.get("display"),
+            "sequence": market_structure.get("sequence", []),
+            "expectedNext": market_structure.get("expectedNext"),
+            "confidence": market_structure.get("confidence"),
+            "invalidationLevel": market_structure.get("invalidationLevel"),
+            "explanation": market_structure.get("explanation"),
+        },
+    }
+
+
 def build_day_trade_workspace_unavailable_response(
     *,
     symbol: str,

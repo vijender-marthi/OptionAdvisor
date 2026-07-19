@@ -154,6 +154,7 @@ export default function DayTradeWorkspaceShell({
   const action = workspace.decision.primaryAction
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   const [activeDetailTab, setActiveDetailTab] = useState<string | null>(null)
+  const [allWidgetsOpen, setAllWidgetsOpen] = useState(false)
   const [bottomDockOpen, setBottomDockOpen] = useState(false)
   const [bottomWidgetIds, setBottomWidgetIds] = useState<string[]>([])
   const [displayTimeZone, setDisplayTimeZone] = useState(() => {
@@ -218,6 +219,7 @@ export default function DayTradeWorkspaceShell({
         bottomDockOpen={bottomDockOpen}
         bottomDockCount={bottomWidgetIds.length}
         onToggleBottomDock={() => setBottomDockOpen(open => !open)}
+        onOpenAllWidgets={() => setAllWidgetsOpen(true)}
       />
       <div
         className={`grid min-h-0 flex-1 auto-rows-max content-start items-start gap-1 p-1 xl:auto-rows-auto xl:content-stretch xl:items-stretch ${rightRailOpen ? 'xl:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'xl:grid-cols-1'}`}
@@ -263,6 +265,22 @@ export default function DayTradeWorkspaceShell({
         onActiveTabChange={setActiveDetailTab}
         onClose={() => setDetailDrawerOpen(false)}
       />
+      {allWidgetsOpen && (
+        <div className="fixed inset-y-0 right-0 z-[60] flex w-full flex-col border-l border-slate-200 bg-slate-100/95 p-2 shadow-2xl backdrop-blur-sm dark:border-white/[0.08] dark:bg-slate-950/95 lg:w-1/2 lg:p-4" role="dialog" aria-modal="true" aria-label="Expanded Day Trade widgets">
+          <div className="flex shrink-0 items-center justify-between rounded-t-xl border border-slate-200 bg-white px-4 py-3 dark:border-white/[0.08] dark:bg-slate-950">
+            <div>
+              <div className="text-sm font-black uppercase tracking-widest text-heading">Day Trade Workspace</div>
+              <div className="text-xs text-secondary">All decision widgets expanded</div>
+            </div>
+            <button type="button" onClick={() => setAllWidgetsOpen(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-100 hover:text-heading dark:hover:bg-slate-900" aria-label="Close expanded workspace" title="Close expanded workspace">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-b-xl border-x border-b border-slate-200 bg-surface-page p-3 dark:border-white/[0.08]">
+            <TradeDecisionPanel workspace={workspace} onAction={onAction} allExpanded />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -306,6 +324,7 @@ export function TradeDecisionHeader({
   bottomDockOpen = false,
   bottomDockCount = 0,
   onToggleBottomDock,
+  onOpenAllWidgets,
 }: {
   workspace: DayTradeWorkspaceResponse
   action: DayTradeWorkspaceAction
@@ -316,6 +335,7 @@ export function TradeDecisionHeader({
   bottomDockOpen?: boolean
   bottomDockCount?: number
   onToggleBottomDock?: () => void
+  onOpenAllWidgets?: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const secondaryActions = workspace.decision.secondaryActions || []
@@ -371,6 +391,18 @@ export function TradeDecisionHeader({
             <LayoutList size={16} />
             <span className="hidden sm:inline">{bottomDockOpen ? 'Hide Bottom' : 'Bottom'}</span>
             {bottomDockCount > 0 && <span className="font-mono text-[10px] text-violet-600 dark:text-violet-300">{bottomDockCount}</span>}
+          </button>
+        )}
+        {onOpenAllWidgets && (
+          <button
+            type="button"
+            onClick={onOpenAllWidgets}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-400/50 bg-violet-500/10 px-2 py-1.5 text-xs font-black text-violet-700 hover:border-violet-500 hover:bg-violet-500/15 dark:text-violet-200"
+            aria-label="Expand all workspace widgets"
+            title="Open all widgets in an expanded workspace"
+          >
+            <Maximize2 size={16} />
+            <span className="hidden sm:inline">Expand All</span>
           </button>
         )}
         <button
@@ -562,6 +594,7 @@ export function TradeDecisionPanel({
   dockedWidgetIds = [],
   onDockWidget,
   onUndockWidget,
+  allExpanded = false,
 }: {
   workspace: DayTradeWorkspaceResponse
   onAction?: (action: DayTradeWorkspaceAction) => void
@@ -569,6 +602,7 @@ export function TradeDecisionPanel({
   dockedWidgetIds?: string[]
   onDockWidget?: (widgetId: string) => void
   onUndockWidget?: (widgetId: string) => void
+  allExpanded?: boolean
 }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const engine = workspace.decisionEngine
@@ -586,7 +620,7 @@ export function TradeDecisionPanel({
     const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
     return placement === 'bottom' ? docked : !docked
   }
-  const panelProps = { placement, onDockWidget, onUndockWidget }
+  const panelProps = { placement, onDockWidget, onUndockWidget, allExpanded }
   return (
     <aside className={placement === 'bottom' ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2' : 'grid w-full max-h-none content-start gap-2 overflow-visible overscroll-contain pr-0 xl:max-h-none xl:overflow-y-auto xl:pr-1'}>
       {shouldRenderWidget('Current Decision') && <Panel title="Current Decision" {...panelProps}>
@@ -1292,16 +1326,18 @@ function Panel({
   placement = 'right',
   onDockWidget,
   onUndockWidget,
+  allExpanded = false,
 }: {
   title: string
   children: React.ReactNode
   placement?: WidgetPlacement
   onDockWidget?: (widgetId: string) => void
   onUndockWidget?: (widgetId: string) => void
+  allExpanded?: boolean
 }) {
   const pinnedFullLength = title === 'Current Decision'
   const widgetId = widgetIdForTitle(title)
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimized] = useState(!allExpanded && !pinnedFullLength)
   const [maximized, setMaximized] = useState(false)
   const [bodyMaxHeight, setBodyMaxHeight] = useState(pinnedFullLength ? 860 : 720)
   const startWidgetDrag = (event: React.DragEvent<HTMLElement>) => {
@@ -1355,10 +1391,16 @@ function Panel({
         draggable
         onDragStart={startWidgetDrag}
       >
-        <div className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+        <button
+          type="button"
+          onClick={() => !pinnedFullLength && setMinimized(cur => !cur)}
+          className={`flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] font-black uppercase tracking-widest text-tertiary ${pinnedFullLength ? 'cursor-grab' : 'cursor-pointer hover:text-heading'}`}
+          aria-expanded={pinnedFullLength || !minimized}
+          aria-label={pinnedFullLength ? title : `${minimized ? 'Restore' : 'Minimize'} ${title} widget`}
+        >
           <GripVertical size={14} className="shrink-0" />
           <span className="truncate">{title}</span>
-        </div>
+        </button>
         <div className="flex items-center gap-1">
           <span className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
             Widget

@@ -782,6 +782,21 @@ export interface DayTradeWorkspaceQuery {
   forceRefresh?: boolean
 }
 
+export type PositionSessionChartResponse = Pick<
+  DayTradeWorkspaceResponse,
+  'schemaVersion' | 'generatedAt' | 'symbol' | 'session' | 'chart'
+> & {
+  structureSummary?: {
+    trend?: string | null
+    display?: string | null
+    sequence?: string[]
+    expectedNext?: string | null
+    confidence?: number | null
+    invalidationLevel?: number | null
+    explanation?: string | null
+  }
+}
+
 const DAY_TRADE_WORKSPACE_SCHEMA_VERSION = 'day-trade-workspace.v1'
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -1111,6 +1126,21 @@ export const fetchDayTradeWorkspace = async (query: DayTradeWorkspaceQuery): Pro
   }
   const { data } = await api.get<unknown>(generatedApiPath(CLIENT_OPERATION_IDS.dayTradeWorkspace), { params })
   validateDayTradeWorkspaceResponse(data)
+  return data
+}
+
+export const fetchPositionSessionChart = async (query: {
+  symbol: string
+  interval?: '1m' | '5m' | '15m'
+  forceRefresh?: boolean
+}): Promise<PositionSessionChartResponse> => {
+  const { data } = await api.get<PositionSessionChartResponse>('/position-trade/session-chart', {
+    params: {
+      symbol: query.symbol.trim().toUpperCase(),
+      interval: query.interval ?? '5m',
+      ...(query.forceRefresh ? { force_refresh: true } : {}),
+    },
+  })
   return data
 }
 

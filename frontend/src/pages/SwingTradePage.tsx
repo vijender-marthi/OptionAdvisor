@@ -40,7 +40,7 @@ import {
 } from 'lucide-react'
 import { analyzeSwingTrade, analyzeV2, deskApi, saveToJournal } from '../api/client'
 import type { DeskAlertCreate, ProfessionalDecisionPayload, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
-import { fetchMyTickers, fetchStockTargets, type StockTargetData } from '../api/commandCenter'
+import { fetchMyTickers, fetchStockTargets, type MyTickerEntry, type StockTargetData } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import MacdHistogramChart from '../components/MacdHistogramChart'
 import { parseChartPayload } from '../components/SwingTradeMetricCharts'
@@ -60,6 +60,26 @@ type IndicatorCategory = 'trend' | 'momentum' | 'volatility' | 'volume' | 'level
 type IndicatorPanel = 'price' | 'volume' | 'oscillator' | 'structure'
 type IndicatorPresetId = 'clean' | 'swing_core' | 'trend' | 'momentum' | 'volatility' | 'engine_recommended'
 type WidgetPlacement = 'right' | 'bottom'
+type SwingSidebarFilterKey = 'all' | 'day' | 'regular' | 'swing'
+
+const SWING_SIDEBAR_FILTERS: Array<{ key: SwingSidebarFilterKey; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'day', label: 'Day Trade' },
+  { key: 'regular', label: 'Position' },
+  { key: 'swing', label: 'Swing' },
+]
+
+function swingTickerGroups(item: MyTickerEntry): SwingSidebarFilterKey[] {
+  const categories = (item as MyTickerEntry & { categories?: string[] }).categories
+  const groups = [...item.trade_types, ...(Array.isArray(categories) ? categories : [])].map(value => {
+    const normalized = value.trim().toUpperCase()
+    if (normalized === 'DAY' || normalized === 'DAY_TRADE' || normalized === 'DAYTRADE') return 'day'
+    if (normalized === 'REGULAR' || normalized === 'POSITION' || normalized === 'POSITION_TRADE' || normalized === 'POSITIONTRADING') return 'regular'
+    if (normalized === 'SWING' || normalized === 'SWING_TRADE' || normalized === 'SWINGTRADE') return 'swing'
+    return null
+  })
+  return Array.from(new Set(groups.filter((group): group is Exclude<SwingSidebarFilterKey, 'all'> => group != null)))
+}
 
 function widgetIdForTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
@@ -525,8 +545,9 @@ export default function SwingTradePage() {
   })
   const [bottomDockOpen, setBottomDockOpen] = useState(false)
   const [bottomWidgetIds, setBottomWidgetIds] = useState<string[]>([])
+  const [allWidgetsOpen, setAllWidgetsOpen] = useState(false)
   const [mobileWatchlistOpen, setMobileWatchlistOpen] = useState(false)
-  const [myTickers, setMyTickers] = useState<Array<{ symbol: string; company?: string; price?: number | null; changePct?: number | null }>>([])
+  const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [fibTargets, setFibTargets] = useState<StockTargetData | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
@@ -588,14 +609,9 @@ export default function SwingTradePage() {
   useEffect(() => {
     fetchMyTickers().then(res => {
       const rows = (res.data?.tickers ?? [])
-        .filter(item => (item.trade_types || []).includes('swing') && (item.is_active ?? true))
-        .map(item => ({
-          symbol: item.symbol.toUpperCase(),
-          company: item.company_name,
-          price: item.last_price,
-          changePct: item.price_change_pct,
-        }))
-        .slice(0, 18)
+        .filter(item => item.symbol && (item.is_active ?? true))
+        .map(item => ({ ...item, symbol: item.symbol.toUpperCase() }))
+        .sort((a, b) => a.symbol.localeCompare(b.symbol))
       setMyTickers(rows)
     }).catch(() => setMyTickers([]))
   }, [])
@@ -881,6 +897,7 @@ export default function SwingTradePage() {
             bottomDockOpen={bottomDockOpen}
             bottomDockCount={bottomWidgetIds.length}
             onToggleBottomDock={() => setBottomDockOpen(open => !open)}
+            onOpenAllWidgets={() => setAllWidgetsOpen(true)}
           />
 
           {notice && (
@@ -1067,6 +1084,31 @@ export default function SwingTradePage() {
           onSubmit={handleCreateAlert}
         />
       )}
+      {allWidgetsOpen && (
+        <div className="fixed inset-y-0 right-0 z-[60] flex w-full flex-col border-l border-slate-200 bg-slate-100/95 p-2 shadow-2xl backdrop-blur-sm dark:border-white/[0.08] dark:bg-slate-950/95 lg:w-1/2 lg:p-4" role="dialog" aria-modal="true" aria-label="Expanded Swing Trade widgets">
+          <div className="flex shrink-0 items-center justify-between rounded-t-xl border border-slate-200 bg-white px-4 py-3 dark:border-white/[0.08] dark:bg-slate-950">
+            <div>
+              <div className="text-sm font-black uppercase tracking-widest text-heading">Swing Trade Workspace</div>
+              <div className="text-xs text-secondary">All decision widgets expanded</div>
+            </div>
+            <button type="button" onClick={() => setAllWidgetsOpen(false)} className="rounded-lg p-2 text-secondary hover:bg-slate-100 hover:text-heading dark:hover:bg-slate-900" aria-label="Close expanded workspace" title="Close expanded workspace">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-b-xl border-x border-b border-slate-200 bg-surface-page p-3 dark:border-white/[0.08]">
+            <SwingRightRail
+              result={result}
+              unified={unified}
+              fibTargets={fibTargets}
+              existingPositionCount={existingPositions.length}
+              onAddToPortfolio={handleAddToPortfolio}
+              onSaveJournal={() => void handleSaveToJournal()}
+              onAddToAlpaca={handleAddToAlpaca}
+              allExpanded
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1086,23 +1128,46 @@ function SwingLeftSidebar({
   result: SwingTradeScanResult | null
   loading: boolean
   inputRef: React.RefObject<HTMLInputElement>
-  myTickers: Array<{ symbol: string; company?: string; price?: number | null; changePct?: number | null }>
+  myTickers: MyTickerEntry[]
   onTickerChange: (value: string) => void
   onRun: (ticker?: string) => void
   onClose: () => void
   mobileOverlay?: boolean
 }) {
   const navigate = useNavigate()
-  const [tickerSearch, setTickerSearch] = useState('')
+  const [activeFilter, setActiveFilter] = useState<SwingSidebarFilterKey>(() => {
+    try {
+      const saved = localStorage.getItem('swing_trade_watchlist_filter') as SwingSidebarFilterKey | null
+      return saved && SWING_SIDEBAR_FILTERS.some(filter => filter.key === saved) ? saved : 'swing'
+    } catch {
+      return 'swing'
+    }
+  })
+  const [tickerSearch, setTickerSearch] = useState(() => {
+    try { return localStorage.getItem('swing_trade_watchlist_search') || '' } catch { return '' }
+  })
   const filteredTickers = useMemo(() => {
     const query = tickerSearch.trim().toUpperCase()
-    if (!query) return myTickers
-    return myTickers.filter(item => item.symbol.includes(query) || String(item.company || '').toUpperCase().includes(query))
-  }, [myTickers, tickerSearch])
+    return myTickers.filter(item => {
+      const groups = swingTickerGroups(item)
+      const matchesFilter = activeFilter === 'all' || groups.includes(activeFilter)
+      const matchesQuery = !query || item.symbol.includes(query) || String(item.company_name || '').toUpperCase().includes(query)
+      return matchesFilter && matchesQuery
+    })
+  }, [activeFilter, myTickers, tickerSearch])
+
+  useEffect(() => {
+    try { localStorage.setItem('swing_trade_watchlist_filter', activeFilter) } catch { /* quota */ }
+  }, [activeFilter])
+
+  useEffect(() => {
+    try { localStorage.setItem('swing_trade_watchlist_search', tickerSearch) } catch { /* quota */ }
+  }, [tickerSearch])
+
   return (
     <aside className={mobileOverlay
       ? 'absolute left-0 top-0 flex h-full w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950'
-      : 'hidden h-full w-72 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 md:flex 2xl:w-80'
+      : 'hidden h-full w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 md:flex 2xl:w-80'
     }>
       <div className="mb-3 flex shrink-0 items-start justify-between">
         <div>
@@ -1112,9 +1177,14 @@ function SwingLeftSidebar({
             <span className="text-lg font-black text-heading">Swing Trade</span>
           </div>
         </div>
-        <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Collapse sidebar">
-          <ChevronLeft size={16} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <div className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
+            My Tickers
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Collapse sidebar">
+            <ChevronLeft size={16} />
+          </button>
+        </div>
       </div>
 
       <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
@@ -1177,18 +1247,31 @@ function SwingLeftSidebar({
       <section className="flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">My Tickers</div>
-          <a
-            href={ROUTES.myTickers}
-            className="text-[10px] font-bold text-violet-600 dark:text-violet-300"
-            onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.myTickers))}
-          >
-            Manage
-          </a>
+          <div className="flex items-center gap-2">
+            <a href={ROUTES.myTickers} className="text-[10px] font-bold text-violet-600 dark:text-violet-300" onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.myTickers))}>Add Ticker</a>
+            <a href={ROUTES.myTickers} className="text-[10px] font-bold text-violet-600 dark:text-violet-300" onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.myTickers))}>Manage</a>
+          </div>
+        </div>
+        <div className="mb-2 grid grid-cols-2 gap-1.5">
+          {SWING_SIDEBAR_FILTERS.map(filter => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => setActiveFilter(filter.key)}
+              className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-wide transition ${
+                activeFilter === filter.key
+                  ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200'
+                  : 'border-slate-200 bg-white text-secondary hover:border-violet-300 dark:border-white/[0.08] dark:bg-slate-950'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-auto overscroll-contain">
           {filteredTickers.length ? filteredTickers.map(item => {
             const selected = item.symbol === result?.ticker
-            const moveUp = (item.changePct ?? 0) >= 0
+            const groups = swingTickerGroups(item)
             return (
               <a
                 key={item.symbol}
@@ -1197,26 +1280,31 @@ function SwingLeftSidebar({
                 className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
                   selected
                     ? 'border-violet-500 bg-violet-500/10'
-                    : moveUp
-                      ? 'border-emerald-500/20 bg-white hover:border-emerald-400/60 dark:border-emerald-400/15 dark:bg-slate-950'
-                      : 'border-rose-500/20 bg-white hover:border-rose-400/60 dark:border-rose-400/15 dark:bg-slate-950'
+                    : 'border-slate-200 bg-white hover:border-violet-300 dark:border-white/[0.08] dark:bg-slate-950'
                 }`}
               >
                 <span className="min-w-0">
-                  <span className="font-mono text-sm font-black text-heading">{item.symbol}</span>
-                  <span className="ml-2 truncate text-xs text-tertiary">{item.company}</span>
+                  <span className="block font-mono text-sm font-black text-heading">{item.symbol}</span>
+                  <span className="block truncate text-xs text-tertiary">{item.company_name}</span>
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {groups.map(group => (
+                      <span key={group} className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
+                        {group === 'regular' ? 'Position' : group}
+                      </span>
+                    ))}
+                  </span>
                 </span>
                 <span className="text-right">
-                  <span className="block font-mono text-xs font-bold text-heading">{money(item.price)}</span>
-                  <span className={`block font-mono text-[11px] font-bold ${(item.changePct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
-                    {pct(item.changePct)}
+                  <span className="block font-mono text-xs font-bold text-heading">{money(item.last_price)}</span>
+                  <span className={`block font-mono text-[11px] font-bold ${(item.price_change_pct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+                    {pct(item.price_change_pct)}
                   </span>
                 </span>
               </a>
             )
           }) : (
             <div className="rounded-lg border border-slate-200 px-3 py-3 text-sm text-tertiary dark:border-white/[0.08]">
-              {tickerSearch ? 'No matching swing tickers.' : 'No swing tickers saved.'}
+              {tickerSearch ? 'No tickers match this search.' : 'No tickers match this filter.'}
             </div>
           )}
         </div>
@@ -1240,11 +1328,18 @@ function SwingLeftSidebar({
 
       <section className="mt-3 grid shrink-0 gap-2">
         <a
-          href={ROUTES.dayTrade}
-          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.dayTrade))}
+          href={ROUTES.signals}
+          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.signals))}
           className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
         >
-          Day Trade Workspace
+          Ticker Scanner
+        </a>
+        <a
+          href={ROUTES.alerts}
+          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.alerts))}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+        >
+          Alerts
         </a>
         <a
           href={ROUTES.positions}
@@ -1252,6 +1347,13 @@ function SwingLeftSidebar({
           className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
         >
           Positions Center
+        </a>
+        <a
+          href={ROUTES.journal}
+          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.journal))}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
+        >
+          Journal
         </a>
       </section>
     </aside>
@@ -1329,6 +1431,7 @@ function SwingTopBar({
   bottomDockOpen,
   bottomDockCount,
   onToggleBottomDock,
+  onOpenAllWidgets,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
@@ -1346,6 +1449,7 @@ function SwingTopBar({
   bottomDockOpen: boolean
   bottomDockCount: number
   onToggleBottomDock: () => void
+  onOpenAllWidgets: () => void
 }) {
   const dayTradeRoute = getEngineRoute('day', result?.ticker || ticker)
   return (
@@ -1400,6 +1504,16 @@ function SwingTopBar({
           <span className="hidden sm:inline">{bottomDockOpen ? 'Hide Bottom' : 'Bottom'}</span>
           {bottomDockCount > 0 && <span className="font-mono text-[10px] text-violet-600 dark:text-violet-300">{bottomDockCount}</span>}
         </button>
+        <button
+          type="button"
+          onClick={onOpenAllWidgets}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-400/50 bg-violet-500/10 px-2 py-1.5 text-[11px] font-black text-violet-700 hover:border-violet-500 hover:bg-violet-500/15 dark:text-violet-200"
+          aria-label="Expand all workspace widgets"
+          title="Open all widgets in an expanded workspace"
+        >
+          <Maximize2 size={14} />
+          <span className="hidden sm:inline">Expand All</span>
+        </button>
         {hasPosition && (
           <button type="button" onClick={() => window.location.assign(ROUTES.positions)} className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-200">
             In Position
@@ -1434,6 +1548,7 @@ function SwingRightRail({
   dockedWidgetIds = [],
   onDockWidget,
   onUndockWidget,
+  allExpanded = false,
 }: {
   result: SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
@@ -1446,6 +1561,7 @@ function SwingRightRail({
   dockedWidgetIds?: string[]
   onDockWidget?: (widgetId: string) => void
   onUndockWidget?: (widgetId: string) => void
+  allExpanded?: boolean
 }) {
   const exec = getExec(result)
   const spread = getSpread(result, unified)
@@ -1461,7 +1577,7 @@ function SwingRightRail({
     const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
     return placement === 'bottom' ? docked : !docked
   }
-  const cardProps = { placement, onDockWidget, onUndockWidget }
+  const cardProps = { placement, onDockWidget, onUndockWidget, allExpanded }
   return (
     <aside className={placement === 'bottom' ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2' : 'grid min-h-0 w-full content-start gap-3 overflow-visible overscroll-contain pr-0 xl:overflow-y-auto xl:pr-1'}>
       {shouldRenderWidget('Current Decision') && <RailCard title="Current Decision" {...cardProps}>
@@ -2614,42 +2730,76 @@ function ExitTab({ result, unified }: { result: SwingTradeScanResult | null; uni
 
 function EvidenceTab({ result, unified }: { result: SwingTradeScanResult | null; unified: UnifiedAnalysis | null }) {
   const reasons = result?.reasons || []
+  const conditions = unified?.conditions || []
+  const passCount = conditions.filter(condition => condition.type === 'pass').length
+  const warnCount = conditions.filter(condition => condition.type === 'warn').length
+  const failCount = conditions.filter(condition => condition.type === 'fail').length
+  const evidenceToneClass = (type: 'pass' | 'warn' | 'fail') => (
+    type === 'pass'
+      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+      : type === 'fail'
+        ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+        : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
+  )
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2.5">
       <SectionHero
         eyebrow="Evidence"
-        title={unified?.conditions?.length ? `${unified.conditions.length} conditions checked` : 'Backend evidence'}
+        title={conditions.length ? `${conditions.length} conditions checked` : 'Backend evidence'}
         body={result?.reason || result?.decision_message || 'Evidence from the swing engine appears here.'}
         tone={result?.bias}
         badge={result?.ticker || 'Swing'}
       />
-      <div className="grid gap-3 lg:grid-cols-2">
-      <InfoPanel title="Conditions">
-        <div className="grid gap-2">
-          {(unified?.conditions || []).map((condition, index) => (
-            <div key={`${condition.label}-${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-slate-950">
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-semibold text-heading">{condition.label}</span>
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${condition.type === 'pass' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : condition.type === 'fail' ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'}`}>{condition.type}</span>
-              </div>
-            </div>
-          ))}
-          {!unified?.conditions?.length && <EmptyTab text="No unified condition payload returned." />}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+          <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-200">Pass</div>
+          <div className="font-mono text-xl font-semibold tabular-nums text-heading">{passCount}</div>
         </div>
-      </InfoPanel>
-      <InfoPanel title="Reasons">
-        <div className="grid gap-2">
-          {reasons.slice(0, 10).map((reason, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-secondary dark:border-white/[0.08] dark:bg-slate-950">
-              <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-tertiary">Reason {index + 1}</div>
-              {reason}
-            </div>
-          ))}
-          {!reasons.length && <EmptyTab text="No backend reasons returned." />}
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+          <div className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-200">Watch</div>
+          <div className="font-mono text-xl font-semibold tabular-nums text-heading">{warnCount}</div>
         </div>
-      </InfoPanel>
+        <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2">
+          <div className="text-[10px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-200">Fail</div>
+          <div className="font-mono text-xl font-semibold tabular-nums text-heading">{failCount}</div>
+        </div>
       </div>
-    </div>
+      <InfoPanel title="Condition Check">
+        {conditions.length ? (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950">
+            {conditions.map((condition, index) => (
+              <div key={`${condition.label}-${index}`} className="grid grid-cols-[minmax(0,1fr)_72px] items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-b-0 dark:border-white/[0.06]">
+                <div className="min-w-0 truncate text-sm font-semibold text-heading">{condition.label}</div>
+                <span className={`justify-self-end rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${evidenceToneClass(condition.type)}`}>
+                  {condition.type}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyTab text="No unified condition payload returned." />
+        )}
+      </InfoPanel>
+      <InfoPanel title="Backend Reasons">
+        {reasons.length ? (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950">
+            {reasons.slice(0, 10).map((reason, index) => (
+              <div key={index} className="grid gap-2 border-b border-slate-100 px-3 py-2 last:border-b-0 dark:border-white/[0.06] sm:grid-cols-[72px_minmax(0,1fr)]">
+                <div className="font-mono text-[10px] font-black uppercase tracking-wide text-tertiary">#{index + 1}</div>
+                <div className="min-w-0 text-sm leading-snug text-secondary">{reason}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyTab text="No backend reasons returned." />
+        )}
+      </InfoPanel>
+      {reasons.length > 10 && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-tertiary dark:border-white/[0.08] dark:bg-slate-900/60">
+          Showing first 10 backend reasons from {reasons.length} returned items.
+        </div>
+      )}
+      </div>
   )
 }
 
@@ -2679,12 +2829,13 @@ function JournalTab({ result, onSaveJournal }: { result: SwingTradeScanResult | 
 }
 
 function AlertsTab({ result, onOpenAlert }: { result: SwingTradeScanResult | null; onOpenAlert: () => void }) {
-  const alerts = (result?.metrics as Record<string, unknown> | undefined)?.contextual_alerts
+  const rawAlerts = (result?.metrics as Record<string, unknown> | undefined)?.contextual_alerts
+  const alerts = Array.isArray(rawAlerts) ? rawAlerts as Array<Record<string, unknown>> : []
   return (
     <div className="grid gap-3">
       <SectionHero
         eyebrow="Alerts"
-        title={Array.isArray(alerts) && alerts.length ? `${alerts.length} contextual alert${alerts.length === 1 ? '' : 's'}` : 'No contextual alerts'}
+        title={alerts.length ? `${alerts.length} contextual alert${alerts.length === 1 ? '' : 's'}` : 'No contextual alerts'}
         body="Create alerts from the active backend swing setup."
         tone={result?.bias}
         badge={result?.ticker || 'Swing'}
@@ -2692,12 +2843,33 @@ function AlertsTab({ result, onOpenAlert }: { result: SwingTradeScanResult | nul
       <InfoPanel title="Alert Candidates">
         <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {Array.isArray(alerts) && alerts.length ? (
+          {alerts.length ? (
             <div className="grid gap-2">
               {alerts.map((alert, index) => (
-                <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-slate-950">
-                  <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-tertiary">Alert {index + 1}</div>
-                  <pre className="whitespace-pre-wrap font-sans text-secondary">{JSON.stringify(alert, null, 2)}</pre>
+                <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/[0.08] dark:bg-slate-950">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Alert {index + 1}</div>
+                      <div className="mt-0.5 truncate text-sm font-semibold text-heading">
+                        {compactLabel(text(alert.message) || text(alert.type) || 'Backend alert')}
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
+                      {compactLabel(text(alert.type) || 'Alert')}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-1.5">
+                    <div className="rounded-md bg-slate-50 px-2.5 py-1.5 dark:bg-slate-900">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">Condition</div>
+                      <div className="mt-0.5 text-xs leading-snug text-secondary">{text(alert.condition) || 'Backend condition not returned.'}</div>
+                    </div>
+                    {Object.entries(alert).filter(([key]) => !['type', 'message', 'condition'].includes(key)).map(([key, value]) => (
+                      <div key={key} className="grid gap-1 rounded-md bg-slate-50 px-2.5 py-1.5 dark:bg-slate-900 sm:grid-cols-[112px_minmax(0,1fr)]">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-tertiary">{compactLabel(key)}</div>
+                        <div className="min-w-0 text-xs leading-snug text-secondary">{typeof value === 'object' && value != null ? JSON.stringify(value) : String(value ?? '—')}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2735,16 +2907,18 @@ function RailCard({
   placement = 'right',
   onDockWidget,
   onUndockWidget,
+  allExpanded = false,
 }: {
   title: string
   children: ReactNode
   placement?: WidgetPlacement
   onDockWidget?: (widgetId: string) => void
   onUndockWidget?: (widgetId: string) => void
+  allExpanded?: boolean
 }) {
   const pinnedFullLength = title === 'Current Decision'
   const widgetId = widgetIdForTitle(title)
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimized] = useState(!allExpanded && !pinnedFullLength)
   const [maximized, setMaximized] = useState(false)
   const [bodyMaxHeight, setBodyMaxHeight] = useState(pinnedFullLength ? 860 : 720)
   const startWidgetDrag = (event: DragEvent<HTMLElement>) => {
@@ -2798,10 +2972,16 @@ function RailCard({
         draggable
         onDragStart={startWidgetDrag}
       >
-        <div className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
+        <button
+          type="button"
+          onClick={() => !pinnedFullLength && setMinimized(cur => !cur)}
+          className={`flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] font-black uppercase tracking-widest text-tertiary ${pinnedFullLength ? 'cursor-grab' : 'cursor-pointer hover:text-heading'}`}
+          aria-expanded={pinnedFullLength || !minimized}
+          aria-label={pinnedFullLength ? title : `${minimized ? 'Restore' : 'Minimize'} ${title} widget`}
+        >
           <GripVertical size={14} className="shrink-0" />
           <span className="truncate">{title}</span>
-        </div>
+        </button>
         <div className="flex items-center gap-1">
           <span className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-tertiary dark:border-white/[0.08]">
             Widget
