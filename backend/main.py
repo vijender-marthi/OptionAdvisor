@@ -71,6 +71,8 @@ from day_trade_workspace_models import DayTradeWorkspaceResponse as DayTradeWork
 from auth_routes import auth_router, ensure_same_user, require_access_email
 import exit_monitor
 from command_center_router import command_center_router, api_envelope, _normalize_my_tickers_list, _seed_default_my_tickers
+from position_trade_router import create_position_trade_router
+from position_trade_service import PositionTradeService
 from decision_resolver import resolve_trade_decision
 from calculation_vault import (
     CALCULATION_ROUTER_VERSION,
@@ -1641,6 +1643,24 @@ def _analyze_ticker(
         display_confidence=int(resolved.display_confidence or 0),
         execution_fields=list(resolved.execution_fields or []),
     )
+
+
+def _load_position_trade_tickers(email: str) -> list[dict[str, Any]]:
+    """Return only active regular My Tickers for Position Trading discovery."""
+    state = get_user_state(normalize_email(email))
+    my_tickers = _normalize_my_tickers_list(state.get("my_tickers") or [])
+    return [
+        item
+        for item in my_tickers
+        if item.get("is_active", True) and "regular" in (item.get("trade_types") or [])
+    ][:15]
+
+
+position_trade_service = PositionTradeService(
+    analyze_ticker=_analyze_ticker,
+    load_tickers=_load_position_trade_tickers,
+)
+app.include_router(create_position_trade_router(position_trade_service), prefix="/api")
 
 
 def _cache_key(

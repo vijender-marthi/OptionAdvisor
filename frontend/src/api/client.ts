@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AlertEmailItem, AlertEntry, AnalyzeResponse, DayTradeAlertEvent, PortfolioPosition, StrategyMode, UserDataState, WatchlistItem } from '../types'
+import type { PositionApiEnvelope, PositionScenarioData, PositionScenarioRequest, PositionScannerData, PositionWorkspaceData, PositionWorkspaceQuery } from '../types/positionWorkspace'
 import { API_OPERATION_BY_ID, type ApiOperationId, type ApiSchemas } from './generated/openapi-types'
 
 export const api = axios.create({ baseURL: '/api' })
@@ -1140,6 +1141,29 @@ export const fetchPositionSessionChart = async (query: {
       interval: query.interval ?? '5m',
       ...(query.forceRefresh ? { force_refresh: true } : {}),
     },
+  })
+  return data
+}
+
+/** Position workspace endpoints are locally typed until OpenAPI generation includes them. */
+export const fetchPositionScanner = async (query: Pick<PositionWorkspaceQuery, 'weeks_out' | 'strategy_mode' | 'risk_profile'> & Record<string, string | number | boolean | null | undefined>): Promise<PositionApiEnvelope<PositionScannerData>> => {
+  const { data } = await api.get<PositionApiEnvelope<PositionScannerData>>('/position-trade/scanner', { params: query })
+  return data
+}
+
+export const fetchPositionWorkspace = async (query: PositionWorkspaceQuery): Promise<PositionApiEnvelope<PositionWorkspaceData>> => {
+  const { data } = await api.get<PositionApiEnvelope<PositionWorkspaceData>>(`/position-trade/workspace/${encodeURIComponent(query.symbol.trim().toUpperCase())}`, {
+    params: { weeks_out: query.weeks_out, strategy_mode: query.strategy_mode, risk_profile: query.risk_profile },
+  })
+  return data
+}
+
+export const runPositionScenario = async (payload: PositionScenarioRequest): Promise<PositionApiEnvelope<PositionScenarioData>> => {
+  const { data } = await api.post<PositionApiEnvelope<PositionScenarioData>>('/position-trade/scenario', {
+    symbol: payload.symbol,
+    candidate_id: payload.candidateId,
+    price_move_pct: payload.priceMovePct,
+    contracts: payload.contracts,
   })
   return data
 }

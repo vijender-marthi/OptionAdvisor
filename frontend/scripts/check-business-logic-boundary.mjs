@@ -46,6 +46,8 @@ const LEGACY_ALLOWED_FILES = new Set([
   'src/components/DayTradeIntradayChart.tsx',
   'src/components/DayTradeStrategiesTab.tsx',
   'src/components/DayTradeWalkthrough.tsx',
+  'src/components/DayTradeWorkspaceChart.tsx',
+  'src/components/DayTradeWorkspaceShell.tsx',
   'src/components/EarlyEntrySection.tsx',
   'src/components/EntryWindowBanner.tsx',
   'src/components/ExposureBar.tsx',
@@ -76,6 +78,7 @@ const LEGACY_ALLOWED_FILES = new Set([
   'src/components/SwingTradeMetricCharts.tsx',
   'src/components/SwingTradeStrategiesTab.tsx',
   'src/components/SwingTradeWalkthrough.tsx',
+  'src/components/TickerInput.tsx',
   'src/components/TrendDayBanner.tsx',
   'src/components/TrendStrengthBar.tsx',
   'src/components/desk/VerdictTab.tsx',
@@ -90,6 +93,7 @@ const LEGACY_ALLOWED_FILES = new Set([
   'src/pages/DayTradeDashboardPage.tsx',
   'src/pages/DayTradePage.tsx',
   'src/pages/DayTradeSessionPage.tsx',
+  'src/pages/DayTradeWorkspacePage.tsx',
   'src/pages/EODJournalPage.tsx',
   'src/pages/HelpPage.tsx',
   'src/pages/InvestmentThesisPage.tsx',
@@ -119,6 +123,22 @@ const PRESENTATION_MATH_ALLOWED_FILES = new Set([
   // Chart coordinate conversion only. This file may use Math for SVG pixel
   // scaling, but must not derive trading state or business decisions.
   'src/components/DayTradeWorkspaceChart.tsx',
+])
+
+const SERVER_RENDERING_PREFIXES = [
+  'src/components/position/',
+]
+
+// These components only render fields returned by /position-trade. Their use of
+// canonical API names such as `breakeven` must not be mistaken for a calculation.
+const SERVER_POSITION_PRESENTATION_FILES = new Set([
+  'src/components/position/PositionDetailRail.tsx',
+  'src/components/position/PositionPanels.tsx',
+  'src/components/position/PositionScannerRail.tsx',
+  'src/components/position/PositionTutorialDrawer.tsx',
+  'src/components/position/PositionWorkspaceMain.tsx',
+  'src/components/position/ServerPayoffChart.tsx',
+  'src/components/position/TutorialDrawer.tsx',
 ])
 
 function walk(dir) {
@@ -155,9 +175,9 @@ for (const file of walk(srcRoot)) {
     }
   }
 
-  if (LEGACY_ALLOWED_FILES.has(rel)) continue
+  if (LEGACY_ALLOWED_FILES.has(rel) || SERVER_POSITION_PRESENTATION_FILES.has(rel)) continue
 
-  const patterns = PRESENTATION_MATH_ALLOWED_FILES.has(rel)
+  const patterns = PRESENTATION_MATH_ALLOWED_FILES.has(rel) || SERVER_RENDERING_PREFIXES.some(prefix => rel.startsWith(prefix))
     ? BUSINESS_LOGIC_PATTERNS.filter(pattern => !/Math\\/.test(pattern.source) && !/Math/.test(pattern.source))
     : BUSINESS_LOGIC_PATTERNS
   const hits = patterns

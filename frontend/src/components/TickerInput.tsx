@@ -29,16 +29,16 @@ const POPULAR = ['AAPL', 'TSLA', 'SPY', 'QQQ', 'NVDA', 'AMZN', 'MSFT']
 type HoldingPeriod = 'near_term' | 'swing' | 'position' | 'longer_dated'
 
 const HOLDING_PERIODS: { id: HoldingPeriod; label: string; sub: string; weeksOut: number }[] = [
-  { id: 'near_term', label: 'Near-Term', sub: 'Faster position', weeksOut: 3 },
-  { id: 'swing', label: 'Swing', sub: 'Core setup', weeksOut: 4 },
-  { id: 'position', label: 'Position', sub: 'More time', weeksOut: 5 },
-  { id: 'longer_dated', label: 'Longer-Dated', sub: 'Most time', weeksOut: 6 },
+  { id: 'near_term', label: '1-2 Weeks', sub: '7-14 DTE', weeksOut: 2 },
+  { id: 'swing', label: '3-4 Weeks', sub: '15-28 DTE', weeksOut: 4 },
+  { id: 'position', label: '5-6 Weeks', sub: '29-42 DTE', weeksOut: 6 },
+  { id: 'longer_dated', label: '7-8 Weeks', sub: '43-56 DTE', weeksOut: 8 },
 ]
 
 const periodFromWeeks = (weeks: number): HoldingPeriod => {
-  if (weeks >= 6) return 'longer_dated'
-  if (weeks === 5) return 'position'
-  if (weeks === 3) return 'near_term'
+  if (weeks >= 7) return 'longer_dated'
+  if (weeks >= 5) return 'position'
+  if (weeks <= 2) return 'near_term'
   return 'swing'
 }
 
@@ -100,7 +100,11 @@ export default function TickerInput({
       padding: '20px 20px 16px',
     }}>
       <div style={{ marginBottom: 14 }}>
-        <span style={labelStyle}>Ticker</span>
+        <div style={{ color: C.violet, fontSize: '0.68rem', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Scan &amp; Filter</div>
+        <div style={{ color: C.muted, fontSize: '0.72rem', marginTop: 3 }}>Find high-probability multi-week opportunities.</div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <span style={labelStyle}>Ticker Search</span>
         <input
           style={{
             width: '100%',
@@ -187,7 +191,7 @@ export default function TickerInput({
               Analyzing...
             </>
           ) : (
-            <><Search size={14} /> Analyze</>
+            <><Search size={14} /> Find Opportunities</>
           )}
         </button>
       </div>
