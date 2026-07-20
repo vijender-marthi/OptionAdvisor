@@ -1,7 +1,0 @@
-import { X } from 'lucide-react'
-import type { PositionTutorial } from '../../types/positionWorkspace'
-import { display } from './shared'
-
-export default function PositionTutorialDrawer({ tutorial, onClose }: { tutorial: PositionTutorial | null | undefined; onClose: () => void }) {
-  return <div className="fixed inset-0 z-[120] flex justify-end" role="dialog" aria-modal="true" aria-label="Position trading tutorial"><button type="button" aria-label="Close tutorial" onClick={onClose} className="absolute inset-0 cursor-default bg-black/40" /><div className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-white/[0.07]"><h2 className="text-base font-bold text-primary">{display(tutorial?.title)}</h2><button type="button" title="Close tutorial" aria-label="Close tutorial" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-secondary hover:bg-slate-100 dark:hover:bg-white/[0.06]"><X size={17} /></button></div><div className="overflow-y-auto p-5">{tutorial?.sections?.length ? <div className="grid gap-6">{tutorial.sections.map((section, index) => <section key={`${section.title}-${index}`}><h3 className="text-sm font-bold text-primary">{display(section.title)}</h3><p className="mt-2 text-sm leading-6 text-secondary">{display(section.body)}</p></section>)}</div> : <p className="text-sm text-secondary">Tutorial content is unavailable.</p>}</div></div></div>
-}

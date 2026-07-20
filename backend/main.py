@@ -71,8 +71,6 @@ from day_trade_workspace_models import DayTradeWorkspaceResponse as DayTradeWork
 from auth_routes import auth_router, ensure_same_user, require_access_email
 import exit_monitor
 from command_center_router import command_center_router, api_envelope, _normalize_my_tickers_list, _seed_default_my_tickers
-from position_trade_router import create_position_trade_router
-from position_trade_service import PositionTradeService
 from decision_resolver import resolve_trade_decision
 from calculation_vault import (
     CALCULATION_ROUTER_VERSION,
@@ -1500,9 +1498,16 @@ def _analyze_ticker(
             )
             for leg in trade.legs
         ]
+        # Compute authoritative status
+        _score = trade.total_score
+        _status = "GO" if (_score >= 75 and trade.passes_rr_filter and trade.passes_liquidity_filter) else \
+                  "CAUTION" if _score >= 55 else \
+                  "WAIT" if _score >= 40 else "AVOID"
+
         recs_out.append(RecommendationOut(
             rank=rank,
             strategy=trade.strategy,
+            status=_status,
             bias=trade.bias,
             legs=legs_out,
             expiry=trade.expiry,
@@ -1643,24 +1648,6 @@ def _analyze_ticker(
         display_confidence=int(resolved.display_confidence or 0),
         execution_fields=list(resolved.execution_fields or []),
     )
-
-
-def _load_position_trade_tickers(email: str) -> list[dict[str, Any]]:
-    """Return only active regular My Tickers for Position Trading discovery."""
-    state = get_user_state(normalize_email(email))
-    my_tickers = _normalize_my_tickers_list(state.get("my_tickers") or [])
-    return [
-        item
-        for item in my_tickers
-        if item.get("is_active", True) and "regular" in (item.get("trade_types") or [])
-    ][:15]
-
-
-position_trade_service = PositionTradeService(
-    analyze_ticker=_analyze_ticker,
-    load_tickers=_load_position_trade_tickers,
-)
-app.include_router(create_position_trade_router(position_trade_service), prefix="/api")
 
 
 def _cache_key(
@@ -3263,7 +3250,7 @@ def day_trade_scan(
 def day_trade_workspace(
     symbol: str = Query(..., min_length=1),
     sessionDate: Optional[str] = Query(default=None),
-    interval: str = Query(default="1m", regex="^(1m|5m|15m)$"),
+    interval: str = Query(default="1m", regex="^(1m|5m|15m|1h)$"),
     force_refresh: bool = Query(default=False),
     auth_email: str = Depends(require_access_email),
 ):
@@ -3351,7 +3338,7 @@ def _position_session_chart_bars(raw: pd.DataFrame) -> list[dict[str, Any]]:
 @app.get("/api/position-trade/session-chart")
 def position_trade_session_chart(
     symbol: str = Query(..., min_length=1),
-    interval: str = Query(default="5m", regex="^(1m|5m|15m)$"),
+    interval: str = Query(default="5m", regex="^(1m|5m|15m|1h)$"),
     force_refresh: bool = Query(default=False, alias="force_refresh"),
 ) -> dict[str, Any]:
     ticker = symbol.strip().upper()
@@ -3386,7 +3373,7 @@ def _build_day_trade_workspace_payload(
 ) -> dict[str, Any]:
     ticker = symbol.strip().upper()
     session_date_value = session_date if isinstance(session_date, str) and session_date.strip() else None
-    interval_value = interval if isinstance(interval, str) and interval in {"1m", "5m", "15m"} else "1m"
+    interval_value = interval if isinstance(interval, str) and interval in {"1m", "5m", "15m", "1h"} else "1m"
     r = run_day_trade_scan(ticker, force_refresh=force_refresh)
     resolved_obj = resolve_trade_decision(
         {
@@ -6435,8 +6422,8 @@ def create_calculation_run_v1(request: CalculationRunCreateRequest, auth_email: 
                 owner_email=auth_email,
             )
             raise HTTPException(status_code=422, detail=detail)
-        if interval not in {"1m", "5m", "15m"}:
-            detail = "Invalid day_trade_workspace input: interval must be 1m, 5m, or 15m"
+        if interval not in {"1m", "5m", "15m", "1h"}:
+            detail = "Invalid day_trade_workspace input: interval must be 1m, 5m, 15m, or 1h"
             create_failed_calculation_run(
                 run_type="day_trade_workspace",
                 input_payload=input_payload,

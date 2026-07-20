@@ -7616,7 +7616,7 @@
             "required": false,
             "schema": {
               "default": "1m",
-              "pattern": "^(1m|5m|15m)$",
+              "pattern": "^(1m|5m|15m|1h)$",
               "title": "Interval",
               "type": "string"
             }

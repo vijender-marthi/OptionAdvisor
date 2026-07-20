@@ -61,7 +61,7 @@ function CacheTimestamp() {
 
 export default function AppLayout({ children }: { children?: ReactNode }) {
   const location = useLocation()
-  const fixedWorkstation = location.pathname === '/day-trade' || location.pathname === '/swing-trade'
+  const fixedWorkstation = location.pathname === '/day-trade' || location.pathname === '/swing-trade' || location.pathname === '/position-trading'
   return (
     <div className="app-shell font-sans flex h-[100svh] max-h-[100dvh] overflow-hidden" style={{ backgroundColor: 'var(--surface-page)', color: 'var(--text-primary)' }}>
       <Sidebar />

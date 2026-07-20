@@ -738,8 +738,8 @@ export default function DayTradeWorkspacePage() {
   useDocumentTitle(formatTickerTitle(symbol, 'Day Trade'))
   const sessionDate = searchParams.get('sessionDate')
   const intervalParam = searchParams.get('interval')
-  const interval = intervalParam === '5m' || intervalParam === '15m' ? intervalParam : '1m'
-  const [selectedInterval, setSelectedInterval] = useState<'1m' | '5m' | '15m'>(interval)
+  const interval = intervalParam === '5m' || intervalParam === '15m' || intervalParam === '1h' ? intervalParam : '1m'
+  const [selectedInterval, setSelectedInterval] = useState<'1m' | '5m' | '15m' | '1h'>(interval)
 
   useEffect(() => {
     setSelectedInterval(interval)
@@ -918,7 +918,7 @@ export default function DayTradeWorkspacePage() {
     setTickerInput(nextSymbol)
   }, [setSearchParams, tickerInput])
 
-  const handleIntervalChange = useCallback((nextInterval: '1m' | '5m' | '15m') => {
+  const handleIntervalChange = useCallback((nextInterval: '1m' | '5m' | '15m' | '1h') => {
     setSelectedInterval(nextInterval)
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)

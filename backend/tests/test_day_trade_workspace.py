@@ -350,6 +350,25 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual([point["value"] for point in overlay["points"]], [102.25, 102.9833])
         self.assertEqual(overlay["latestAsOfUtc"], "2026-07-09T09:45:00-04:00")
 
+    def test_hourly_interval_aggregates_candles_and_uses_final_bucket_vwap(self) -> None:
+        bars = [
+            {"t": "2026-07-09T09:30:00-04:00", "o": 100, "h": 101, "l": 99, "c": 100.5, "v": 1000, "vwap": 100.1667},
+            {"t": "2026-07-09T09:59:00-04:00", "o": 100.5, "h": 104, "l": 100, "c": 103.5, "v": 1200, "vwap": 102.25},
+            {"t": "2026-07-09T10:00:00-04:00", "o": 103.5, "h": 105, "l": 103, "c": 104.5, "v": 1500, "vwap": 102.9833},
+        ]
+        workspace = _workspace("READY", metric_overrides={"chart_bars": bars, "vwap": 102.9833}, interval="1h")
+
+        candles = workspace["chart"]["candles"]
+        overlay = workspace["chart"]["vwapOverlay"]
+        self.assertEqual(workspace["chart"]["defaults"]["interval"], "1h")
+        self.assertEqual([candle["time"] for candle in candles], ["2026-07-09T09:00:00-04:00", "2026-07-09T10:00:00-04:00"])
+        self.assertEqual(candles[0]["open"], 100.0)
+        self.assertEqual(candles[0]["high"], 104.0)
+        self.assertEqual(candles[0]["low"], 99.0)
+        self.assertEqual(candles[0]["close"], 103.5)
+        self.assertEqual(candles[0]["volume"], 2200.0)
+        self.assertEqual([point["value"] for point in overlay["points"]], [102.25, 102.9833])
+
     def test_market_structure_contract_uses_backend_confirmed_5m_pivots(self) -> None:
         structure = _structure_workspace([
             ("HIGH", 100), ("LOW", 95), ("HIGH", 105), ("LOW", 98), ("HIGH", 110),

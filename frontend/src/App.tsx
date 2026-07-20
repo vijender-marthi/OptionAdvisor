@@ -15,6 +15,7 @@ const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 const TradeDeskPage = lazy(() => import('./pages/TradeDeskPage'))
 const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const TickerPage = lazy(() => import('./pages/TickerPage'))
+const PositionTradingV2Page = lazy(() => import('./pages/PositionTradingV2Page'))
 const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
 
@@ -161,6 +162,7 @@ function ShellRoutes() {
               <Route path="/desk" element={<TradeDeskPage />} />
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
               <Route path="/position-trading" element={<TickerPage />} />
+              <Route path="/position-trading-v2" element={<PositionTradingV2Page />} />
               <Route path="/positions" element={<PositionsRoute />} />
               <Route path="/alerts" element={<AlertCenterPage />} />
               {/* /help is now a modal — redirect to landing */}
@@ -228,16 +230,13 @@ function DynamicFavicon() {
   useEffect(() => {
     try {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">${icon}</text></svg>`
-      const blob = new Blob([svg], { type: 'image/svg+xml' })
-      const url = URL.createObjectURL(blob)
       let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
       if (!link) {
         link = document.createElement('link')
         link.rel = 'icon'
         document.head.appendChild(link)
       }
-      link.href = url
-      return () => { try { URL.revokeObjectURL(url) } catch { /* ignore */ } }
+      link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`
     } catch { return }
   }, [icon])
   return null
@@ -256,7 +255,7 @@ function AppBody() {
 
 export default function App() {
   const inner = (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AppProvider>
         <AppBody />
       </AppProvider>

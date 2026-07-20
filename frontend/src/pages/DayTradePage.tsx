@@ -800,7 +800,7 @@ export default function DayTradePage() {
   const workspaceSymbol = (searchParams.get('ticker') || ticker || 'AAPL').trim().toUpperCase()
   const workspaceSessionDate = searchParams.get('sessionDate')
   const workspaceIntervalParam = searchParams.get('interval')
-  const workspaceInterval = workspaceIntervalParam === '5m' || workspaceIntervalParam === '15m' ? workspaceIntervalParam : '1m'
+  const workspaceInterval = workspaceIntervalParam === '5m' || workspaceIntervalParam === '15m' || workspaceIntervalParam === '1h' ? workspaceIntervalParam : '1m'
   const workspaceState = useDayTradeWorkspace(
     workspaceEnabled && workspaceSymbol
       ? {
@@ -1453,7 +1453,7 @@ export default function DayTradePage() {
     })
   }, [])
 
-  const handleWorkspaceIntervalChange = useCallback((interval: '1m' | '5m' | '15m') => {
+  const handleWorkspaceIntervalChange = useCallback((interval: '1m' | '5m' | '15m' | '1h') => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
       next.set('interval', interval)

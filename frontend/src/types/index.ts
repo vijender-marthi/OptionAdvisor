@@ -27,6 +27,7 @@ export interface Recommendation {
   rank: number
   strategy: string
   bias: string
+  status: string
   legs: OptionLeg[]
   expiry: string
   dte: number

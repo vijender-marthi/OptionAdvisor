@@ -16,8 +16,8 @@ import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
 type Props = {
   workspace: DayTradeWorkspaceResponse
   onAction?: (action: DayTradeWorkspaceAction) => void
-  onIntervalChange?: (interval: '1m' | '5m' | '15m') => void
-  selectedInterval?: '1m' | '5m' | '15m'
+  onIntervalChange?: (interval: '1m' | '5m' | '15m' | '1h') => void
+  selectedInterval?: '1m' | '5m' | '15m' | '1h'
   rightRailOpen?: boolean
   onToggleRightRail?: () => void
   rightRailWidth?: number
@@ -475,8 +475,8 @@ export function WorkspaceCenterFrame({
 }: {
   workspace: DayTradeWorkspaceResponse
   displayTimeZone: string
-  selectedInterval?: '1m' | '5m' | '15m'
-  onIntervalChange?: (interval: '1m' | '5m' | '15m') => void
+  selectedInterval?: '1m' | '5m' | '15m' | '1h'
+  onIntervalChange?: (interval: '1m' | '5m' | '15m' | '1h') => void
   bottomDockOpen: boolean
   bottomWidgetIds: string[]
   onCloseBottomDock: () => void
@@ -525,7 +525,7 @@ export function WorkspaceCenterFrame({
   )
 }
 
-export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInterval, onIntervalChange, fillFrame = false }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; selectedInterval?: '1m' | '5m' | '15m'; onIntervalChange?: (interval: '1m' | '5m' | '15m') => void; fillFrame?: boolean }) {
+export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInterval, onIntervalChange, fillFrame = false }: { workspace: DayTradeWorkspaceResponse; displayTimeZone: string; selectedInterval?: '1m' | '5m' | '15m' | '1h'; onIntervalChange?: (interval: '1m' | '5m' | '15m' | '1h') => void; fillFrame?: boolean }) {
   const [minimized, setMinimized] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [chartHeight, setChartHeight] = useState(680)

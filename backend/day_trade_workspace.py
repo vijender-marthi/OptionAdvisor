@@ -213,7 +213,7 @@ def _parse_bar_time(value: Any) -> datetime | None:
 
 
 def _bucket_start(value: datetime, interval: str) -> datetime:
-    minutes = 15 if interval == "15m" else 5 if interval == "5m" else 1
+    minutes = 60 if interval == "1h" else 15 if interval == "15m" else 5 if interval == "5m" else 1
     minute = (value.minute // minutes) * minutes
     return value.replace(minute=minute, second=0, microsecond=0)
 
@@ -224,7 +224,7 @@ def _interval_chart_bars(chart_bars: list[Any], interval: str) -> list[dict[str,
     VWAP remains the canonical cumulative value from the final source bar in
     each bucket. It is never averaged from lower-timeframe VWAP points.
     """
-    if interval not in {"5m", "15m"}:
+    if interval not in {"5m", "15m", "1h"}:
         return [bar for bar in chart_bars if isinstance(bar, dict)]
 
     buckets: list[dict[str, Any]] = []
@@ -1584,7 +1584,7 @@ def build_day_trade_workspace_response(
             "vwapOverlay": vwap_overlay,
             "marketStructure": market_structure,
             "defaults": {
-                "interval": interval if interval in {"1m", "5m", "15m"} else "1m",
+                "interval": interval if interval in {"1m", "5m", "15m", "1h"} else "1m",
                 "visibleRange": "1h",
                 "initialVisibleBars": 100,
                 "initialBarSpacing": 10,
@@ -1633,7 +1633,7 @@ def build_position_session_chart_response(
 ) -> dict[str, Any]:
     """Build a backend-owned Position Trading session chart DTO."""
     generated_at = _now_iso()
-    interval_value = interval if interval in {"1m", "5m", "15m"} else "5m"
+    interval_value = interval if interval in {"1m", "5m", "15m", "1h"} else "5m"
     last_bar = chart_bars[-1] if chart_bars and isinstance(chart_bars[-1], dict) else {}
     last_price = _num(last_bar.get("c", last_bar.get("close")))
     metrics = {
@@ -1829,7 +1829,7 @@ def build_day_trade_workspace_unavailable_response(
             "vwapOverlay": vwap_overlay,
             "marketStructure": None,
             "defaults": {
-                "interval": interval if interval in {"1m", "5m", "15m"} else "1m",
+                "interval": interval if interval in {"1m", "5m", "15m", "1h"} else "1m",
                 "visibleRange": "1h",
                 "initialVisibleBars": 100,
                 "initialBarSpacing": 10,
