@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useNavigate as useRouterNavigate } from 'react-router-dom'
+import { useNavigate as useRouterNavigate, useSearchParams } from 'react-router-dom'
 import {
   Search, X, Plus, ChevronDown, ChevronRight, ChevronLeft, ChevronUp,
   Layers, AlertTriangle, Star, Check, RefreshCw, TrendingUp, TrendingDown,
@@ -14,7 +14,7 @@ import type { AnalyzeResponse, Recommendation, Signals, StrategyMode } from '../
 import { useApp } from '../contexts/AppContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { getTradeWorksheetRoute } from '../routing/routes'
-import type { MyTickerEntry } from '../api/commandCenter'
+import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import {
   STRATEGY_OPTIONS, TIME_HORIZON_OPTIONS, BIAS_OPTIONS, REC_STATE_OPTIONS,
   DEFAULT_FILTERS,
@@ -100,6 +100,10 @@ function analyzeErrorDetail(e: unknown): string {
     (e as { message?: string })?.message ??
     'Something went wrong'
   )
+}
+
+function isRegularPositionTicker(ticker: MyTickerEntry): boolean {
+  return ticker.is_active !== false && (ticker.trade_types ?? []).includes('regular')
 }
 
 // ─── Skeleton loader ─────────────────────────────────────────────────────────
@@ -205,6 +209,7 @@ function LeftSidebar({
   onSidebarTabChange,
   onFilterChange,
   onRefreshTickers,
+  onAddTicker,
 }: {
   tickers: MyTickerEntry[]
   tickersLoading: boolean
@@ -218,7 +223,9 @@ function LeftSidebar({
   onSidebarTabChange: (tab: SidebarTab) => void
   onFilterChange: (filters: FilterState) => void
   onRefreshTickers: () => void
+  onAddTicker: () => void
 }) {
+  const [tickerSearchError, setTickerSearchError] = useState('')
   const filteredTickers = useMemo(() => {
     if (!searchQuery.trim()) return tickers
     const q = searchQuery.trim().toUpperCase()
@@ -228,8 +235,29 @@ function LeftSidebar({
     )
   }, [tickers, searchQuery])
 
+  const submitTickerSearch = useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const query = searchQuery.trim().toUpperCase()
+    if (!query) {
+      setTickerSearchError('')
+      return
+    }
+    const match = tickers.find(t => t.symbol.toUpperCase() === query) ?? filteredTickers[0]
+    if (match) {
+      setTickerSearchError('')
+      onSelectSymbol(match.symbol)
+      return
+    }
+    setTickerSearchError('Only active My Tickers marked Regular can be loaded here.')
+  }, [filteredTickers, onSelectSymbol, searchQuery, tickers])
+
   return (
     <div className="flex h-full flex-col border-r border-border bg-surface-card">
+      <div className="border-b border-border px-4 py-3.5">
+        <div className="text-[13px] font-bold text-text-primary">Position Trading</div>
+        <div className="mt-0.5 text-[10px] leading-tight text-text-tertiary">Find high-probability multi-week opportunities.</div>
+      </div>
+
       {/* Tabs */}
       <div className="flex border-b border-border">
         {(['my-tickers', 'markets'] as SidebarTab[]).map(tab => (
@@ -250,19 +278,25 @@ function LeftSidebar({
 
       {/* Search */}
       <div className="border-b border-border p-3">
-        <div className="relative">
+        <form className="relative" onSubmit={submitTickerSearch}>
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
           <input
             type="text"
             value={searchQuery}
-            onChange={e => onSearchChange(e.target.value)}
-            placeholder="Search tickers..."
+            onChange={e => {
+              setTickerSearchError('')
+              onSearchChange(e.target.value.toUpperCase())
+            }}
+            placeholder="Enter ticker or company..."
             className="w-full rounded-lg border border-border bg-surface-canvas py-1.5 pl-8 pr-8 text-[12px] text-text-primary placeholder-text-tertiary outline-none focus:border-semantic-accent"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => onSearchChange('')}
+              onClick={() => {
+                setTickerSearchError('')
+                onSearchChange('')
+              }}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
             >
               <X size={14} />
@@ -276,6 +310,9 @@ function LeftSidebar({
           >
             <RefreshCw size={12} />
           </button>
+        </form>
+        <div className={`mt-1.5 text-[10px] ${tickerSearchError ? 'text-semantic-warning' : 'text-text-tertiary'}`}>
+          {tickerSearchError || 'Search is limited to active My Tickers marked Regular.'}
         </div>
       </div>
 
@@ -356,6 +393,15 @@ function LeftSidebar({
             <p className="mt-2 text-xs text-text-tertiary">
               {searchQuery ? 'No matching tickers found.' : 'Your Position Trading list is empty. Add a ticker to begin.'}
             </p>
+            {!searchQuery && (
+              <button
+                type="button"
+                onClick={onAddTicker}
+                className="mt-3 rounded-lg border border-border px-3 py-1.5 text-[11px] font-bold text-semantic-accent hover:border-semantic-accent"
+              >
+                Add Regular Ticker
+              </button>
+            )}
           </div>
         ) : (
           <div className="p-2 space-y-1">
@@ -402,6 +448,7 @@ function LeftSidebar({
       <div className="border-t border-border p-3">
         <button
           type="button"
+          onClick={onAddTicker}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-strong py-2 text-[11px] font-bold text-text-tertiary transition-colors hover:border-semantic-accent hover:text-semantic-accent"
         >
           <Plus size={14} />
@@ -530,58 +577,51 @@ function RecommendationsTable({
 
   return (
     <div>
-      <div ref={tableRef} className="overflow-x-auto rounded-xl border border-border" tabIndex={0} onKeyDown={handleKeyDown} role="listbox" aria-label="Recommendations list">
-        <table className="w-full min-w-[700px]">
-          <thead>
-            <tr className="border-b border-border bg-surface-muted/30">
-              {['#', 'Strategy', 'Bias', 'Confidence', 'EV', 'R:R', 'Expiry', 'DTE', 'State'].map(h => (
-                <th key={h} className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-text-tertiary">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {display.map(rec => {
-              const state = stateStatus(rec)
-              const score = rec.scores?.total_score ?? 0
-              const isCredit = (rec.net_credit ?? 0) > 0
-              const ev = rec.expected_value ?? 0
-              const rr = rec.risk_reward_ratio ?? 0
-              const isSelected = selectedRank === rec.rank
-              const firstLeg = rec.legs[0]
-              const breakeven = rec.breakeven_lower
-                ? fmtUsd(rec.breakeven_lower)
-                : rec.breakeven_upper
-                ? fmtUsd(rec.breakeven_upper)
-                : '—'
+      <div ref={tableRef} className="space-y-2" tabIndex={0} onKeyDown={handleKeyDown} role="listbox" aria-label="Recommendations list">
+        {display.map(rec => {
+          const state = stateStatus(rec)
+          const score = rec.scores?.total_score ?? 0
+          const isCredit = (rec.net_credit ?? 0) > 0
+          const ev = rec.expected_value ?? 0
+          const rr = rec.risk_reward_ratio ?? 0
+          const isSelected = selectedRank === rec.rank
+          const firstLeg = rec.legs[0]
 
-              return (
-                <tr
-                  key={rec.rank}
-                  onClick={() => onSelectRec(isSelected ? null : rec.rank)}
-                  className={`cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-surface-muted/20 ${
-                    isSelected ? 'bg-semantic-accent/5' : ''
-                  } ${isSelected ? 'outline outline-1 outline-semantic-accent' : ''}`}
-                >
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-tertiary">{rec.rank}</td>
-                  <td className="px-3 py-2.5">
-                    <div className="text-[12px] font-semibold text-text-primary">{rec.strategy}</div>
-                    <div className="mt-0.5 flex gap-1.5">
-                      {rec.legs.slice(0, 2).map((leg, i) => (
-                        <span key={i} className={`font-mono text-[9px] ${leg.action === 'BUY' ? 'text-semantic-bullish' : 'text-semantic-bearish'}`}>
-                          {leg.action === 'BUY' ? '+' : '–'}${(leg.strike ?? 0).toFixed(0)}{leg.option_type === 'CALL' ? 'C' : 'P'}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold ${biasBg(rec.bias)} ${biasColor(rec.bias)}`}>
+          return (
+            <div
+              key={rec.rank}
+              onClick={() => onSelectRec(isSelected ? null : rec.rank)}
+              className={`cursor-pointer rounded-xl border px-4 py-3 transition-colors ${
+                isSelected
+                  ? 'border-semantic-accent bg-semantic-accent/5 outline outline-1 outline-semantic-accent'
+                  : 'border-border bg-surface-card hover:border-border-strong'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[10px] text-text-tertiary w-5 shrink-0">{rec.rank}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-text-primary">{rec.strategy}</span>
+                    <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-bold ${stateBg(state)} ${stateColor(state)} ${stateBorder(state)}`}>
+                      {state}
+                    </span>
+                    <span className={`ml-auto rounded-full px-1.5 py-0.5 text-[8px] font-bold ${biasBg(rec.bias)} ${biasColor(rec.bias)}`}>
                       {rec.bias}
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-text-tertiary">
+                    <span className="font-mono">{rec.expiry.slice(5)} · {rec.dte} DTE</span>
+                    {rec.legs.slice(0, 2).map((leg, i) => (
+                      <span key={i} className={`font-mono ${leg.action === 'BUY' ? 'text-semantic-bullish' : 'text-semantic-bearish'}`}>
+                        {leg.action === 'BUY' ? '+' : '–'}${(leg.strike ?? 0).toFixed(0)}{leg.option_type === 'CALL' ? 'C' : 'P'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="hidden sm:flex items-center gap-4 shrink-0">
+                  <div className="text-right">
+                    <div className="text-[9px] text-text-tertiary">Score</div>
+                    <div className="flex items-center gap-1.5 justify-end">
                       <div className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-muted">
                         <div
                           className={`h-full rounded-full ${
@@ -592,29 +632,20 @@ function RecommendationsTable({
                       </div>
                       <span className={`font-mono text-[11px] font-bold ${stateColor(state)}`}>{score}</span>
                     </div>
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[12px] font-bold text-text-primary">
-                    {fmtUsd(ev * 100)}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[12px] font-bold text-text-primary">
-                    {rr > 0 ? `1:${rr.toFixed(1)}` : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-secondary">
-                    {rec.expiry.slice(5)}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-text-secondary">
-                    {rec.dte}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className={`inline-block rounded-full border px-2 py-0.5 text-[9px] font-bold ${stateBg(state)} ${stateColor(state)} ${stateBorder(state)}`}>
-                      {state}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[9px] text-text-tertiary">EV</div>
+                    <div className="font-mono text-[12px] font-bold text-text-primary">{fmtUsd(ev * 100)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[9px] text-text-tertiary">R:R</div>
+                    <div className="font-mono text-[12px] font-bold text-text-primary">{rr > 0 ? `1:${rr.toFixed(1)}` : '—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {sorted.some(r => stateStatus(r) === 'AVOID') && (
@@ -626,6 +657,82 @@ function RecommendationsTable({
           {showAll ? 'Hide ineligible recommendations' : `View all recommendations (${sorted.length} total)`}
         </button>
       )}
+    </div>
+  )
+}
+
+// ─── Strategy Tiles Grid ─────────────────────────────────────────────────────
+
+function StrategyTilesGrid({
+  recommendations,
+  selectedRank,
+  onSelectRec,
+}: {
+  recommendations: Recommendation[]
+  selectedRank: number | null
+  onSelectRec: (rank: number | null) => void
+}) {
+  const tiles = useMemo(() => {
+    const map = new Map<string, Recommendation>()
+    for (const r of recommendations) {
+      const existing = map.get(r.strategy)
+      if (!existing || r.rank < existing.rank) {
+        map.set(r.strategy, r)
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.rank - b.rank)
+  }, [recommendations])
+
+  if (tiles.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full rounded-xl border border-border bg-surface-card">
+        <p className="text-[11px] text-text-tertiary">No strategies available.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-1.5 auto-rows-auto">
+      {tiles.map(rec => {
+        const state = stateStatus(rec)
+        const selected = rec.rank === selectedRank
+        return (
+          <button
+            key={rec.strategy}
+            type="button"
+            onClick={() => onSelectRec(rec.rank)}
+            className={`flex flex-col items-center justify-center rounded-xl border p-2 text-center transition-all ${
+              selected
+                ? 'border-semantic-accent bg-semantic-accent/10'
+                : 'border-border bg-surface-card hover:border-border-strong'
+            }`}
+          >
+            <span className="text-[9px] font-extrabold uppercase tracking-wider leading-tight text-text-primary">
+              {rec.strategy}
+            </span>
+            <div className="mt-1 flex items-center gap-1">
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${
+                state === 'GO' ? 'bg-semantic-bullish' :
+                state === 'CAUTION' ? 'bg-semantic-warning' :
+                state === 'WAIT' ? 'bg-amber-400' :
+                'bg-semantic-bearish'
+              }`} />
+              <span className={`text-[9px] font-bold ${
+                state === 'GO' ? 'text-semantic-bullish' :
+                state === 'CAUTION' ? 'text-semantic-warning' :
+                state === 'WAIT' ? 'text-amber-400' :
+                'text-semantic-bearish'
+              }`}>
+                {state}
+              </span>
+            </div>
+            <span className="mt-0.5 font-mono text-[11px] font-bold text-text-primary">
+              {rec.scores.total_score}
+            </span>
+            <span className="text-[7px] uppercase tracking-wider text-text-tertiary">Score</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -875,6 +982,7 @@ function DraggableDivider({
 
 export default function TickerPage() {
   const routerNavigate = useRouterNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     theme, navigate,
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
@@ -905,9 +1013,11 @@ export default function TickerPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [rightPanelWidth, setRightPanelWidth] = useState(380)
   const [centerChartRatio, setCenterChartRatio] = useState(0.5)
+  const [recTilesRatio, setRecTilesRatio] = useState(0.55)
 
   const rightPanelRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const centerChartRef = useRef<{ startX: number; startRatio: number } | null>(null)
+  const recTilesRef = useRef<{ startY: number; startRatio: number } | null>(null)
 
   const handleRightPanelDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -955,6 +1065,31 @@ export default function TickerPage() {
     document.addEventListener('mouseup', handleMouseUp)
   }, [centerChartRatio])
 
+  const handleRecTilesDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startRatio = recTilesRatio
+    recTilesRef.current = { startY, startRatio }
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!recTilesRef.current) return
+      const container = (ev.target as HTMLElement).closest('[data-rec-split]')
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      const delta = ev.clientY - recTilesRef.current.startY
+      const ratioDelta = delta / rect.height
+      const newRatio = Math.max(0.3, Math.min(0.8, recTilesRef.current.startRatio + ratioDelta))
+      setRecTilesRatio(newRatio)
+    }
+    const handleMouseUp = () => {
+      recTilesRef.current = null
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [recTilesRatio])
+
   const [positionChart, setPositionChart] = useState<PositionSessionChartResponse | null>(null)
   const [positionChartLoading, setPositionChartLoading] = useState(false)
   const [positionChartError, setPositionChartError] = useState('')
@@ -975,9 +1110,8 @@ export default function TickerPage() {
     setTickersLoading(true)
     setTickersError(null)
     try {
-      const { fetchMyTickers } = await import('../api/commandCenter')
       const result = await fetchMyTickers()
-      setTickers(result.data?.tickers ?? [])
+      setTickers((result.data?.tickers ?? []).filter(isRegularPositionTicker))
     } catch (e) {
       setTickersError(analyzeErrorDetail(e))
     } finally {
@@ -999,6 +1133,25 @@ export default function TickerPage() {
     chainExpiry: string | null = null,
   ) => {
     const tickerUpper = ticker.trim().toUpperCase()
+    if (!tickerUpper) return
+    let regularTickers = tickers
+    if (regularTickers.length === 0 && !tickersLoading) {
+      try {
+        const result = await fetchMyTickers()
+        regularTickers = (result.data?.tickers ?? []).filter(isRegularPositionTicker)
+        setTickers(regularTickers)
+      } catch (e) {
+        setTickersError(analyzeErrorDetail(e))
+      }
+    }
+    if (!regularTickers.some(t => t.symbol.toUpperCase() === tickerUpper)) {
+      setSelectedSymbol(tickerUpper)
+      setAnalysis(null)
+      setPositionChart(null)
+      setAnalysisLoading(false)
+      setAnalysisError(`${tickerUpper} is unavailable for Position Trading. Add it to My Tickers and mark it Regular.`)
+      return
+    }
     setSelectedSymbol(tickerUpper)
     setAnalysisLoading(true)
     setAnalysisError(null)
@@ -1020,7 +1173,7 @@ export default function TickerPage() {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [])
+  }, [tickers, tickersLoading])
 
   // ── Pending ticker from navigator ────────────────────────────────────────
 
@@ -1031,13 +1184,21 @@ export default function TickerPage() {
       const spreadWidth = pendingAnalysisOptions?.spreadWidth ?? null
       const strategyMode = pendingAnalysisOptions?.strategyMode ?? 'all'
       clearPendingTicker()
+      setSearchParams({ symbol: pendingTicker.trim().toUpperCase() })
       void handleAnalyze(pendingTicker, weeksOut, spreadWidth, strategyMode)
     }
-  }, [pendingTicker, pendingAnalysisOptions, clearPendingTicker, handleAnalyze])
+  }, [pendingTicker, pendingAnalysisOptions, clearPendingTicker, handleAnalyze, setSearchParams])
 
   useEffect(() => {
     if (!pendingTicker) didRun.current = false
   }, [pendingTicker])
+
+  useEffect(() => {
+    const symbol = searchParams.get('symbol')?.trim().toUpperCase()
+    if (!symbol || didRestoreLastAnalysis.current || pendingTicker) return
+    didRestoreLastAnalysis.current = true
+    void handleAnalyze(symbol)
+  }, [handleAnalyze, pendingTicker, searchParams])
 
   // ── Chart loading ────────────────────────────────────────────────────────
 
@@ -1098,11 +1259,15 @@ export default function TickerPage() {
           searchQuery={searchQuery}
           sidebarTab={sidebarTab}
           filters={filters}
-          onSelectSymbol={symbol => void handleAnalyze(symbol)}
+          onSelectSymbol={symbol => {
+            setSearchParams({ symbol: symbol.trim().toUpperCase() })
+            void handleAnalyze(symbol)
+          }}
           onSearchChange={setSearchQuery}
           onSidebarTabChange={setSidebarTab}
           onFilterChange={setFilters}
           onRefreshTickers={() => void loadTickers()}
+          onAddTicker={() => routerNavigate('/my-tickers')}
         />
       </div>
 
@@ -1182,124 +1347,11 @@ export default function TickerPage() {
             ))}
           </div>
 
-          {/* Overview content — recommendations top, chart bottom (50/50) */}
+          {/* Overview content — chart top, recommendations bottom */}
           {centerTab === 'overview' && (
             <div className="flex min-h-0 flex-1 flex-col gap-3" data-center-split>
-              {/* Recommendations — top */}
+              {/* Chart — top */}
               <div className="flex flex-col overflow-hidden" style={{ flex: centerChartRatio }}>
-                <div className="mb-2 flex items-center justify-between shrink-0">
-                  <span className="text-[13px] font-bold text-text-primary">Recommendations</span>
-                  <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-card p-0.5">
-                    {([
-                      { key: 'list' as RecListTab, label: 'List' },
-                      { key: 'performance' as RecListTab, label: 'Performance' },
-                      { key: 'history' as RecListTab, label: 'History' },
-                    ]).map(tab => (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        onClick={() => setRecListTab(tab.key)}
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition-colors ${
-                          recListTab === tab.key
-                            ? 'bg-surface-muted text-text-primary'
-                            : 'text-text-tertiary hover:text-text-secondary'
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                  {recListTab === 'list' && (
-                    analysisLoading && !analysis ? (
-                      <RecListSkeleton />
-                    ) : analysis ? (
-                      <RecommendationsTable
-                        recommendations={analysis.recommendations}
-                        signals={analysis.signals}
-                        selectedRank={selectedRank}
-                        showAll={showAllRecs}
-                        onSelectRec={setSelectedRank}
-                        onToggleShowAll={() => setShowAllRecs(p => !p)}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-surface-card py-12">
-                        <Search size={28} className="text-text-tertiary" />
-                        <p className="mt-2 text-sm text-text-tertiary">Select a ticker to view recommendations.</p>
-                      </div>
-                    )
-                  )}
-
-                  {recListTab === 'performance' && (
-                    <div className="rounded-xl border border-border bg-surface-card p-4">
-                      {analysis ? (
-                        <>
-                          <div className="mb-3 flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">Strategy Performance</span>
-                            <span className="text-[10px] text-text-tertiary">Powerd by backend</span>
-                          </div>
-                          <div className="grid grid-cols-4 gap-2">
-                            <Metric label="Win Rate" value="—" />
-                            <Metric label="Avg P&L" value="—" />
-                            <Metric label="Median P&L" value="—" />
-                            <Metric label="Avg Hold" value="—" />
-                            <Metric label="Trades" value="—" />
-                            <Metric label="Max DD" value="—" />
-                            <Metric label="Best Trade" value="—" />
-                            <Metric label="Worst Trade" value="—" />
-                          </div>
-                          <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface-canvas px-3 py-2">
-                            <BarChart2 size={14} className="text-text-tertiary" />
-                            <p className="text-[11px] text-text-tertiary">
-                              Strategy-level performance metrics will appear here when the backend provides them.
-                            </p>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8">
-                          <Activity size={28} className="text-text-tertiary" />
-                          <p className="mt-2 text-sm text-text-tertiary">Select a ticker to view performance metrics.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {recListTab === 'history' && (
-                    <div className="rounded-xl border border-border bg-surface-card p-4">
-                      {analysis ? (
-                        <>
-                          <div className="mb-3 flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">Recommendation History</span>
-                            <span className="text-[10px] text-text-tertiary">Powerd by backend</span>
-                          </div>
-                          <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface-canvas py-8">
-                            <Clock size={28} className="text-text-tertiary" />
-                            <p className="mt-2 text-sm text-text-tertiary">Past recommendation decisions will appear here.</p>
-                            <div className="mt-3 grid grid-cols-3 gap-x-6 gap-y-1 text-[11px] text-text-tertiary">
-                              <span>Date & Time</span>
-                              <span>Ticker · Strategy</span>
-                              <span>State · Result</span>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8">
-                          <Clock size={28} className="text-text-tertiary" />
-                          <p className="mt-2 text-sm text-text-tertiary">Select a ticker to view recommendation history.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Divider */}
-              <DraggableDivider horizontal onMouseDown={handleCenterChartDragStart} />
-
-              {/* Chart — bottom */}
-              <div className="flex flex-col overflow-hidden" style={{ flex: 1 - centerChartRatio }}>
                 <div className="mb-2 flex items-center justify-between shrink-0">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">Market Context</span>
                   <div className="flex items-center gap-1">
@@ -1328,7 +1380,7 @@ export default function TickerPage() {
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0">
+                <div className="flex flex-col flex-1 min-h-0">
                   {analysisLoading && !positionChart && <ChartSkeleton />}
                   {positionChartError && (
                     <div className="rounded-xl border border-semantic-bearish-border bg-semantic-bearish-bg px-4 py-3">
@@ -1343,7 +1395,7 @@ export default function TickerPage() {
                     </div>
                   )}
                   {positionChart && (
-                    <div className="overflow-hidden rounded-xl border border-border bg-surface-card h-full" style={{ minHeight: 200 }}>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface-card">
                       <DayTradeWorkspaceChart
                         chart={positionChart.chart}
                         marketTimeZone={positionChart.session.marketTimeZone}
@@ -1354,10 +1406,163 @@ export default function TickerPage() {
                     </div>
                   )}
                   {!analysisLoading && !positionChart && !positionChartError && (
-                    <div className="flex items-center justify-center rounded-xl border border-border bg-surface-card h-full" style={{ minHeight: 200 }}>
+                    <div className="flex items-center justify-center rounded-xl border border-border bg-surface-card h-full">
                       <p className="text-sm text-text-tertiary">Select a ticker to view chart data.</p>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <DraggableDivider horizontal onMouseDown={handleCenterChartDragStart} />
+
+              {/* Recommendations — bottom */}
+              <div className="flex flex-col overflow-hidden" style={{ flex: 1 - centerChartRatio }}>
+                <div className="mb-2 flex items-center justify-between shrink-0">
+                  <span className="text-[13px] font-bold text-text-primary">Recommendations</span>
+                  <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-card p-0.5">
+                    {([
+                      { key: 'list' as RecListTab, label: 'List' },
+                      { key: 'performance' as RecListTab, label: 'Performance' },
+                      { key: 'history' as RecListTab, label: 'History' },
+                    ]).map(tab => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setRecListTab(tab.key)}
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                          recListTab === tab.key
+                            ? 'bg-surface-muted text-text-primary'
+                            : 'text-text-tertiary hover:text-text-secondary'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col flex-1 min-h-0" data-rec-split>
+                  {/* Upper: recommendations content */}
+                  <div className="flex flex-col overflow-hidden" style={{ flex: recTilesRatio }}>
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                      {recListTab === 'list' && (
+                        analysisLoading && !analysis ? (
+                          <RecListSkeleton />
+                        ) : analysis ? (
+                          <RecommendationsTable
+                            recommendations={analysis.recommendations}
+                            signals={analysis.signals}
+                            selectedRank={selectedRank}
+                            showAll={showAllRecs}
+                            onSelectRec={setSelectedRank}
+                            onToggleShowAll={() => setShowAllRecs(p => !p)}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-surface-card py-12">
+                            <Search size={28} className="text-text-tertiary" />
+                            <p className="mt-2 text-sm text-text-tertiary">Select a ticker to view recommendations.</p>
+                          </div>
+                        )
+                      )}
+
+                      {recListTab === 'performance' && (
+                        <div className="rounded-xl border border-border bg-surface-card p-4">
+                          {analysis ? (
+                            <>
+                              <div className="mb-3 flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">Strategy Performance</span>
+                                <span className="text-[10px] text-text-tertiary">Powerd by backend</span>
+                              </div>
+                              <div className="grid grid-cols-4 gap-2">
+                                <Metric label="Win Rate" value="—" />
+                                <Metric label="Avg P&L" value="—" />
+                                <Metric label="Median P&L" value="—" />
+                                <Metric label="Avg Hold" value="—" />
+                                <Metric label="Trades" value="—" />
+                                <Metric label="Max DD" value="—" />
+                                <Metric label="Best Trade" value="—" />
+                                <Metric label="Worst Trade" value="—" />
+                              </div>
+                              <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface-canvas px-3 py-2">
+                                <BarChart2 size={14} className="text-text-tertiary" />
+                                <p className="text-[11px] text-text-tertiary">
+                                  Strategy-level performance metrics will appear here when the backend provides them.
+                                </p>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-8">
+                              <Activity size={28} className="text-text-tertiary" />
+                              <p className="mt-2 text-sm text-text-tertiary">Select a ticker to view performance metrics.</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {recListTab === 'history' && (
+                        <div className="rounded-xl border border-border bg-surface-card p-4">
+                          {analysis ? (
+                            <>
+                              <div className="mb-3 flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">Recommendation History</span>
+                                <span className="text-[10px] text-text-tertiary">Powerd by backend</span>
+                              </div>
+                              <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface-canvas py-8">
+                                <Clock size={28} className="text-text-tertiary" />
+                                <p className="mt-2 text-sm text-text-tertiary">Past recommendation decisions will appear here.</p>
+                                <div className="mt-3 grid grid-cols-3 gap-x-6 gap-y-1 text-[11px] text-text-tertiary">
+                                  <span>Date & Time</span>
+                                  <span>Ticker · Strategy</span>
+                                  <span>State · Result</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-8">
+                              <Clock size={28} className="text-text-tertiary" />
+                              <p className="mt-2 text-sm text-text-tertiary">Select a ticker to view recommendation history.</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <DraggableDivider horizontal onMouseDown={handleRecTilesDragStart} />
+
+                  {/* Lower: strategy tiles */}
+                  <div className="flex flex-col overflow-hidden" style={{ flex: 1 - recTilesRatio }}>
+                    <div className="mb-1 flex items-center justify-between shrink-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary">Strategy Grid</span>
+                      <span className="text-[9px] text-text-tertiary">
+                        {analysis ? new Set(analysis.recommendations.map(r => r.strategy)).size : 0} strategies
+                      </span>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                      {analysisLoading && !analysis ? (
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[1,2,3,4,5,6].map(i => (
+                            <div key={i} className="animate-pulse rounded-xl border border-border bg-surface-card p-3">
+                              <SkeletonBar className="mx-auto h-3 w-20" />
+                              <SkeletonBar className="mx-auto mt-2 h-3 w-10" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : analysis ? (
+                        <StrategyTilesGrid
+                          recommendations={analysis.recommendations}
+                          selectedRank={selectedRank}
+                          onSelectRec={setSelectedRank}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full rounded-xl border border-border bg-surface-card">
+                          <p className="text-[11px] text-text-tertiary">Select a ticker to view strategies.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
