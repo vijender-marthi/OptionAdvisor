@@ -665,21 +665,8 @@ export default function DayTradeWorkspacePage() {
   const [tickersError, setTickersError] = useState('')
   const [tickerListLastRefreshedAt, setTickerListLastRefreshedAt] = useState<Date | null>(null)
   const [workspaceLastRefreshedAt, setWorkspaceLastRefreshedAt] = useState<Date | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<TickerListTab>(() => {
-    try {
-      const saved = localStorage.getItem('day_trade_workspace_sidebar_tab') as TickerListTab | null
-      return saved && FILTER_TABS.some(item => item.key === saved) ? saved : 'all'
-    } catch {
-      return 'all'
-    }
-  })
-  const [sidebarSearch, setSidebarSearch] = useState(() => {
-    try {
-      return localStorage.getItem('day_trade_workspace_sidebar_search') || ''
-    } catch {
-      return ''
-    }
-  })
+  const [sidebarTab, setSidebarTab] = useState<TickerListTab>('all')
+  const [sidebarSearch, setSidebarSearch] = useState('')
   const [rightRailOpen, setRightRailOpen] = useState(() => {
     try {
       return localStorage.getItem('day_trade_workspace_right_rail_open') !== '0'
@@ -712,6 +699,7 @@ export default function DayTradeWorkspacePage() {
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState('')
   const autoRefreshInFlightRef = useRef(false)
+  const didSelectDefaultTickerRef = useRef(false)
 
   useEffect(() => {
     try { localStorage.setItem('day_trade_workspace_sidebar_tab', sidebarTab) } catch { /* quota */ }
@@ -900,7 +888,7 @@ export default function DayTradeWorkspacePage() {
     return Array.from(rows.values()).filter(row => {
       if (!query) return true
       return row.item.symbol.toUpperCase().includes(query) || String(row.item.company_name || '').toUpperCase().includes(query)
-    })
+    }).sort((a, b) => a.item.symbol.localeCompare(b.item.symbol))
   }, [sidebarTab, sidebarTickerGroups, sidebarSearch])
 
   const currentTickerItem = savedTickerBySymbol.get(symbol)
@@ -920,6 +908,15 @@ export default function DayTradeWorkspacePage() {
     }, { replace: true })
     setTickerInput(nextSymbol)
   }, [setSearchParams, tickerInput])
+
+  useEffect(() => {
+    const requestedTicker = (searchParams.get('symbol') || searchParams.get('ticker') || '').trim()
+    if (requestedTicker || didSelectDefaultTickerRef.current || myTickers.length === 0) return
+    const firstTicker = sortSidebarTickers(myTickers)[0]?.symbol
+    if (!firstTicker) return
+    didSelectDefaultTickerRef.current = true
+    loadTicker(firstTicker)
+  }, [loadTicker, myTickers, searchParams])
 
   const handleIntervalChange = useCallback((nextInterval: '1m' | '5m' | '15m' | '1h') => {
     setSelectedInterval(nextInterval)

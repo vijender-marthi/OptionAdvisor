@@ -573,6 +573,7 @@ export default function SwingTradePage() {
   const [chartHeight, setChartHeight] = useState(680)
   const [ocKey, setOcKey] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const didSelectDefaultTickerRef = useRef(false)
 
   const existingPositions = useMemo(
     () => portfolio.filter(p => p.ticker.toUpperCase() === result?.ticker?.toUpperCase() && p.status === 'open'),
@@ -628,6 +629,15 @@ export default function SwingTradePage() {
       setMyTickers(rows)
     }).catch(() => setMyTickers([]))
   }, [])
+
+  useEffect(() => {
+    const requestedTicker = searchParams.get('ticker')?.trim()
+    if (requestedTicker || didSelectDefaultTickerRef.current || myTickers.length === 0) return
+    const firstTicker = myTickers[0]?.symbol
+    if (!firstTicker) return
+    didSelectDefaultTickerRef.current = true
+    void runScan(firstTicker)
+  }, [myTickers, runScan, searchParams])
 
   useEffect(() => {
     const sym = result?.ticker
@@ -1152,17 +1162,8 @@ function SwingLeftSidebar({
   mobileOverlay?: boolean
 }) {
   const navigate = useNavigate()
-  const [activeFilter, setActiveFilter] = useState<SwingSidebarFilterKey>(() => {
-    try {
-      const saved = localStorage.getItem('day_trade_workspace_sidebar_tab') as SwingSidebarFilterKey | null
-      return saved && SWING_SIDEBAR_FILTERS.some(filter => filter.key === saved) ? saved : 'all'
-    } catch {
-      return 'swing'
-    }
-  })
-  const [tickerSearch, setTickerSearch] = useState(() => {
-    try { return localStorage.getItem('day_trade_workspace_sidebar_search') || '' } catch { return '' }
-  })
+  const [activeFilter, setActiveFilter] = useState<SwingSidebarFilterKey>('all')
+  const [tickerSearch, setTickerSearch] = useState('')
   const filteredTickers = useMemo(() => {
     const query = tickerSearch.trim().toUpperCase()
     return myTickers.filter(item => {
@@ -1343,36 +1344,6 @@ function SwingLeftSidebar({
         </div>
       </section>
 
-      <section className="mt-3 grid shrink-0 gap-2">
-        <a
-          href={ROUTES.signals}
-          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.signals))}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-        >
-          Ticker Scanner
-        </a>
-        <a
-          href={ROUTES.alerts}
-          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.alerts))}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-        >
-          Alerts
-        </a>
-        <a
-          href={ROUTES.positions}
-          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.positions))}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-        >
-          Positions Center
-        </a>
-        <a
-          href={ROUTES.journal}
-          onClick={event => handlePlainAnchorClick(event, () => navigate(ROUTES.journal))}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-        >
-          Journal
-        </a>
-      </section>
     </aside>
   )
 }

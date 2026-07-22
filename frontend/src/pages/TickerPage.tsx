@@ -1178,6 +1178,7 @@ export default function TickerPage() {
 
   const didRun = useRef(false)
   const didRestoreLastAnalysis = useRef(false)
+  const didSelectDefaultTicker = useRef(false)
 
   const [lastWeeks, setLastWeeks] = useState(4)
   const [lastWidth, setLastWidth] = useState<number | null>(null)
@@ -1193,7 +1194,9 @@ export default function TickerPage() {
     setTickersError(null)
     try {
       const result = await fetchMyTickers()
-      setTickers((result.data?.tickers ?? []).filter(isRegularPositionTicker))
+      setTickers((result.data?.tickers ?? [])
+        .filter(isRegularPositionTicker)
+        .sort((a, b) => a.symbol.localeCompare(b.symbol)))
     } catch (e) {
       setTickersError(analyzeErrorDetail(e))
     } finally {
@@ -1263,6 +1266,16 @@ export default function TickerPage() {
     didRestoreLastAnalysis.current = true
     void handleAnalyze(symbol)
   }, [handleAnalyze, pendingTicker, searchParams])
+
+  useEffect(() => {
+    if (searchParams.get('symbol') || pendingTicker || didSelectDefaultTicker.current || tickers.length === 0) return
+    const firstTicker = tickers[0]?.symbol
+    if (!firstTicker) return
+    didSelectDefaultTicker.current = true
+    didRestoreLastAnalysis.current = true
+    setSearchParams({ symbol: firstTicker })
+    void handleAnalyze(firstTicker)
+  }, [handleAnalyze, pendingTicker, searchParams, setSearchParams, tickers])
 
   const loadPositionChart = useCallback(async (forceRefresh = false) => {
     if (!selectedSymbol) {
