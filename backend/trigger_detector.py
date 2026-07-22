@@ -68,6 +68,31 @@ def detect_trigger_fired(
     return False, f"Unknown setup/direction: {setup_type}/{direction}"
 
 
+def find_latest_confirmed_trigger(
+    setup_type: str,
+    candles: list[dict],
+    levels: dict,
+    direction: str,
+) -> tuple[bool, str, dict | None]:
+    """Return the most recent confirmed trigger from a session candle sequence.
+
+    ``detect_trigger_fired`` intentionally evaluates the live tail only. This
+    companion is used by lifecycle views to retain an earlier confirmed entry
+    after the market has moved beyond its initial trigger window.
+    """
+    if len(candles) < 2:
+        fired, message = detect_trigger_fired(setup_type, candles, levels, direction)
+        return fired, message, None
+
+    for end in range(len(candles), 1, -1):
+        fired, message = detect_trigger_fired(setup_type, candles[:end], levels, direction)
+        if fired:
+            return True, message, candles[end - 1]
+
+    fired, message = detect_trigger_fired(setup_type, candles, levels, direction)
+    return fired, message, None
+
+
 # ── Two-candle break helpers ────────────────────────────────────────────────
 
 def _two_candle_break_up(candles: list[dict], level: float, level_name: str) -> tuple[bool, str]:

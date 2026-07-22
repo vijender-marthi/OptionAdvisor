@@ -1907,6 +1907,48 @@ def build_swing_chart_series(
     return {"max_points": cap, "count": len(points), "points": points}
 
 
+def build_swing_chart_timeframe_series(
+    raw: pd.DataFrame,
+    timeframe: str,
+) -> dict[str, Any]:
+    """Return a backend-owned chart payload for one Swing Trade timeframe."""
+    if raw is None or raw.empty or "Close" not in raw.columns:
+        return {"timeframe": timeframe, "max_points": 0, "count": 0, "points": []}
+
+    frame = raw.sort_index().dropna(subset=["Close"])[[column for column in ("Close", "Volume") if column in raw.columns]].copy()
+    if timeframe == "Weekly":
+        aggregations: dict[str, str] = {"Close": "last"}
+        if "Volume" in frame.columns:
+            aggregations["Volume"] = "sum"
+        frame = frame.resample("W-FRI").agg(aggregations).dropna(subset=["Close"])
+        max_points = 104
+    elif timeframe == "Monthly":
+        aggregations = {"Close": "last"}
+        if "Volume" in frame.columns:
+            aggregations["Volume"] = "sum"
+        frame = frame.resample("ME").agg(aggregations).dropna(subset=["Close"])
+        max_points = 60
+    else:
+        timeframe = "Daily"
+        max_points = SWING_CHART_MAX_POINTS
+
+    close = frame["Close"].astype(float)
+    ma20 = _sma(close, MA_FAST)
+    ma50 = _sma(close, MA_SLOW)
+    rsi = _rsi(close)
+    hv20 = build_hv_series(frame, 20)
+    payload = build_swing_chart_series(
+        close,
+        ma20,
+        ma50,
+        rsi,
+        hv20,
+        frame["Volume"].astype(float) if "Volume" in frame.columns else None,
+        max_points=max_points,
+    )
+    return {"timeframe": timeframe, **payload}
+
+
 def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> dict[str, Any]:
     """
     Backend-owned daily market-structure labels for the Swing chart.
@@ -2817,15 +2859,23 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     asof_date = idx_last.date() if hasattr(idx_last, "date") else pd.Timestamp(idx_last).date()
     hv_20 = compute_hv(close, 20)
     hv_series = build_hv_series(raw, 20)
-    chart_series = build_swing_chart_series(
-        close,
-        ma20_series,
-        ma50_series,
-        rsi_ser,
-        hv_series,
-        raw["Volume"] if "Volume" in raw.columns else None,
-        max_points=SWING_CHART_MAX_POINTS,
-    )
+    # Chart history is intentionally separate from the six-month analysis window.
+    # The engine still makes every decision from ``raw`` above; these are display
+    # DTOs for the chart's Daily / Weekly / Monthly views.
+    chart_raw = raw
+    try:
+        extended_history = bar_cache.get_history(
+            t, period="2y", interval="1d", auto_adjust=True, force_refresh=force_refresh,
+        )
+        if extended_history is not None and not extended_history.empty:
+            chart_raw = extended_history.sort_index().dropna(subset=["Close"])
+    except Exception:
+        pass
+    chart_series_by_timeframe = {
+        timeframe: build_swing_chart_timeframe_series(chart_raw, timeframe)
+        for timeframe in ("Daily", "Weekly", "Monthly")
+    }
+    chart_series = chart_series_by_timeframe["Daily"]
     market_structure = build_swing_market_structure(raw)
     implied_iv_pct = _implied_iv_pct_from_info(info)
     implied_iv_source = "quote_info" if implied_iv_pct is not None else None
@@ -3163,6 +3213,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "iv_rank_hv_proxy": iv_rank_opt,
         "earnings_calendar_days_until": earnings_within_days,
         "chart_series": chart_series,
+        "chart_series_by_timeframe": chart_series_by_timeframe,
         "market_structure": market_structure,
         "weekly_range_used_pct": _weekly_range_used_pct,
         "weekly_range_phase":    _weekly_range_phase,

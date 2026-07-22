@@ -426,6 +426,7 @@ def _session_to_5m_candles(session: "pd.DataFrame", n: int = 6) -> list[dict]:
                 "low": float(row["Low"]), "close": float(row["Close"]),
                 "volume": float(row.get("Volume", 0) or 0),
                 "time": ts.strftime("%H:%M") if hasattr(ts, "strftime") else str(ts),
+                "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else None,
             })
         return out
     except Exception:
@@ -449,6 +450,7 @@ def _session_to_all_5m_candles(session: "pd.DataFrame") -> list[dict]:
                 "low": float(row["Low"]), "close": float(row["Close"]),
                 "volume": float(row.get("Volume", 0) or 0),
                 "time": ts.strftime("%H:%M") if hasattr(ts, "strftime") else str(ts),
+                "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else None,
             })
         return out
     except Exception:
@@ -5394,12 +5396,38 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     _trigger_setup = trigger_detector.setup_for_context(bias, or_state, vwap_position)
     _trigger_fired = False
     _trigger_requirement = ""
+    _trigger_candle: dict[str, Any] | None = None
     if _trigger_setup and bias:
         _levels = {"orh": or_high, "or_high": or_high, "orl": or_low, "or_low": or_low,
                    "vwap": float(vwap_ser.iloc[-1]) if vwap_ser is not None and len(vwap_ser) else None}
         _trigger_fired, _trigger_requirement = trigger_detector.detect_trigger_fired(
             _trigger_setup, _5m, _levels, bias,
         )
+        if _trigger_fired and _5m:
+            _trigger_candle = _5m[-1]
+
+        # A breakdown can trigger early and then evolve into a later-session
+        # continuation. Keep that confirmed original entry in the lifecycle
+        # while price still holds below ORL; do not incorrectly relabel it as
+        # pending merely because the latest two candles are no longer the
+        # original confirmation pair.
+        if (
+            not _trigger_fired
+            and bias == "short"
+            and _trigger_setup == trigger_detector.ORL_BREAKDOWN
+            and or_historical == "broke_down"
+            and or_state == "below"
+        ):
+            historical_fired, historical_requirement, historical_candle = trigger_detector.find_latest_confirmed_trigger(
+                _trigger_setup, _5m_all, _levels, bias,
+            )
+            if historical_fired:
+                _trigger_fired = True
+                _trigger_candle = historical_candle
+                _trigger_requirement = (
+                    f"{historical_requirement}. Original ORL breakdown occurred earlier in this session; "
+                    "wait for a fresh pullback or continuation entry rather than chasing."
+                )
 
     _orh_lifecycle = _build_orh_breakout_lifecycle(
         session,
@@ -5620,6 +5648,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "bars_used": len(session),
         "trigger_setup": _trigger_setup,
         "trigger_fired": _trigger_fired,
+        "trigger_time": _trigger_candle.get("timestamp") if _trigger_candle else None,
         "trigger_requirement": _trigger_requirement,
         "orh_breakout_lifecycle": _orh_lifecycle,
         "entry_signal_code": _orh_lifecycle.get("signal"),

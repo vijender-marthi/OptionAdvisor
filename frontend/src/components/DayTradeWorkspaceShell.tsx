@@ -276,7 +276,7 @@ export default function DayTradeWorkspaceShell({
               <X size={18} />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-b-xl border-x border-b border-slate-200 bg-surface-page p-3 dark:border-white/[0.08]">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-xl border-x border-b border-slate-200 bg-surface-page p-3 dark:border-white/[0.08]">
             <TradeDecisionPanel workspace={workspace} onAction={onAction} allExpanded />
           </div>
         </div>
@@ -624,7 +624,11 @@ export function TradeDecisionPanel({
   }
   const panelProps = { placement, onDockWidget, onUndockWidget, allExpanded }
   return (
-    <aside className={placement === 'bottom' ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2' : 'grid w-full max-h-none content-start gap-2 overflow-visible overscroll-contain pr-0 xl:max-h-none xl:overflow-y-auto xl:pr-1'}>
+    <aside className={placement === 'bottom'
+      ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2'
+      : allExpanded
+        ? 'grid w-full content-start gap-2 pr-0'
+        : 'grid w-full max-h-none content-start gap-2 overflow-visible overscroll-contain pr-0 xl:max-h-none xl:overflow-y-auto xl:pr-1'}>
       {shouldRenderWidget('Current Decision') && <Panel title="Current Decision" {...panelProps}>
         {professional ? (
           <ProfessionalDecisionSummary decision={professional} />
@@ -1395,8 +1399,8 @@ function Panel({
   }
   const body = (
     <div
-      className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3"
-      style={{ maxHeight: placement === 'bottom' ? 'none' : `min(70vh, ${bodyMaxHeight}px)` }}
+      className={allExpanded ? 'min-h-0 overflow-visible break-words p-3' : 'min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3'}
+      style={{ maxHeight: placement === 'bottom' || allExpanded ? 'none' : `min(70vh, ${bodyMaxHeight}px)` }}
     >
       {children}
     </div>

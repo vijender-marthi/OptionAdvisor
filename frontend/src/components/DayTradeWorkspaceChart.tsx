@@ -376,6 +376,23 @@ export default function DayTradeWorkspaceChart({
   const latestVwapY = latestVwap == null ? null : model.yForPrice(latestVwap)
   const clampedLatestVwapY = latestVwapY == null ? null : clamp(latestVwapY, PRICE_TOP + 12, PRICE_BOTTOM - 12)
   const latestVwapOffscreen = latestVwapY != null && (latestVwapY < PRICE_TOP || latestVwapY > PRICE_BOTTOM)
+  const visibleLevels = chart.levels
+    .filter(level => visibleOverlayIds.has(level.id))
+    .sort((a, b) => a.priority - b.priority)
+  const levelLabelY = useMemo(() => {
+    const minimumGap = 25
+    const rows = visibleLevels
+      .map(level => ({ id: level.id, y: clamp(model.yForPrice(level.price), PRICE_TOP + 11, PRICE_BOTTOM - 11) }))
+      .sort((a, b) => a.y - b.y)
+    let previousY = PRICE_TOP - minimumGap
+    for (const row of rows) {
+      row.y = Math.max(row.y, previousY + minimumGap)
+      previousY = row.y
+    }
+    const overflow = Math.max(0, previousY - (PRICE_BOTTOM - 11))
+    if (overflow) rows.forEach(row => { row.y -= overflow })
+    return new Map(rows.map(row => [row.id, row.y]))
+  }, [model, visibleLevels])
 
   const changeVisibleRange = (range: WorkspaceRange) => {
     setVisibleRange(range)
@@ -660,26 +677,27 @@ export default function DayTradeWorkspaceChart({
             })}
           </g>
         )}
-        {chart.levels.filter(level => visibleOverlayIds.has(level.id)).sort((a, b) => a.priority - b.priority).map(level => {
+        {visibleLevels.map(level => {
           const rawY = model.yForPrice(level.price)
           // Off-scale levels (e.g. far T1/T2 when zoomed in) are pinned to the pane
           // edge with a ↑/↓ marker instead of drawing a misleading line off-chart.
           const offscreen = rawY < PRICE_TOP || rawY > PRICE_BOTTOM
           const y = clamp(rawY, PRICE_TOP + 11, PRICE_BOTTOM - 11)
+          const labelY = levelLabelY.get(level.id) ?? y
           const color = toneStroke(level.tone)
           const arrow = offscreen ? (rawY < PRICE_TOP ? ' ↑' : ' ↓') : ''
           const badge = tradeTrackBadge(level.id)
           return (
             <g key={level.id} opacity={level.active ? (offscreen ? 0.6 : 1) : 0.46}>
               {!offscreen && <line x1="0" x2={WIDTH} y1={y} y2={y} stroke={color} strokeWidth="1.7" strokeDasharray={level.lineStyleToken.includes('dash') ? '6 5' : undefined} />}
-              <rect x="8" y={y - 11} width="172" height="22" rx="6" className="fill-white stroke-slate-300 dark:fill-slate-950 dark:stroke-white/10" />
-              <text x="16" y={y + 4} className="fill-slate-900 text-[11px] font-bold dark:fill-slate-100">
+              <rect x="8" y={labelY - 11} width="172" height="22" rx="6" className="fill-white stroke-slate-300 dark:fill-slate-950 dark:stroke-white/10" />
+              <text x="16" y={labelY + 4} className="fill-slate-900 text-[11px] font-bold dark:fill-slate-100">
                 {level.label} ${level.price.toFixed(2)}{arrow}
               </text>
               {badge && (
                 <>
-                  <rect x="184" y={y - 11} width="28" height="22" rx="6" fill={color} opacity="0.92" />
-                  <text x="198" y={y + 4} textAnchor="middle" className="fill-white text-[11px] font-black">
+                  <rect x="184" y={labelY - 11} width="28" height="22" rx="6" fill={color} opacity="0.92" />
+                  <text x="198" y={labelY + 4} textAnchor="middle" className="fill-white text-[11px] font-black">
                     {badge}
                   </text>
                 </>

@@ -1122,7 +1122,7 @@ export default function SwingTradePage() {
               <X size={18} />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-b-xl border-x border-b border-slate-200 bg-surface-page p-3 dark:border-white/[0.08]">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-xl border-x border-b border-slate-200 bg-surface-page p-3 dark:border-white/[0.08]">
             <SwingRightRail
               result={result}
               unified={unified}
@@ -1572,7 +1572,11 @@ function SwingRightRail({
   }
   const cardProps = { placement, onDockWidget, onUndockWidget, allExpanded }
   return (
-    <aside className={placement === 'bottom' ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2' : 'grid min-h-0 w-full content-start gap-3 overflow-visible overscroll-contain pr-0 xl:overflow-y-auto xl:pr-1'}>
+    <aside className={placement === 'bottom'
+      ? 'grid min-h-0 flex-1 auto-cols-[minmax(280px,420px)] grid-flow-col content-start gap-2 overflow-x-auto overflow-y-hidden p-2'
+      : allExpanded
+        ? 'grid min-h-0 w-full content-start gap-3 pr-0'
+        : 'grid min-h-0 w-full content-start gap-3 overflow-visible overscroll-contain pr-0 xl:overflow-y-auto xl:pr-1'}>
       {shouldRenderWidget('Current Decision') && <RailCard title="Current Decision" {...cardProps}>
         {professional ? (
           <SwingProfessionalDecisionSummary decision={professional} />
@@ -1693,7 +1697,9 @@ function SwingPrimaryChart({
   onTimeframeChange: (value: Timeframe) => void
 }) {
   const metrics = result?.metrics as Record<string, unknown> | undefined
-  const rawPoints = useMemo(() => parseChartPayload(metrics?.chart_series), [metrics?.chart_series])
+  const chartSeriesByTimeframe = isRecord(metrics?.chart_series_by_timeframe) ? metrics.chart_series_by_timeframe : null
+  const chartPayload = chartSeriesByTimeframe?.[timeframe] ?? metrics?.chart_series
+  const rawPoints = useMemo(() => parseChartPayload(chartPayload), [chartPayload])
   const points = useMemo(() => {
     if (!rawPoints?.length) return rawPoints
     const last = num(metrics?.last_price)
@@ -1744,7 +1750,7 @@ function SwingPrimaryChart({
   if (!points?.length) {
     return (
       <div className="flex h-full min-h-[320px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-tertiary dark:border-white/[0.10] dark:bg-slate-900/60">
-        Run a swing analysis to load the backend daily chart series.
+        Run a swing analysis to load the backend {timeframe.toLowerCase()} chart series.
       </div>
     )
   }
@@ -1919,7 +1925,7 @@ function SwingPrimaryChart({
         <div className="flex min-w-0 flex-wrap items-center gap-2 font-semibold text-secondary">
           <span className="text-[10px] font-black uppercase tracking-widest text-tertiary">Chart</span>
           <span className="hidden truncate xl:inline">
-            {preset === 'engine_recommended' && framework.recommendedReason ? framework.recommendedReason : 'Backend daily series'}
+            {preset === 'engine_recommended' && framework.recommendedReason ? framework.recommendedReason : `Backend ${timeframe.toLowerCase()} series`}
           </span>
           <span className="font-mono text-[10px] text-tertiary">{visibleBars} bars</span>
         </div>
@@ -1928,10 +1934,9 @@ function SwingPrimaryChart({
             <button
               key={tf}
               type="button"
-              disabled={tf !== 'Daily'}
               onClick={() => onTimeframeChange(tf)}
-              className={`rounded-md border px-2 py-0.5 text-[10px] font-black ${timeframe === tf ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200' : 'border-slate-200 text-secondary dark:border-white/[0.08]'} disabled:cursor-not-allowed disabled:opacity-45`}
-              title={tf === 'Daily' ? 'Daily backend series' : `${tf} backend series is not returned yet`}
+              className={`rounded-md border px-2 py-0.5 text-[10px] font-black ${timeframe === tf ? 'border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-200' : 'border-slate-200 text-secondary hover:bg-slate-50 dark:border-white/[0.08] dark:hover:bg-slate-900'}`}
+              title={`${tf} backend series`}
             >
               {tf}
             </button>
@@ -2000,7 +2005,7 @@ function SwingPrimaryChart({
           viewBox={`0 0 ${width} ${height}`}
           className={`${fullScreen ? 'h-[calc(100vh-220px)]' : 'min-h-0 flex-1'} block w-full select-none md:touch-none`}
           role="img"
-          aria-label="Swing trade daily chart"
+          aria-label={`Swing trade ${timeframe.toLowerCase()} chart`}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -2161,7 +2166,7 @@ function SwingPrimaryChart({
       <div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2 text-[11px] text-tertiary">
         <div className="flex flex-wrap gap-2">
           <span className="font-mono">{visible[0]?.d} → {visible[visible.length - 1]?.d}</span>
-          <span>{visible.length} daily bars</span>
+          <span>{visible.length} {timeframe.toLowerCase()} bars</span>
           <span>{preset === 'engine_recommended' ? 'Engine Recommended' : 'User Selected'} indicators</span>
         </div>
         {nearest && (
@@ -2946,8 +2951,8 @@ function RailCard({
   }
   const body = (
     <div
-      className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3"
-      style={{ maxHeight: placement === 'bottom' ? 'none' : `min(70vh, ${bodyMaxHeight}px)` }}
+      className={allExpanded ? 'min-h-0 overflow-visible break-words p-3' : 'min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain break-words p-3'}
+      style={{ maxHeight: placement === 'bottom' || allExpanded ? 'none' : `min(70vh, ${bodyMaxHeight}px)` }}
     >
       {children}
     </div>

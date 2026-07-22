@@ -649,7 +649,7 @@ function RecommendationsTable({
                     <span className="font-mono">{rec.expiry.slice(5)} · {rec.dte} DTE</span>
                     {rec.legs.slice(0, 2).map((leg, i) => (
                       <span key={i} className={`font-mono ${leg.action === 'BUY' ? 'text-semantic-bullish' : 'text-semantic-bearish'}`}>
-                        {leg.action === 'BUY' ? '+' : '–'}${(leg.strike ?? 0).toFixed(0)}{leg.option_type === 'CALL' ? 'C' : 'P'}
+                        {leg.action === 'BUY' ? 'Buy' : 'Sell'} ${fmtStrike(leg.strike)}{leg.option_type === 'CALL' ? 'C' : 'P'}
                       </span>
                     ))}
                   </div>
@@ -941,8 +941,8 @@ function RightDetailPanel({
                 : 'border-semantic-bearish-border bg-semantic-bearish-bg'
             }`}>
               <div className="min-w-0">
-                <span className={`block text-[11px] font-bold ${leg.action === 'BUY' ? 'text-semantic-bullish' : 'text-semantic-bearish'}`}>{leg.action}</span>
-                <span className="block truncate font-mono text-[13px] font-bold text-text-primary">{leg.option_type} ${leg.strike.toFixed(2)}</span>
+                <span className={`block text-[11px] font-bold ${leg.action === 'BUY' ? 'text-semantic-bullish' : 'text-semantic-bearish'}`}>{leg.action === 'BUY' ? 'Buy to Open' : 'Sell to Open'}</span>
+                <span className="block truncate font-mono text-[13px] font-bold text-text-primary">{leg.option_type} · Strike {fmtUsd(leg.strike)}</span>
               </div>
               <span className="ml-2 shrink-0 font-mono text-[11px] text-text-secondary">{leg.expiry || rec.expiry}</span>
             </div>
@@ -976,9 +976,10 @@ function RightDetailPanel({
       <div className="border-b border-border px-4 py-3">
         <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-text-tertiary">Trade Details</div>
         <div className="grid grid-cols-2 gap-2">
-          <Metric label="Strike" value={firstLegStrike(rec)} />
+          <Metric label="Contract" value={firstLegContract(rec)} />
+          <Metric label="Strike Price" value={firstLegStrike(rec)} />
           <Metric label={isCredit ? 'Credit' : 'Debit'} value={fmtUsd(Math.abs(rec.net_credit ?? 0))} />
-          <Metric label="Expiry" value={rec.expiry.slice(5)} />
+          <Metric label="Expiry" value={formatExpiryDate(rec.expiry)} />
           <Metric label="DTE" value={String(rec.dte)} />
           <Metric label="Collateral" value={fmtUsd(rec.max_loss * 100)} />
           <Metric label="Breakeven" value={breakeven} />
@@ -1059,7 +1060,25 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
 function firstLegStrike(rec: Recommendation): string {
   const leg = rec.legs[0]
   if (!leg) return '—'
-  return `${leg.action === 'BUY' ? '+' : '–'} $${(leg.strike ?? 0).toFixed(1)}`
+  return fmtUsd(leg.strike)
+}
+
+function firstLegContract(rec: Recommendation): string {
+  const leg = rec.legs[0]
+  if (!leg) return '—'
+  return `${leg.action === 'SELL' ? 'Sell to Open' : 'Buy to Open'} ${leg.option_type === 'CALL' ? 'Call' : 'Put'}`
+}
+
+function fmtStrike(value: number | null | undefined): string {
+  return value != null && Number.isFinite(value)
+    ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : '—'
+}
+
+function formatExpiryDate(value: string): string {
+  const date = new Date(`${value}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return value || '—'
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 // ─── Draggable Divider ────────────────────────────────────────────────────────

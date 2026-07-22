@@ -87,6 +87,18 @@ class TestTriggerDetector(unittest.TestCase):
         fired, _ = td.detect_trigger_fired(td.ORL_BREAKDOWN, candles, {"orl": 100.0}, "short")
         self.assertFalse(fired)
 
+    def test_historical_orl_breakdown_retains_latest_confirmed_pair(self):
+        candles = [
+            _red(100.0, 99.5, hi=99.95),
+            {**_red(99.4, 99.0, hi=99.45), "timestamp": "2026-07-22T10:00:00-04:00"},
+            _green(99.0, 99.2, lo=98.9),
+            _red(99.2, 98.8, hi=99.3),
+        ]
+        fired, _, candle = td.find_latest_confirmed_trigger(td.ORL_BREAKDOWN, candles, {"orl": 100.0}, "short")
+        self.assertTrue(fired)
+        self.assertIsNotNone(candle)
+        self.assertEqual(candle["timestamp"], "2026-07-22T10:00:00-04:00")
+
     def test_vwap_reclaim_long(self):
         candles = [_green(50.0, 50.4, lo=50.05), _green(50.5, 50.9, lo=50.4)]
         fired, _ = td.detect_trigger_fired(td.VWAP_RECLAIM, candles, {"vwap": 50.0}, "long")
