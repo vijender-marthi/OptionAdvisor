@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, X, Activity, TrendingUp } from 'lucide-react'
+import { Bell, BookOpen, BriefcaseBusiness, ChevronLeft, ChevronRight, Loader2, Menu, RefreshCw, Search, X, Activity, TrendingUp } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchOptionChainLiquidity, saveToJournal } from '../api/client'
 import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse, OptionChainRow } from '../api/client'
@@ -422,11 +422,22 @@ function DayTradeMobileSearchBar({
   navigate: (path: string) => void
 }) {
   return (
-    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:hidden">
+    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 xl:hidden">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenTickers}
+            className="inline-flex rounded-lg border border-violet-500/30 bg-violet-500/10 p-2 text-violet-700 dark:text-violet-200"
+            aria-label="Open navigation"
+            title="Open navigation"
+          >
+            <Menu size={17} />
+          </button>
+          <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Day Trade</div>
           <div className="text-sm font-black text-heading">Analyze Ticker</div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <a
@@ -437,14 +448,6 @@ function DayTradeMobileSearchBar({
             <TrendingUp size={14} />
             Swing
           </a>
-          <button
-            type="button"
-            onClick={onOpenTickers}
-            className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
-          >
-            <Activity size={14} />
-            My Tickers
-          </button>
         </div>
       </div>
       <div className="flex gap-2">
@@ -1145,7 +1148,7 @@ export default function DayTradeWorkspacePage() {
   return (
     <div className="day-trade-page min-h-screen bg-surface-page p-2 pb-24 text-primary md:min-h-0 md:flex-1 md:overflow-hidden md:p-0">
       <div className="flex w-full gap-1 md:h-full md:overflow-hidden">
-        <aside className={`hidden h-full shrink-0 overflow-y-auto overscroll-contain border-r border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950 md:block ${sidebarCollapsed ? 'w-14' : 'w-72 2xl:w-80'}`}>
+        <aside className={`hidden h-full shrink-0 overflow-y-auto overscroll-contain border-r border-slate-200 bg-white dark:border-white/[0.08] dark:bg-slate-950 xl:block ${sidebarCollapsed ? 'w-14' : 'w-72 2xl:w-80'}`}>
           {sidebarCollapsed ? (
             <DayTradeCollapsedSidebar
               symbol={symbol}
@@ -1179,7 +1182,7 @@ export default function DayTradeWorkspacePage() {
         </aside>
 
         {mobileSidebarOpen && (
-          <div className="fixed inset-0 z-40 md:hidden">
+          <div className="fixed inset-0 z-40 xl:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobileSidebarOpen(false)} />
             <aside className="absolute left-0 top-0 h-full w-80 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
               <DayTradeSidebarContent
@@ -1236,7 +1239,7 @@ export default function DayTradeWorkspacePage() {
           />
 
           {currentTickerItem && (
-            <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-tertiary md:hidden">
+            <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-tertiary xl:hidden">
               {membershipsFor(currentTickerItem).map(key => (
                 <span key={key} className="rounded-full border border-slate-200 px-2 py-0.5 dark:border-white/[0.08]">{TRADE_TYPE_LABELS[key]}</span>
               ))}

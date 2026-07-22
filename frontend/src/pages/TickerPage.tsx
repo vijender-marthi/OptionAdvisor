@@ -4,6 +4,7 @@ import {
   Search, X, Plus, ChevronDown, ChevronRight, ChevronLeft, ChevronUp,
   Layers, AlertTriangle, Star, Check, RefreshCw, TrendingUp, TrendingDown,
   BookOpen, ArrowUpRight, Zap, Bell, Briefcase, Filter,
+  Menu,
   DollarSign, Sparkles, Info, HelpCircle, Maximize2,
   Minimize2, ZoomIn, ZoomOut, RotateCcw, Focus, SlidersHorizontal,
   Eye, EyeOff,
@@ -197,6 +198,7 @@ function LeftSidebar({
   onFilterChange,
   onRefreshTickers,
   onAddTicker,
+  onClose,
   embedded = false,
 }: {
   tickers: MyTickerEntry[]
@@ -210,6 +212,7 @@ function LeftSidebar({
   onFilterChange: (filters: FilterState) => void
   onRefreshTickers: () => void
   onAddTicker: () => void
+  onClose?: () => void
   embedded?: boolean
 }) {
   const [tickerSearchError, setTickerSearchError] = useState('')
@@ -244,7 +247,7 @@ function LeftSidebar({
   }, [filteredTickers, onSelectSymbol, searchQuery, tickers])
 
   return (
-    <aside className={`${embedded ? 'h-[min(760px,calc(100vh-7rem))]' : 'sticky top-3 h-[calc(100vh-1.5rem)]'} flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950`}>
+    <aside className={`${embedded ? 'h-full' : 'sticky top-3 h-[calc(100vh-1.5rem)]'} flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950`}>
       <div className="mb-3 flex items-start justify-between">
         <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">Position Workstation</div>
@@ -254,7 +257,13 @@ function LeftSidebar({
           </div>
           <div className="mt-1 text-[10px] leading-tight text-text-tertiary">Multi-week options strategies and risk review.</div>
         </div>
-        <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">My Tickers</span>
+        {onClose ? (
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-surface-muted hover:text-text-primary" aria-label="Close navigation">
+            <X size={17} />
+          </button>
+        ) : (
+          <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">My Tickers</span>
+        )}
       </div>
 
       <section className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
@@ -1325,29 +1334,30 @@ export default function TickerPage() {
       {/* Center workspace */}
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-slate-950">
         {/* Page header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-lg font-bold text-text-primary">Position Trading</h1>
-              <p className="text-[11px] text-text-tertiary">AI-powered options recommendations with clear rationale and risk management.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-card p-0.5">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3 md:px-5">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={() => setSidebarMobileOpen(open => !open)}
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold text-text-secondary transition-colors hover:bg-surface-muted xl:hidden"
+              onClick={() => setSidebarMobileOpen(true)}
+              className="rounded-lg border border-border bg-surface-canvas p-2 text-text-secondary transition-colors hover:bg-surface-muted hover:text-text-primary xl:hidden"
+              aria-label="Open navigation"
+              title="Open navigation"
             >
-              <Search size={13} />
-              Search &amp; Strategies
+              <Menu size={18} />
             </button>
+            <div>
+              <h1 className="text-lg font-bold text-text-primary">Position Trading</h1>
+              <p className="hidden text-[11px] text-text-tertiary sm:block">AI-powered options recommendations with clear rationale and risk management.</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-card p-0.5">
             <button
               type="button"
               onClick={() => routerNavigate(preTradeRoute)}
               className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold text-semantic-bullish transition-colors hover:bg-semantic-bullish-bg"
             >
               <ArrowUpRight size={13} />
-              Pre-Trade Analysis
+              <span className="hidden sm:inline">Pre-Trade Analysis</span>
             </button>
             <button
               type="button"
@@ -1355,7 +1365,7 @@ export default function TickerPage() {
               className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold text-text-secondary transition-colors hover:bg-surface-muted"
             >
               <Briefcase size={13} />
-              Active Positions
+              <span className="hidden lg:inline">Active Positions</span>
             </button>
             <button
               type="button"
@@ -1363,33 +1373,10 @@ export default function TickerPage() {
               className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold text-text-secondary transition-colors hover:bg-surface-muted"
             >
               <BookOpen size={13} />
-              Strategy Guide
+              <span className="hidden lg:inline">Strategy Guide</span>
             </button>
           </div>
         </div>
-
-        {sidebarMobileOpen && (
-          <div className="border-b border-border px-5 py-3 xl:hidden">
-            <LeftSidebar
-              tickers={tickers}
-              tickersLoading={tickersLoading}
-              tickersError={tickersError}
-              selectedSymbol={selectedSymbol}
-              searchQuery={searchQuery}
-              filters={filters}
-              onSelectSymbol={symbol => {
-                setSidebarMobileOpen(false)
-                setSearchParams({ symbol: symbol.trim().toUpperCase() })
-                void handleAnalyze(symbol)
-              }}
-              onSearchChange={setSearchQuery}
-              onFilterChange={setFilters}
-              onRefreshTickers={() => void loadTickers()}
-              onAddTicker={() => routerNavigate('/my-tickers')}
-              embedded
-            />
-          </div>
-        )}
 
         <div className="flex flex-1 flex-col gap-3 px-3 py-3 min-h-0 md:px-4 md:py-4">
           {/* Summary bar */}
@@ -1595,6 +1582,32 @@ export default function TickerPage() {
       </div>
 
     </div>
+    {sidebarMobileOpen && (
+      <div className="fixed inset-0 z-50 xl:hidden">
+        <button type="button" className="absolute inset-0 cursor-default bg-slate-950/45 backdrop-blur-[1px]" onClick={() => setSidebarMobileOpen(false)} aria-label="Close navigation" />
+        <div className="absolute inset-y-0 left-0 w-80 max-w-[calc(100vw-2rem)] p-2">
+          <LeftSidebar
+            tickers={tickers}
+            tickersLoading={tickersLoading}
+            tickersError={tickersError}
+            selectedSymbol={selectedSymbol}
+            searchQuery={searchQuery}
+            filters={filters}
+            onSelectSymbol={symbol => {
+              setSidebarMobileOpen(false)
+              setSearchParams({ symbol: symbol.trim().toUpperCase() })
+              void handleAnalyze(symbol)
+            }}
+            onSearchChange={setSearchQuery}
+            onFilterChange={setFilters}
+            onRefreshTickers={() => void loadTickers()}
+            onAddTicker={() => routerNavigate('/my-tickers')}
+            onClose={() => setSidebarMobileOpen(false)}
+            embedded
+          />
+        </div>
+      </div>
+    )}
     {strategyGuideOpen && <StrategyGuideDialog strategy={currentSelectedRec?.strategy} onClose={() => setStrategyGuideOpen(false)} />}
     </div>
   )

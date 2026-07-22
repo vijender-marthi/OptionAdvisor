@@ -20,6 +20,7 @@ import {
   LayoutList,
   Loader2,
   Lock,
+  Menu,
   Maximize2,
   Minimize2,
   Minus,
@@ -880,7 +881,7 @@ export default function SwingTradePage() {
           <button
             type="button"
             onClick={() => setWatchlistOpen(true)}
-            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-secondary hover:border-violet-400 dark:border-white/[0.08] dark:bg-slate-950 md:flex"
+            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-secondary hover:border-violet-400 dark:border-white/[0.08] dark:bg-slate-950 xl:flex"
             aria-label="Open Swing watchlist"
           >
             <ChevronRight size={18} />
@@ -1066,7 +1067,7 @@ export default function SwingTradePage() {
       </div>
 
       {mobileWatchlistOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div className="fixed inset-0 z-40 xl:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileWatchlistOpen(false)} />
           <SwingLeftSidebar
             ticker={ticker}
@@ -1183,7 +1184,7 @@ function SwingLeftSidebar({
   return (
     <aside className={mobileOverlay
       ? 'absolute left-0 top-0 flex h-full w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-r-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/[0.08] dark:bg-slate-950'
-      : 'hidden h-full w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 md:flex 2xl:w-80'
+      : 'hidden h-full w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 xl:flex 2xl:w-80'
     }>
       <div className="mb-3 flex shrink-0 items-start justify-between">
         <div>
@@ -1390,20 +1391,23 @@ function SwingMobileSearchBar({
   onOpenWatchlist: () => void
 }) {
   return (
-    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 md:hidden">
+    <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 xl:hidden">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenWatchlist}
+            className="inline-flex rounded-lg border border-violet-500/30 bg-violet-500/10 p-2 text-violet-700 dark:text-violet-200"
+            aria-label="Open navigation"
+            title="Open navigation"
+          >
+            <Menu size={17} />
+          </button>
+          <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Swing Trade</div>
           <div className="text-sm font-black text-heading">Analyze Ticker</div>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onOpenWatchlist}
-          className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-black text-violet-700 dark:text-violet-200"
-        >
-          <TrendingUp size={14} />
-          Watchlist
-        </button>
       </div>
       <div className="flex gap-2">
         <input
