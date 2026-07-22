@@ -2966,18 +2966,24 @@ function RailCard({
       onDrop={dropWidget}
     >
       <div
-        className="flex shrink-0 cursor-grab items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 active:cursor-grabbing dark:border-white/[0.07] dark:bg-slate-900/60"
-        draggable
-        onDragStart={startWidgetDrag}
+        className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-900/60"
       >
+        <span
+          draggable
+          onDragStart={startWidgetDrag}
+          className="shrink-0 cursor-grab text-tertiary active:cursor-grabbing"
+          aria-label={`Move ${title} widget`}
+          title="Drag to move widget"
+        >
+          <GripVertical size={14} />
+        </span>
         <button
           type="button"
           onClick={() => !pinnedFullLength && setMinimized(cur => !cur)}
-          className={`flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] font-black uppercase tracking-widest text-tertiary ${pinnedFullLength ? 'cursor-grab' : 'cursor-pointer hover:text-heading'}`}
+          className={`flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] font-black uppercase tracking-widest text-tertiary ${pinnedFullLength ? 'cursor-default' : 'cursor-pointer hover:text-heading'}`}
           aria-expanded={pinnedFullLength || !minimized}
           aria-label={pinnedFullLength ? title : `${minimized ? 'Restore' : 'Minimize'} ${title} widget`}
         >
-          <GripVertical size={14} className="shrink-0" />
           <span className="truncate">{title}</span>
         </button>
         <div className="flex items-center gap-1">
@@ -3014,7 +3020,7 @@ function RailCard({
               aria-label={minimized ? `Restore ${title} widget` : `Minimize ${title} widget`}
               title={minimized ? 'Restore widget' : 'Minimize widget'}
             >
-              {minimized ? <Minimize2 size={13} /> : <Minus size={13} />}
+              {minimized ? <ChevronDown size={15} /> : <Minus size={13} />}
             </button>
           )}
           <button
