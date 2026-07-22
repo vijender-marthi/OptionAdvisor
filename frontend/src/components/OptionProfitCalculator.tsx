@@ -8,6 +8,7 @@ import type { Recommendation } from '../types'
 interface Props {
   recommendations: Recommendation[]
   currentPrice: number
+  showLegs?: boolean
 }
 
 function legPnl(
@@ -95,7 +96,7 @@ const CustomTooltip = ({
   )
 }
 
-export default function OptionProfitCalculator({ recommendations, currentPrice }: Props) {
+export default function OptionProfitCalculator({ recommendations, currentPrice, showLegs = true }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const rec = recommendations[selectedIdx]
   const curve = useMemo(() => (rec ? buildCurve(rec, currentPrice) : []), [rec, currentPrice])
@@ -267,33 +268,34 @@ export default function OptionProfitCalculator({ recommendations, currentPrice }
         </ResponsiveContainer>
       </div>
 
-      {/* Leg breakdown */}
-      <div>
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Legs</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {rec.legs.map((leg, i) => (
-            <div
-              key={i}
-              className={`flex items-center justify-between rounded-xl px-3 py-2 border text-xs
-                ${leg.action === 'SELL'
-                  ? 'bg-red-900/10 border-red-900/30'
-                  : 'bg-emerald-900/10 border-emerald-900/30'}`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`font-bold ${leg.action === 'SELL' ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {leg.action}
-                </span>
-                <span className="text-gray-300 font-mono">${leg.strike} {leg.option_type}</span>
-                <span className="text-gray-500">{leg.expiry}</span>
+      {showLegs && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Legs</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {rec.legs.map((leg, i) => (
+              <div
+                key={i}
+                className={`flex items-center justify-between rounded-xl px-3 py-2 border text-xs
+                  ${leg.action === 'SELL'
+                    ? 'bg-red-900/10 border-red-900/30'
+                    : 'bg-emerald-900/10 border-emerald-900/30'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`font-bold ${leg.action === 'SELL' ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {leg.action}
+                  </span>
+                  <span className="text-gray-300 font-mono">${leg.strike} {leg.option_type}</span>
+                  <span className="text-gray-500">{leg.expiry}</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-gray-300 font-mono">${leg.mid_price.toFixed(2)}</div>
+                  <div className="text-gray-500">Δ {leg.delta?.toFixed(2)}</div>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-gray-300 font-mono">${leg.mid_price.toFixed(2)}</div>
-                <div className="text-gray-500">Δ {leg.delta?.toFixed(2)}</div>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

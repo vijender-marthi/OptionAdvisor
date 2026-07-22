@@ -339,6 +339,16 @@ function latestPrice(result: SwingTradeScanResult | null, unified: UnifiedAnalys
   return unified?.price ?? num(m?.last_price)
 }
 
+function latestDailyChange(result: SwingTradeScanResult | null, unified: UnifiedAnalysis | null): number | null {
+  const m = result?.metrics as Record<string, unknown> | undefined
+  return num(unified?.change_amount) ?? num(m?.daily_change)
+}
+
+function latestDailyChangePct(result: SwingTradeScanResult | null, unified: UnifiedAnalysis | null): number | null {
+  const m = result?.metrics as Record<string, unknown> | undefined
+  return num(unified?.change_pct) ?? num(m?.daily_change_pct)
+}
+
 function getExec(result: SwingTradeScanResult | null): Record<string, unknown> {
   const m = result?.metrics as Record<string, unknown> | undefined
   return isRecord(m?.exec_levels) ? m.exec_levels : {}
@@ -527,7 +537,9 @@ export default function SwingTradePage() {
   useDocumentTitle(formatTickerTitle(result?.ticker || ticker, 'Swing Trade'))
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [watchlistOpen, setWatchlistOpen] = useState(true)
+  const [watchlistOpen, setWatchlistOpen] = useState(() => {
+    try { return window.localStorage.getItem('day_trade_workspace_sidebar_collapsed') !== '1' } catch { return true }
+  })
   const [rightRailOpen, setRightRailOpen] = useState(() => {
     try {
       return window.localStorage.getItem('swing_trade_right_rail_open') !== '0'
@@ -643,6 +655,10 @@ export default function SwingTradePage() {
   useEffect(() => {
     try { window.localStorage.setItem('swing_trade_right_rail_open', rightRailOpen ? '1' : '0') } catch { /* quota */ }
   }, [rightRailOpen])
+
+  useEffect(() => {
+    try { window.localStorage.setItem('day_trade_workspace_sidebar_collapsed', watchlistOpen ? '0' : '1') } catch { /* quota */ }
+  }, [watchlistOpen])
 
   useEffect(() => {
     try { window.localStorage.setItem('swing_trade_right_rail_width', String(rightRailWidth)) } catch { /* quota */ }
@@ -1137,14 +1153,14 @@ function SwingLeftSidebar({
   const navigate = useNavigate()
   const [activeFilter, setActiveFilter] = useState<SwingSidebarFilterKey>(() => {
     try {
-      const saved = localStorage.getItem('swing_trade_watchlist_filter') as SwingSidebarFilterKey | null
-      return saved && SWING_SIDEBAR_FILTERS.some(filter => filter.key === saved) ? saved : 'swing'
+      const saved = localStorage.getItem('day_trade_workspace_sidebar_tab') as SwingSidebarFilterKey | null
+      return saved && SWING_SIDEBAR_FILTERS.some(filter => filter.key === saved) ? saved : 'all'
     } catch {
       return 'swing'
     }
   })
   const [tickerSearch, setTickerSearch] = useState(() => {
-    try { return localStorage.getItem('swing_trade_watchlist_search') || '' } catch { return '' }
+    try { return localStorage.getItem('day_trade_workspace_sidebar_search') || '' } catch { return '' }
   })
   const filteredTickers = useMemo(() => {
     const query = tickerSearch.trim().toUpperCase()
@@ -1157,11 +1173,11 @@ function SwingLeftSidebar({
   }, [activeFilter, myTickers, tickerSearch])
 
   useEffect(() => {
-    try { localStorage.setItem('swing_trade_watchlist_filter', activeFilter) } catch { /* quota */ }
+    try { localStorage.setItem('day_trade_workspace_sidebar_tab', activeFilter) } catch { /* quota */ }
   }, [activeFilter])
 
   useEffect(() => {
-    try { localStorage.setItem('swing_trade_watchlist_search', tickerSearch) } catch { /* quota */ }
+    try { localStorage.setItem('day_trade_workspace_sidebar_search', tickerSearch) } catch { /* quota */ }
   }, [tickerSearch])
 
   return (
@@ -1452,6 +1468,8 @@ function SwingTopBar({
   onOpenAllWidgets: () => void
 }) {
   const dayTradeRoute = getEngineRoute('day', result?.ticker || ticker)
+  const dailyChange = latestDailyChange(result, unified)
+  const dailyChangePct = latestDailyChangePct(result, unified)
   return (
     <div className="relative mb-1 flex min-h-10 flex-wrap items-center justify-between gap-2 border border-slate-200 bg-white px-2 py-1 shadow-sm dark:border-white/[0.08] dark:bg-slate-950 xl:border-x-0 xl:border-t-0">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1459,9 +1477,9 @@ function SwingTopBar({
         <span className="font-mono text-base font-black text-heading">{result?.ticker || ticker || '—'}</span>
         <span className="max-w-[340px] truncate text-sm font-semibold text-secondary">{result?.company_name || unified?.company || ''}</span>
         <span className="font-mono text-base font-black text-heading">{money(latestPrice(result, unified))}</span>
-        {unified?.change_pct != null && (
-          <span className={`font-mono text-sm font-bold ${unified.change_pct >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
-            {pct(unified.change_pct)}
+        {dailyChange != null && dailyChangePct != null && (
+          <span className={`font-mono text-sm font-bold ${dailyChange >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+            {signedMoney(dailyChange)} ({pct(dailyChangePct)})
           </span>
         )}
         {(result?.bias || result?.swing_bias) && (

@@ -567,6 +567,13 @@
             "title": "Filters Applied",
             "type": "object"
           },
+          "key_levels": {
+            "items": {
+              "$ref": "#/components/schemas/KeyLevelOut"
+            },
+            "title": "Key Levels",
+            "type": "array"
+          },
           "market_bias": {
             "default": "NEUTRAL",
             "title": "Market Bias",
@@ -582,6 +589,9 @@
             },
             "title": "Missing Confirmations",
             "type": "array"
+          },
+          "options_flow": {
+            "$ref": "#/components/schemas/OptionsFlowOut"
           },
           "price_history": {
             "items": {
@@ -834,6 +844,25 @@
           "end_date"
         ],
         "title": "BacktestRequest",
+        "type": "object"
+      },
+      "BrokerContractParseBody": {
+        "properties": {
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "trade_source": {
+            "default": "regular",
+            "title": "Trade Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "BrokerContractParseBody",
         "type": "object"
       },
       "CalculationRunCreateRequest": {
@@ -1380,6 +1409,19 @@
         "title": "CarryTradeResponse",
         "type": "object"
       },
+      "DayTradeAiCoachView": {
+        "properties": {
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "title": "DayTradeAiCoachView",
+        "type": "object"
+      },
       "DayTradeChartCandleView": {
         "properties": {
           "close": {
@@ -1695,6 +1737,203 @@
         "title": "DayTradeChartView",
         "type": "object"
       },
+      "DayTradeConfidenceView": {
+        "properties": {
+          "biasConfidence": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "entryQuality": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "entryTiming": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "tradeConfidence": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          }
+        },
+        "required": [
+          "biasConfidence",
+          "tradeConfidence",
+          "entryQuality",
+          "entryTiming"
+        ],
+        "title": "DayTradeConfidenceView",
+        "type": "object"
+      },
+      "DayTradeCurrentActionView": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "recommendation": {
+            "title": "Recommendation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "reason",
+          "recommendation",
+          "confidence"
+        ],
+        "title": "DayTradeCurrentActionView",
+        "type": "object"
+      },
+      "DayTradeCurrentStateView": {
+        "properties": {
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "score",
+          "explanation"
+        ],
+        "title": "DayTradeCurrentStateView",
+        "type": "object"
+      },
+      "DayTradeDecisionChangeView": {
+        "properties": {
+          "bearish": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Bearish",
+            "type": "array"
+          },
+          "bullish": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Bullish",
+            "type": "array"
+          },
+          "invalidation": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Invalidation",
+            "type": "array"
+          }
+        },
+        "title": "DayTradeDecisionChangeView",
+        "type": "object"
+      },
+      "DayTradeDecisionEngineView": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "currentAction": {
+            "$ref": "#/components/schemas/DayTradeCurrentActionView"
+          },
+          "currentState": {
+            "$ref": "#/components/schemas/DayTradeCurrentStateView"
+          },
+          "expectedStructure": {
+            "$ref": "#/components/schemas/DayTradeExpectedStructureView"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "nextOpportunity": {
+            "$ref": "#/components/schemas/DayTradeNextOpportunityView"
+          },
+          "reasoning": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoning",
+            "type": "array"
+          },
+          "rewardRisk": {
+            "$ref": "#/components/schemas/DayTradeRewardRiskView"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/DayTradeSetupLifecycleView"
+          },
+          "trendHealth": {
+            "$ref": "#/components/schemas/DayTradeTrendHealthView"
+          }
+        },
+        "required": [
+          "setup",
+          "currentState",
+          "currentAction",
+          "nextOpportunity",
+          "expectedStructure",
+          "trendHealth",
+          "rewardRisk",
+          "explanation",
+          "confidence"
+        ],
+        "title": "DayTradeDecisionEngineView",
+        "type": "object"
+      },
+      "DayTradeDecisionHierarchyView": {
+        "properties": {
+          "currentAction": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "currentPhase": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "marketContext": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "nextOpportunity": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "originalEntry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeMetricView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "setup": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "stockBias": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          }
+        },
+        "required": [
+          "marketContext",
+          "stockBias",
+          "setup",
+          "currentPhase",
+          "nextOpportunity",
+          "currentAction"
+        ],
+        "title": "DayTradeDecisionHierarchyView",
+        "type": "object"
+      },
       "DayTradeDecisionView": {
         "properties": {
           "context": {
@@ -1848,6 +2087,42 @@
         "title": "DayTradeDisplayValue",
         "type": "object"
       },
+      "DayTradeEngineScoresView": {
+        "properties": {
+          "entryScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "marketScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "momentumScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "overallTradeScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "structureScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "trendScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "volumeScore": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          }
+        },
+        "required": [
+          "trendScore",
+          "structureScore",
+          "momentumScore",
+          "volumeScore",
+          "marketScore",
+          "entryScore",
+          "overallTradeScore"
+        ],
+        "title": "DayTradeEngineScoresView",
+        "type": "object"
+      },
       "DayTradeEvidenceItemView": {
         "properties": {
           "detail": {
@@ -1912,6 +2187,83 @@
           "order"
         ],
         "title": "DayTradeEvidenceItemView",
+        "type": "object"
+      },
+      "DayTradeExpectedStructureOptionView": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "probability": {
+            "title": "Probability",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "probability"
+        ],
+        "title": "DayTradeExpectedStructureOptionView",
+        "type": "object"
+      },
+      "DayTradeExpectedStructureView": {
+        "properties": {
+          "current": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current",
+            "type": "array"
+          },
+          "expected": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeExpectedStructureOptionView"
+            },
+            "title": "Expected",
+            "type": "array"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "explanation"
+        ],
+        "title": "DayTradeExpectedStructureView",
+        "type": "object"
+      },
+      "DayTradeMarketContextView": {
+        "properties": {
+          "breadth": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "qqq": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "relativeStrength": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "sector": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "spy": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "vix": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          }
+        },
+        "required": [
+          "spy",
+          "qqq",
+          "sector",
+          "vix",
+          "breadth",
+          "relativeStrength"
+        ],
+        "title": "DayTradeMarketContextView",
         "type": "object"
       },
       "DayTradeMarketStructureView": {
@@ -2093,6 +2445,186 @@
         "title": "DayTradeMarketStructureView",
         "type": "object"
       },
+      "DayTradeMetricView": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "display"
+        ],
+        "title": "DayTradeMetricView",
+        "type": "object"
+      },
+      "DayTradeNextOpportunityView": {
+        "properties": {
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "nextOpportunity": {
+            "title": "Nextopportunity",
+            "type": "string"
+          },
+          "probability": {
+            "title": "Probability",
+            "type": "number"
+          },
+          "trigger": {
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nextOpportunity",
+          "trigger",
+          "explanation",
+          "probability"
+        ],
+        "title": "DayTradeNextOpportunityView",
+        "type": "object"
+      },
+      "DayTradeProfessionalDecisionView": {
+        "properties": {
+          "aiCoach": {
+            "$ref": "#/components/schemas/DayTradeAiCoachView"
+          },
+          "changesDecision": {
+            "$ref": "#/components/schemas/DayTradeDecisionChangeView"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/DayTradeConfidenceView"
+          },
+          "hierarchy": {
+            "$ref": "#/components/schemas/DayTradeDecisionHierarchyView"
+          },
+          "marketContext": {
+            "$ref": "#/components/schemas/DayTradeMarketContextView"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/DayTradeRiskDecisionView"
+          },
+          "scores": {
+            "$ref": "#/components/schemas/DayTradeEngineScoresView"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeTimelineEventView"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "why": {
+            "$ref": "#/components/schemas/DayTradeReasoningEngineView"
+          }
+        },
+        "required": [
+          "hierarchy",
+          "why",
+          "changesDecision",
+          "confidence",
+          "scores",
+          "risk",
+          "marketContext",
+          "aiCoach"
+        ],
+        "title": "DayTradeProfessionalDecisionView",
+        "type": "object"
+      },
+      "DayTradeReasoningEngineView": {
+        "properties": {
+          "negativeFactors": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Negativefactors",
+            "type": "array"
+          },
+          "neutralFactors": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Neutralfactors",
+            "type": "array"
+          },
+          "positiveFactors": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Positivefactors",
+            "type": "array"
+          }
+        },
+        "title": "DayTradeReasoningEngineView",
+        "type": "object"
+      },
       "DayTradeRequest": {
         "properties": {
           "force_refresh": {
@@ -2266,6 +2798,89 @@
         "title": "DayTradeResponse",
         "type": "object"
       },
+      "DayTradeRewardRiskView": {
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          },
+          "reward": {
+            "$ref": "#/components/schemas/DayTradeDisplayValue"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/DayTradeDisplayValue"
+          },
+          "targetUsed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetused"
+          }
+        },
+        "required": [
+          "risk",
+          "reward",
+          "display"
+        ],
+        "title": "DayTradeRewardRiskView",
+        "type": "object"
+      },
+      "DayTradeRiskDecisionView": {
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "rewardRemaining": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "riskRemaining": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "riskReward": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "stop": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "target": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          },
+          "tradeQuality": {
+            "$ref": "#/components/schemas/DayTradeMetricView"
+          }
+        },
+        "required": [
+          "entry",
+          "stop",
+          "risk",
+          "target",
+          "riskReward",
+          "rewardRemaining",
+          "riskRemaining",
+          "tradeQuality"
+        ],
+        "title": "DayTradeRiskDecisionView",
+        "type": "object"
+      },
       "DayTradeRiskPlanView": {
         "properties": {
           "entry": {
@@ -2398,6 +3013,90 @@
         "title": "DayTradeSessionView",
         "type": "object"
       },
+      "DayTradeSetupLifecycleView": {
+        "properties": {
+          "currentGainPct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentgainpct"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "setupType": {
+            "title": "Setuptype",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "triggerPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggerprice"
+          },
+          "triggerTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggertime"
+          },
+          "validFrom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validfrom"
+          },
+          "validUntil": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validuntil"
+          }
+        },
+        "required": [
+          "setupType",
+          "status"
+        ],
+        "title": "DayTradeSetupLifecycleView",
+        "type": "object"
+      },
       "DayTradeStructurePivotView": {
         "properties": {
           "classification": {
@@ -2506,6 +3205,9 @@
           "change": {
             "$ref": "#/components/schemas/DayTradeDisplayValue"
           },
+          "changeAmount": {
+            "$ref": "#/components/schemas/DayTradeDisplayValue"
+          },
           "companyName": {
             "anyOf": [
               {
@@ -2528,9 +3230,101 @@
         "required": [
           "ticker",
           "price",
+          "changeAmount",
           "change"
         ],
         "title": "DayTradeSymbolView",
+        "type": "object"
+      },
+      "DayTradeTimelineEventView": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "phase",
+          "status"
+        ],
+        "title": "DayTradeTimelineEventView",
+        "type": "object"
+      },
+      "DayTradeTrendHealthView": {
+        "properties": {
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Inputs",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "label",
+          "explanation"
+        ],
+        "title": "DayTradeTrendHealthView",
         "type": "object"
       },
       "DayTradeTriggerRequirementView": {
@@ -2789,6 +3583,16 @@
           "decision": {
             "$ref": "#/components/schemas/DayTradeDecisionView"
           },
+          "decisionEngine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeDecisionEngineView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "evidence": {
             "items": {
               "$ref": "#/components/schemas/DayTradeEvidenceItemView"
@@ -2799,6 +3603,16 @@
           "generatedAt": {
             "title": "Generatedat",
             "type": "string"
+          },
+          "professionalDecision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeProfessionalDecisionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provenance": {
             "anyOf": [
@@ -2839,6 +3653,18 @@
             "additionalProperties": true,
             "title": "Tabs",
             "type": "object"
+          },
+          "trapDetection": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trapdetection"
           },
           "trigger": {
             "$ref": "#/components/schemas/DayTradeTriggerView"
@@ -2969,6 +3795,167 @@
           }
         },
         "title": "JournalCloseRequest",
+        "type": "object"
+      },
+      "JournalHistoryMorningRequest": {
+        "properties": {
+          "evaluation_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Date"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/JournalHistoryMorningRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "title": "JournalHistoryMorningRequest",
+        "type": "object"
+      },
+      "JournalHistoryMorningRow": {
+        "properties": {
+          "bear": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JournalHistoryScenarioCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bias"
+          },
+          "bull": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JournalHistoryScenarioCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "day",
+            "title": "Mode",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "JournalHistoryMorningRow",
+        "type": "object"
+      },
+      "JournalHistoryScenarioCheck": {
+        "properties": {
+          "entry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry"
+          },
+          "prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prob"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "t1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T1"
+          },
+          "t2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T2"
+          }
+        },
+        "title": "JournalHistoryScenarioCheck",
         "type": "object"
       },
       "JournalNotesRequest": {
@@ -3286,6 +4273,34 @@
           }
         },
         "title": "JournalUpdateRequest",
+        "type": "object"
+      },
+      "KeyLevelOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "price",
+          "kind",
+          "reason"
+        ],
+        "title": "KeyLevelOut",
         "type": "object"
       },
       "LoginRequest": {
@@ -3762,6 +4777,74 @@
           "implied_volatility"
         ],
         "title": "OptionRowOut",
+        "type": "object"
+      },
+      "OptionsFlowOut": {
+        "properties": {
+          "callOpenInterest": {
+            "default": 0,
+            "title": "Callopeninterest",
+            "type": "integer"
+          },
+          "callVolume": {
+            "default": 0,
+            "title": "Callvolume",
+            "type": "integer"
+          },
+          "ivRank": {
+            "default": 0.0,
+            "title": "Ivrank",
+            "type": "number"
+          },
+          "ivSkew": {
+            "default": 0.0,
+            "title": "Ivskew",
+            "type": "number"
+          },
+          "openInterestPutCallRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openinterestputcallratio"
+          },
+          "putOpenInterest": {
+            "default": 0,
+            "title": "Putopeninterest",
+            "type": "integer"
+          },
+          "putVolume": {
+            "default": 0,
+            "title": "Putvolume",
+            "type": "integer"
+          },
+          "sentiment": {
+            "default": "Neutral",
+            "title": "Sentiment",
+            "type": "string"
+          },
+          "summary": {
+            "default": "Options flow data is unavailable.",
+            "title": "Summary",
+            "type": "string"
+          },
+          "volumePutCallRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volumeputcallratio"
+          }
+        },
+        "title": "OptionsFlowOut",
         "type": "object"
       },
       "OvernightRunnerRequest": {
@@ -4811,6 +5894,11 @@
             "default": "",
             "title": "Playbook Hint",
             "type": "string"
+          },
+          "professional_decision": {
+            "additionalProperties": true,
+            "title": "Professional Decision",
+            "type": "object"
           },
           "reason": {
             "default": "",
@@ -9320,6 +10408,173 @@
         "summary": "Investment Thesis Starter"
       }
     },
+    "/api/journal/history-log": {
+      "get": {
+        "description": "Return backend-generated Journal Tool history rows for the authenticated user.",
+        "operationId": "journal_history_log_api_journal_history_log_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 300,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Journal History Log"
+      }
+    },
+    "/api/journal/history-log/auto-generate": {
+      "post": {
+        "description": "Generate today's next-day day-trade history rows for the authenticated user's day tickers.",
+        "operationId": "journal_history_log_auto_generate_api_journal_history_log_auto_generate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Journal History Log Auto Generate"
+      }
+    },
+    "/api/journal/history-morning-check": {
+      "post": {
+        "description": "Compare saved journal history plans with today's 7:00 and 7:30 AM PT price path.",
+        "operationId": "journal_history_morning_check_api_journal_history_morning_check_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JournalHistoryMorningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Journal History Morning Check"
+      }
+    },
     "/api/journal/refresh/{email}": {
       "post": {
         "description": "Recompute current P&L for all OPEN entries; settle EXPIRED ones.",
@@ -10372,6 +11627,63 @@
         ]
       }
     },
+    "/api/portfolio/parse-contract": {
+      "post": {
+        "operationId": "post_portfolio_parse_contract_api_portfolio_parse_contract_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrokerContractParseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Portfolio Parse Contract",
+        "tags": [
+          "command-center"
+        ]
+      }
+    },
     "/api/portfolio/remove": {
       "post": {
         "operationId": "post_portfolio_remove_api_portfolio_remove_post",
@@ -10541,6 +11853,69 @@
         "tags": [
           "command-center"
         ]
+      }
+    },
+    "/api/position-trade/session-chart": {
+      "get": {
+        "operationId": "position_trade_session_chart_api_position_trade_session_chart_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "5m",
+              "pattern": "^(1m|5m|15m|1h)$",
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force_refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Position Trade Session Chart Api Position Trade Session Chart Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Position Trade Session Chart"
       }
     },
     "/api/positions-center": {

@@ -835,6 +835,7 @@ function validateDayTradeWorkspaceResponse(value: unknown): asserts value is Day
   requireWorkspaceString(value, 'generatedAt', missing)
   requireWorkspaceString(value, 'symbol.ticker', missing)
   requireWorkspaceString(value, 'symbol.price.display', missing)
+  requireWorkspaceString(value, 'symbol.changeAmount.display', missing)
   requireWorkspaceString(value, 'symbol.change.display', missing)
   requireWorkspaceString(value, 'session.mode', missing)
   requireWorkspaceString(value, 'session.status.label', missing)
@@ -1131,7 +1132,7 @@ export const fetchDayTradeWorkspace = async (query: DayTradeWorkspaceQuery): Pro
 
 export const fetchPositionSessionChart = async (query: {
   symbol: string
-  interval?: '1m' | '5m' | '15m'
+  interval?: '1m' | '5m' | '15m' | '1h'
   forceRefresh?: boolean
 }): Promise<PositionSessionChartResponse> => {
   const { data } = await api.get<PositionSessionChartResponse>('/position-trade/session-chart', {
@@ -1682,6 +1683,7 @@ export interface UnifiedAnalysis {
   company: string
   trade_type: 'day' | 'swing' | 'regular'
   price: number
+  change_amount?: number | null
   change_pct: number | null
   verdict: 'STRONG_GO' | 'GO' | 'TRIGGER_PENDING' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
   verdict_raw: string

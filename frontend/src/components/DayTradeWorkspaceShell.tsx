@@ -345,7 +345,9 @@ export function TradeDecisionHeader({
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-lg font-black text-heading">{workspace.symbol.ticker}</span>
           <span className="truncate text-sm font-semibold text-secondary">{workspace.symbol.companyName}</span>
+          <span className="rounded-full border border-violet-400/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">Day Trade</span>
           <span className="font-mono text-base font-black text-heading">{workspace.symbol.price.display}</span>
+          <span className={`font-mono text-sm font-bold ${workspaceToneTextClass(workspace.symbol.changeAmount.tone || 'neutral')}`}>{workspace.symbol.changeAmount.display}</span>
           <span className={`font-mono text-sm font-bold ${workspaceToneTextClass(workspace.symbol.change.tone || 'neutral')}`}>{workspace.symbol.change.display}</span>
           {workspace.chart.marketStructure && (
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${marketStructureBadgeClass(`${workspace.chart.marketStructure.display} ${workspace.chart.marketStructure.trend}`)}`}>

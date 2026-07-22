@@ -353,7 +353,7 @@ export default function TradeCommandCenter() {
 
   return (
     <div style={{ background: C.page, minHeight: '100vh' }}>
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 112px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="trade-command-center-page" style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 112px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* ── Header ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

@@ -54,6 +54,53 @@ type PositionCategory = 'all' | 'options' | 'stocks'
 
 const SHARES_PER_OPTION_CONTRACT = 100
 
+const MONTH_ABBR: Record<string, string> = {
+  JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',
+  JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12',
+}
+
+function parseQuickEntryText(text: string): {
+  optionType: 'CALL' | 'PUT' | ''
+  ticker: string
+  companyName: string
+  expiry: string
+  strike: number
+  shares: number
+} | null {
+  const upper = text.trim()
+  if (!upper) return null
+
+  const typeMatch = upper.match(/^(CALL|PUT)\b/)
+  if (!typeMatch) return null
+  const optionType = typeMatch[1] as 'CALL' | 'PUT'
+
+  const tickerMatch = upper.match(/\(([A-Z]{1,6})\)/)
+  if (!tickerMatch) return null
+  const ticker = tickerMatch[1]
+
+  const monthMatch = upper.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+(\d{1,2})\s+(\d{2,4})\b/i)
+  if (!monthMatch) return null
+  const mon = MONTH_ABBR[monthMatch[1].toUpperCase()]
+  const day = monthMatch[2].padStart(2, '0')
+  let year = monthMatch[3]
+  if (year.length === 2) year = `20${year}`
+  const expiry = `${year}-${mon}-${day}`
+
+  const strikeMatch = upper.match(/\$(\d{1,6}(?:\.\d{1,2})?)/)
+  if (!strikeMatch) return null
+  const strike = parseFloat(strikeMatch[1])
+
+  const sharesMatch = upper.match(/\((\d+)\s*SHS\)/i)
+  const shares = sharesMatch ? parseInt(sharesMatch[1]) : 100
+
+  // Company name: text between ticker ) and the month abbreviation
+  const tickerEnd = tickerMatch.index! + tickerMatch[0].length
+  const monthStart = monthMatch.index!
+  const companyName = text.slice(tickerEnd, monthStart).replace(/[()]/g, '').trim()
+
+  return { optionType, ticker, companyName, expiry, strike, shares }
+}
+
 type PositionPnlData = {
   pnl: number
   pnl_pct: number
@@ -3532,6 +3579,43 @@ function AddPositionModal({
     })
   }
 
+  const [quickText, setQuickText] = useState('')
+  const [quickParsed, setQuickParsed] = useState<ReturnType<typeof parseQuickEntryText>>(null)
+  const [quickPrice, setQuickPrice] = useState('')
+  const [quickMargin, setQuickMargin] = useState('')
+
+  const handleParseQuick = () => {
+    const parsed = parseQuickEntryText(quickText)
+    setQuickParsed(parsed)
+    if (parsed) {
+      const optType = parsed.optionType
+      const strategy = optType === 'PUT' ? 'Long Put' : 'Long Call'
+      const dteVal = Math.ceil((new Date(parsed.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
+      const today = new Date().toISOString().slice(0, 10)
+      setForm(f => ({
+        ...f,
+        ticker: parsed.ticker,
+        strategy,
+        expiry: parsed.expiry >= today ? parsed.expiry : '',
+        contractCount: '1',
+        entryStockPrice: '',
+        legStrikes: [String(parsed.strike), '', '', ''],
+        legPremiums: ['', '', '', ''],
+      }))
+    }
+  }
+
+  const handleQuickApplyPrice = () => {
+    if (!quickParsed || !quickPrice) return
+    const premium = parseFloat(quickPrice)
+    if (!isFinite(premium)) return
+    setForm(f => ({
+      ...f,
+      legPremiums: [String(premium), '', '', ''],
+      entryStockPrice: String(quickParsed.strike),
+    }))
+  }
+
   const premiumWarning = suspiciousOptionPremiumMessage(form)
   const canSubmit = form.ticker.trim() && !premiumWarning && (form.strategy === 'Stock'
     ? form.entryStockPrice && (parseFloat(form.entryStockPrice) || 0) > 0 && (parseInt(form.contractCount) || 0) >= 1
@@ -3547,6 +3631,70 @@ function AddPositionModal({
       </div>
       <form onSubmit={handleSubmit}>
         <div className="px-6 py-5">
+          {/* Quick Entry */}
+          <section className="mb-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
+            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">Quick Entry</div>
+            <textarea
+              className="w-full min-h-[60px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-primary outline-none placeholder:text-tertiary focus:border-emerald-500 dark:border-white/[0.08] dark:bg-slate-800"
+              value={quickText}
+              onChange={e => { setQuickText(e.target.value); setQuickParsed(null) }}
+              placeholder={'CALL (NVDA) NVIDIA CORPORATION JUL 31 26 $205 (100 SHS)'}
+            />
+            <button type="button" onClick={handleParseQuick} disabled={!quickText.trim()}
+              className={`${getActionButtonClass('trade')} mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50`}>
+              Parse
+            </button>
+            {quickParsed && (
+              <div className="mt-2 space-y-2">
+                <div className="rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs font-mono space-y-1 dark:border-white/[0.05] dark:bg-slate-800">
+                  <div className="flex gap-3 flex-wrap">
+                    <span className="text-violet-600 dark:text-violet-300 font-bold">{quickParsed.optionType}</span>
+                    <span className="text-primary font-bold">{quickParsed.ticker}</span>
+                    <span className="text-tertiary">{quickParsed.companyName}</span>
+                    <span className="text-tertiary">{quickParsed.expiry}</span>
+                    <span className="text-amber-600 dark:text-amber-300">${quickParsed.strike.toFixed(0)}</span>
+                    <span className="text-tertiary">{quickParsed.shares} SHS</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-tertiary mb-0.5">Price ($)</label>
+                    <div className="flex gap-1">
+                      <input type="number" step="0.01" value={quickPrice}
+                        onChange={e => setQuickPrice(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs outline-none focus:border-emerald-500 dark:border-white/[0.08] dark:bg-slate-800 dark:text-primary" />
+                      <button type="button" onClick={handleQuickApplyPrice} disabled={!quickPrice}
+                        className={`${getActionButtonClass('trade')} rounded-lg px-2 py-1 text-xs font-semibold disabled:opacity-50`}>
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-tertiary mb-0.5">Contracts</label>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => setForm(f => ({ ...f, contractCount: String(Math.max(1, (parseInt(f.contractCount) || 1) - 1)) }))}
+                        className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-bold hover:bg-slate-100 dark:border-white/[0.08] dark:hover:bg-slate-700">
+                        –
+                      </button>
+                      <span className="w-8 text-center font-mono text-sm font-bold text-primary">{form.contractCount}</span>
+                      <button type="button" onClick={() => setForm(f => ({ ...f, contractCount: String(Math.min(999, (parseInt(f.contractCount) || 1) + 1)) }))}
+                        className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-bold hover:bg-slate-100 dark:border-white/[0.08] dark:hover:bg-slate-700">
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-tertiary mb-0.5">Margin ($)</label>
+                    <input type="text" value={quickMargin}
+                      onChange={e => setQuickMargin(e.target.value)}
+                      placeholder="e.g. 5000"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs outline-none focus:border-emerald-500 dark:border-white/[0.08] dark:bg-slate-800 dark:text-primary" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
           <section className="mb-4 rounded-xl border border-violet-500/25 bg-violet-500/10 p-3">
             <div className="mb-1 text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-200">Paste Broker Contract</div>
             <textarea

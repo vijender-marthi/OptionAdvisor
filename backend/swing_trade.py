@@ -2739,6 +2739,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     ma20 = float(ma20_series.iloc[-1])
     ma50 = float(ma50_series.iloc[-1])
     last = float(close.iloc[-1])
+    previous_close = float(close.iloc[-2]) if len(close) > 1 else None
 
     # ── Daily bar freshness check ─────────────────────────────────────
     # Yahoo's daily bar endpoint sometimes returns yesterday's close as the
@@ -2759,6 +2760,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
             _rmp = info.get("regularMarketPrice")
             if _rmp and float(_rmp) > 0:
                 _sw_price_stale = True
+                previous_close = last
                 last = float(_rmp)
                 _sw_price_warning = (
                     f"Daily bar data for {t} ends {_last_bar_date} (yesterday). "
@@ -2794,6 +2796,12 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         round((last / float(close.iloc[-MOMENTUM_DAYS]) - 1.0) * 100, 3)
         if len(close) > MOMENTUM_DAYS and float(close.iloc[-MOMENTUM_DAYS]) > 0
         else 0.0
+    )
+    daily_change = round(last - previous_close, 4) if previous_close is not None else None
+    daily_change_pct = (
+        round((daily_change / previous_close) * 100, 3)
+        if daily_change is not None and previous_close and previous_close > 0
+        else None
     )
 
     vol_label, vol_ratio = _volume_trend(close, vol)
@@ -3127,6 +3135,9 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "session_date":    session_date,
         "bars_used":       len(raw),
         "last_price":      round(last, 4),
+        "prev_close":      round(previous_close, 4) if previous_close is not None else None,
+        "daily_change":   daily_change,
+        "daily_change_pct": daily_change_pct,
         "price_stale":     _sw_price_stale,
         "price_warning":   _sw_price_warning,
         "ma20":            round(ma20, 4),

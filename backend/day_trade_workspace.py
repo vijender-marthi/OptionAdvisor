@@ -45,6 +45,15 @@ def _display_money(value: Any) -> dict[str, Any]:
     return {"raw": round(n, 4), "display": f"${n:,.2f}"}
 
 
+def _display_signed_money(value: Any) -> dict[str, Any]:
+    n = _num(value)
+    if n is None:
+        return {"raw": None, "display": "—", "tone": "neutral"}
+    tone = "positive" if n > 0 else "danger" if n < 0 else "neutral"
+    sign = "+" if n > 0 else ""
+    return {"raw": round(n, 4), "display": f"{sign}${n:,.2f}", "tone": tone}
+
+
 def _display_percent(value: Any) -> dict[str, Any]:
     n = _num(value)
     if n is None:
@@ -1538,6 +1547,9 @@ def build_day_trade_workspace_response(
         "positionSize": _display_text(option_risk.get("recommended_contracts") or "1 contract max"),
         "riskReward": _display_ratio(_num(decision_engine["rewardRisk"].get("ratio"))) if computed_rr != "—" else _display_text("—"),
     }
+    last_price = _num(metrics.get("last_price"))
+    previous_close = _num(metrics.get("prev_close"))
+    day_change_amount = last_price - previous_close if last_price is not None and previous_close is not None else None
 
     return {
         "schemaVersion": DAY_TRADE_WORKSPACE_SCHEMA_VERSION,
@@ -1546,7 +1558,8 @@ def build_day_trade_workspace_response(
             "ticker": symbol,
             "companyName": str(getattr(scan, "company_name", "") or symbol),
             "price": _display_money(metrics.get("last_price")),
-            "change": _display_percent(metrics.get("change_pct") or metrics.get("session_change_pct")),
+            "changeAmount": _display_signed_money(day_change_amount),
+            "change": _display_percent(_first_present(metrics.get("change_pct"), metrics.get("session_change_pct"))),
         },
         "session": {
             "mode": mode,
@@ -1659,6 +1672,7 @@ def build_position_session_chart_response(
             "ticker": symbol.upper(),
             "companyName": company_name or symbol.upper(),
             "price": _display_money(last_price),
+            "changeAmount": _display_signed_money(None),
             "change": _display_percent(None),
         },
         "session": {
@@ -1776,6 +1790,7 @@ def build_day_trade_workspace_unavailable_response(
             "ticker": ticker,
             "companyName": ticker,
             "price": _display_money(None),
+            "changeAmount": _display_signed_money(None),
             "change": _display_percent(None),
         },
         "session": {

@@ -550,7 +550,7 @@ export default function DayTradeWorkspaceChart({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
         aria-label="Backend provided Day Trade workspace chart"
-        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'min-h-0 flex-1'} w-full bg-transparent`}
+        className={`${fullscreen ? 'h-[calc(100vh-110px)]' : 'min-h-0 flex-1 w-full'} bg-transparent`}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

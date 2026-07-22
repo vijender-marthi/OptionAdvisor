@@ -448,6 +448,26 @@ export interface QuoteQualitySummary {
   banner_lines: string[]
 }
 
+export interface KeyLevel {
+  label: string
+  price: number
+  kind: 'current' | 'support' | 'resistance' | 'moving_average'
+  reason: string
+}
+
+export interface OptionsFlow {
+  callVolume: number
+  putVolume: number
+  callOpenInterest: number
+  putOpenInterest: number
+  volumePutCallRatio: number | null
+  openInterestPutCallRatio: number | null
+  ivRank: number
+  ivSkew: number
+  sentiment: string
+  summary: string
+}
+
 export interface AnalyzeResponse {
   ticker: string
   company_name: string
@@ -460,6 +480,8 @@ export interface AnalyzeResponse {
   price_history: PricePoint[]
   filters_applied: Record<string, unknown>
   quote_quality_summary?: QuoteQualitySummary
+  key_levels?: KeyLevel[]
+  options_flow?: OptionsFlow
   /** Unified verdict — the only verdict shown on cards. */
   verdict: UnifiedVerdict
   market_bias: string

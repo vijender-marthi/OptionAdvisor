@@ -1,10 +1,9 @@
-import InvestmentThesisPage from './InvestmentThesisPage'
+import TickerPage from './TickerPage'
 
 /**
- * Alternate Position Trading workspace. The established Position Trading page
- * remains available at /position-trading while this view uses the denser
- * thesis-style research and recommendation layout.
+ * Alternate Position Trading entry point. It deliberately keeps the established
+ * Position Trading data flow and actions while the V2 layout is built out.
  */
 export default function PositionTradingV2Page() {
-  return <InvestmentThesisPage />
+  return <TickerPage />
 }

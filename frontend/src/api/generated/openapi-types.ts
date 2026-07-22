@@ -10,11 +10,11 @@
 
 export type ApiHttpMethod = "delete" | "get" | "patch" | "post" | "put"
 
-export type ApiPath = "/" | "/api/admin/db-check" | "/api/admin/flush-cache" | "/api/admin/set-role" | "/api/alerts" | "/api/alerts/clear" | "/api/alerts/scan" | "/api/alerts/summary" | "/api/alerts/{alert_id}/acknowledge" | "/api/alerts/{alert_id}/note" | "/api/alerts/{alert_id}/resolve" | "/api/analyze" | "/api/auth/activate" | "/api/auth/forgot-password" | "/api/auth/google" | "/api/auth/login" | "/api/auth/register" | "/api/auth/reset-password" | "/api/backtest" | "/api/cache/clear" | "/api/carry-trade" | "/api/cycle-tracker" | "/api/dashboard-tickers" | "/api/day-trade" | "/api/day-trade-alerts/{email}" | "/api/day-trade/check" | "/api/day-trade/overnight-runner" | "/api/day-trade/workspace" | "/api/desk/alerts" | "/api/desk/alerts/count" | "/api/desk/alerts/history" | "/api/desk/alerts/{alert_id}" | "/api/desk/alerts/{alert_id}/fire" | "/api/desk/analysis/{ticker}" | "/api/desk/trades" | "/api/desk/trades/open" | "/api/desk/trades/stats" | "/api/desk/trades/{trade_id}" | "/api/desk/watchlist" | "/api/desk/watchlist/{ticker}" | "/api/early-entry-trigger" | "/api/email-status" | "/api/eod-journal/{email}/dates" | "/api/eod-journal/{email}/snapshot" | "/api/eod-journal/{email}/snapshot/{mode}/{date_key}/{ticker}" | "/api/exit-signals" | "/api/exit-signals/acknowledge" | "/api/health" | "/api/history-bars" | "/api/investment-thesis/starter/{ticker}" | "/api/journal/refresh/{email}" | "/api/journal/save" | "/api/journal/{email}" | "/api/journal/{email}/{entry_id}" | "/api/journal/{email}/{entry_id}/close" | "/api/journal/{email}/{entry_id}/notes" | "/api/journal/{email}/{entry_id}/update" | "/api/market-position" | "/api/my-tickers" | "/api/my-tickers/reorder" | "/api/my-tickers/{symbol}" | "/api/my-tickers/{symbol}/type/{trade_type}" | "/api/option-chain/{ticker}" | "/api/portfolio/add" | "/api/portfolio/close" | "/api/portfolio/remove" | "/api/portfolio/update" | "/api/portfolio/update-note" | "/api/positions-center" | "/api/premarket-bias" | "/api/search-tickers" | "/api/send-alert" | "/api/signal-feed" | "/api/signal-feed/alerts" | "/api/signal-feed/refresh" | "/api/stock-targets" | "/api/swing-trade" | "/api/test-email" | "/api/track-mode" | "/api/track-mode/add" | "/api/track-mode/remove" | "/api/trade-command-center" | "/api/trade-dashboard/story" | "/api/trade-ideas/{email}" | "/api/trade-ideas/{email}/{idea_id}" | "/api/trade-worksheet/evaluate" | "/api/trades/active" | "/api/trades/enter" | "/api/trades/{trade_id}/decision" | "/api/trades/{trade_id}/exit" | "/api/trading/cancel" | "/api/trading/close" | "/api/trading/execute" | "/api/trading/orders" | "/api/trading/positions" | "/api/trading/status" | "/api/user-data/{email}" | "/api/user/accent" | "/api/v1/calculation-run-types" | "/api/v1/calculation-runs" | "/api/v1/calculation-runs/{run_id}" | "/api/v1/calculation-snapshots/{snapshot_id}" | "/api/v1/calculation-snapshots/{snapshot_id}/audit-log" | "/api/v1/calculation-snapshots/{snapshot_id}/integrity" | "/api/v1/metric-definitions" | "/api/v2/analyze/{ticker}" | "/api/v2/analyze/{ticker}/public" | "/api/watchlist/add" | "/api/watchlist/remove" | "/backtest"
+export type ApiPath = "/" | "/api/admin/db-check" | "/api/admin/flush-cache" | "/api/admin/set-role" | "/api/alerts" | "/api/alerts/clear" | "/api/alerts/scan" | "/api/alerts/summary" | "/api/alerts/{alert_id}/acknowledge" | "/api/alerts/{alert_id}/note" | "/api/alerts/{alert_id}/resolve" | "/api/analyze" | "/api/auth/activate" | "/api/auth/forgot-password" | "/api/auth/google" | "/api/auth/login" | "/api/auth/register" | "/api/auth/reset-password" | "/api/backtest" | "/api/cache/clear" | "/api/carry-trade" | "/api/cycle-tracker" | "/api/dashboard-tickers" | "/api/day-trade" | "/api/day-trade-alerts/{email}" | "/api/day-trade/check" | "/api/day-trade/overnight-runner" | "/api/day-trade/workspace" | "/api/desk/alerts" | "/api/desk/alerts/count" | "/api/desk/alerts/history" | "/api/desk/alerts/{alert_id}" | "/api/desk/alerts/{alert_id}/fire" | "/api/desk/analysis/{ticker}" | "/api/desk/trades" | "/api/desk/trades/open" | "/api/desk/trades/stats" | "/api/desk/trades/{trade_id}" | "/api/desk/watchlist" | "/api/desk/watchlist/{ticker}" | "/api/early-entry-trigger" | "/api/email-status" | "/api/eod-journal/{email}/dates" | "/api/eod-journal/{email}/snapshot" | "/api/eod-journal/{email}/snapshot/{mode}/{date_key}/{ticker}" | "/api/exit-signals" | "/api/exit-signals/acknowledge" | "/api/health" | "/api/history-bars" | "/api/investment-thesis/starter/{ticker}" | "/api/journal/history-log" | "/api/journal/history-log/auto-generate" | "/api/journal/history-morning-check" | "/api/journal/refresh/{email}" | "/api/journal/save" | "/api/journal/{email}" | "/api/journal/{email}/{entry_id}" | "/api/journal/{email}/{entry_id}/close" | "/api/journal/{email}/{entry_id}/notes" | "/api/journal/{email}/{entry_id}/update" | "/api/market-position" | "/api/my-tickers" | "/api/my-tickers/reorder" | "/api/my-tickers/{symbol}" | "/api/my-tickers/{symbol}/type/{trade_type}" | "/api/option-chain/{ticker}" | "/api/portfolio/add" | "/api/portfolio/close" | "/api/portfolio/parse-contract" | "/api/portfolio/remove" | "/api/portfolio/update" | "/api/portfolio/update-note" | "/api/position-trade/session-chart" | "/api/positions-center" | "/api/premarket-bias" | "/api/search-tickers" | "/api/send-alert" | "/api/signal-feed" | "/api/signal-feed/alerts" | "/api/signal-feed/refresh" | "/api/stock-targets" | "/api/swing-trade" | "/api/test-email" | "/api/track-mode" | "/api/track-mode/add" | "/api/track-mode/remove" | "/api/trade-command-center" | "/api/trade-dashboard/story" | "/api/trade-ideas/{email}" | "/api/trade-ideas/{email}/{idea_id}" | "/api/trade-worksheet/evaluate" | "/api/trades/active" | "/api/trades/enter" | "/api/trades/{trade_id}/decision" | "/api/trades/{trade_id}/exit" | "/api/trading/cancel" | "/api/trading/close" | "/api/trading/execute" | "/api/trading/orders" | "/api/trading/positions" | "/api/trading/status" | "/api/user-data/{email}" | "/api/user/accent" | "/api/v1/calculation-run-types" | "/api/v1/calculation-runs" | "/api/v1/calculation-runs/{run_id}" | "/api/v1/calculation-snapshots/{snapshot_id}" | "/api/v1/calculation-snapshots/{snapshot_id}/audit-log" | "/api/v1/calculation-snapshots/{snapshot_id}/integrity" | "/api/v1/metric-definitions" | "/api/v2/analyze/{ticker}" | "/api/v2/analyze/{ticker}/public" | "/api/watchlist/add" | "/api/watchlist/remove" | "/backtest"
 
-export type ApiOperationId = "acknowledge_exit_signal_api_exit_signals_acknowledge_post" | "active_trade_decision_one_api_trades__trade_id__decision_get" | "active_trade_enter_api_trades_enter_post" | "active_trade_exit_api_api_trades__trade_id__exit_post" | "active_trades_list_api_trades_active_get" | "add_to_watchlist_api_desk_watchlist_post" | "admin_db_check_api_admin_db_check_get" | "admin_flush_cache_api_admin_flush_cache_post" | "admin_set_role_api_admin_set_role_post" | "alert_count_api_desk_alerts_count_get" | "alert_history_api_desk_alerts_history_get" | "analyze_api_analyze_post" | "api_get_dashboard_tickers_api_dashboard_tickers_get" | "api_save_dashboard_tickers_api_dashboard_tickers_post" | "auth_activate_api_auth_activate_get" | "auth_forgot_password_api_auth_forgot_password_post" | "auth_google_api_auth_google_post" | "auth_login_api_auth_login_post" | "auth_register_api_auth_register_post" | "auth_reset_password_api_auth_reset_password_post" | "backtest_strategy_api_backtest_post" | "backtest_strategy_proxy_alias_backtest_post" | "calculation_run_api_v1_calculation_runs__run_id__get" | "calculation_run_types_api_v1_calculation_run_types_get" | "calculation_runs_api_v1_calculation_runs_get" | "calculation_snapshot_api_v1_calculation_snapshots__snapshot_id__get" | "calculation_snapshot_audit_log_api_v1_calculation_snapshots__snapshot_id__audit_log_get" | "calculation_snapshot_integrity_api_v1_calculation_snapshots__snapshot_id__integrity_get" | "carry_trade_scan_api_carry_trade_post" | "clear_all_caches_api_cache_clear_post" | "create_alert_api_desk_alerts_post" | "create_calculation_run_v1_api_v1_calculation_runs_post" | "create_signal_feed_alert_api_signal_feed_alerts_post" | "create_trade_api_desk_trades_post" | "create_trade_idea_api_trade_ideas__email__post" | "day_trade_check_api_day_trade_check_post" | "day_trade_scan_api_day_trade_post" | "day_trade_workspace_api_day_trade_workspace_get" | "delete_alert_api_desk_alerts__alert_id__delete" | "delete_my_ticker_api_my_tickers__symbol__delete" | "delete_my_ticker_type_api_my_tickers__symbol__type__trade_type__delete" | "delete_trade_api_desk_trades__trade_id__delete" | "delete_trade_idea_endpoint_api_trade_ideas__email___idea_id__delete" | "email_status_api_email_status_get" | "eod_journal_dates_api_eod_journal__email__dates_get" | "eod_journal_get_snapshot_api_eod_journal__email__snapshot__mode___date_key___ticker__get" | "eod_journal_save_snapshot_api_eod_journal__email__snapshot_post" | "exit_signals_api_exit_signals_get" | "fire_alert_api_desk_alerts__alert_id__fire_patch" | "get_analysis_api_desk_analysis__ticker__get" | "get_cycle_tracker_api_cycle_tracker_get" | "get_early_entry_trigger_api_early_entry_trigger_get" | "get_history_bars_api_history_bars_get" | "get_market_position_api_market_position_get" | "get_my_tickers_api_my_tickers_get" | "get_positions_center_api_positions_center_get" | "get_premarket_bias_api_premarket_bias_get" | "get_signal_feed_api_signal_feed_get" | "get_stock_targets_api_stock_targets_get" | "get_track_mode_api_track_mode_get" | "get_trade_command_center_api_trade_command_center_get" | "get_trade_stats_api_desk_trades_stats_get" | "get_user_accent_api_user_accent_get" | "get_user_data_api_user_data__email__get" | "get_watchlist_api_desk_watchlist_get" | "health_check_api_health_get" | "investment_thesis_starter_api_investment_thesis_starter__ticker__get" | "journal_close_api_journal__email___entry_id__close_patch" | "journal_delete_api_journal__email___entry_id__delete" | "journal_list_api_journal__email__get" | "journal_notes_api_journal__email___entry_id__notes_patch" | "journal_refresh_api_journal_refresh__email__post" | "journal_save_api_journal_save_post" | "journal_update_api_journal__email___entry_id__update_patch" | "list_alerts_api_desk_alerts_get" | "list_alerts_center_api_alerts_get" | "list_alerts_summary_api_alerts_summary_get" | "list_day_trade_alerts_api_api_day_trade_alerts__email__get" | "list_open_trades_api_desk_trades_open_get" | "list_trade_ideas_api_trade_ideas__email__get" | "list_trades_api_desk_trades_get" | "metric_definitions_api_v1_metric_definitions_get" | "option_chain_liquidity_api_option_chain__ticker__get" | "patch_my_ticker_api_my_tickers__symbol__patch" | "patch_trade_idea_api_trade_ideas__email___idea_id__patch" | "post_alert_acknowledge_api_alerts__alert_id__acknowledge_post" | "post_alert_note_api_alerts__alert_id__note_post" | "post_alert_resolve_api_alerts__alert_id__resolve_post" | "post_alerts_clear_api_alerts_clear_post" | "post_my_ticker_api_my_tickers_post" | "post_overnight_runner_api_day_trade_overnight_runner_post" | "post_portfolio_add_api_portfolio_add_post" | "post_portfolio_close_api_portfolio_close_post" | "post_portfolio_remove_api_portfolio_remove_post" | "post_portfolio_update_api_portfolio_update_post" | "post_portfolio_update_note_api_portfolio_update_note_post" | "post_track_mode_add_api_track_mode_add_post" | "post_track_mode_remove_api_track_mode_remove_post" | "post_watchlist_add_api_watchlist_add_post" | "post_watchlist_remove_api_watchlist_remove_post" | "put_my_tickers_reorder_api_my_tickers_reorder_put" | "refresh_signal_feed_api_signal_feed_refresh_post" | "remove_from_watchlist_api_desk_watchlist__ticker__delete" | "root__get" | "save_user_data_api_user_data__email__put" | "scan_alerts_center_api_alerts_scan_post" | "search_tickers_api_search_tickers_get" | "send_alert_api_send_alert_post" | "send_test_email_api_test_email_post" | "set_user_accent_api_user_accent_put" | "swing_trade_scan_api_swing_trade_post" | "trade_dashboard_story_api_trade_dashboard_story_post" | "trade_worksheet_evaluate_api_trade_worksheet_evaluate_post" | "trading_cancel_api_trading_cancel_post" | "trading_close_position_api_trading_close_post" | "trading_execute_api_trading_execute_post" | "trading_orders_api_trading_orders_get" | "trading_positions_api_trading_positions_get" | "trading_status_api_trading_status_get" | "unified_analyze_api_v2_analyze__ticker__get" | "unified_analyze_public_api_v2_analyze__ticker__public_get" | "update_alert_api_desk_alerts__alert_id__patch" | "update_trade_api_desk_trades__trade_id__patch"
+export type ApiOperationId = "acknowledge_exit_signal_api_exit_signals_acknowledge_post" | "active_trade_decision_one_api_trades__trade_id__decision_get" | "active_trade_enter_api_trades_enter_post" | "active_trade_exit_api_api_trades__trade_id__exit_post" | "active_trades_list_api_trades_active_get" | "add_to_watchlist_api_desk_watchlist_post" | "admin_db_check_api_admin_db_check_get" | "admin_flush_cache_api_admin_flush_cache_post" | "admin_set_role_api_admin_set_role_post" | "alert_count_api_desk_alerts_count_get" | "alert_history_api_desk_alerts_history_get" | "analyze_api_analyze_post" | "api_get_dashboard_tickers_api_dashboard_tickers_get" | "api_save_dashboard_tickers_api_dashboard_tickers_post" | "auth_activate_api_auth_activate_get" | "auth_forgot_password_api_auth_forgot_password_post" | "auth_google_api_auth_google_post" | "auth_login_api_auth_login_post" | "auth_register_api_auth_register_post" | "auth_reset_password_api_auth_reset_password_post" | "backtest_strategy_api_backtest_post" | "backtest_strategy_proxy_alias_backtest_post" | "calculation_run_api_v1_calculation_runs__run_id__get" | "calculation_run_types_api_v1_calculation_run_types_get" | "calculation_runs_api_v1_calculation_runs_get" | "calculation_snapshot_api_v1_calculation_snapshots__snapshot_id__get" | "calculation_snapshot_audit_log_api_v1_calculation_snapshots__snapshot_id__audit_log_get" | "calculation_snapshot_integrity_api_v1_calculation_snapshots__snapshot_id__integrity_get" | "carry_trade_scan_api_carry_trade_post" | "clear_all_caches_api_cache_clear_post" | "create_alert_api_desk_alerts_post" | "create_calculation_run_v1_api_v1_calculation_runs_post" | "create_signal_feed_alert_api_signal_feed_alerts_post" | "create_trade_api_desk_trades_post" | "create_trade_idea_api_trade_ideas__email__post" | "day_trade_check_api_day_trade_check_post" | "day_trade_scan_api_day_trade_post" | "day_trade_workspace_api_day_trade_workspace_get" | "delete_alert_api_desk_alerts__alert_id__delete" | "delete_my_ticker_api_my_tickers__symbol__delete" | "delete_my_ticker_type_api_my_tickers__symbol__type__trade_type__delete" | "delete_trade_api_desk_trades__trade_id__delete" | "delete_trade_idea_endpoint_api_trade_ideas__email___idea_id__delete" | "email_status_api_email_status_get" | "eod_journal_dates_api_eod_journal__email__dates_get" | "eod_journal_get_snapshot_api_eod_journal__email__snapshot__mode___date_key___ticker__get" | "eod_journal_save_snapshot_api_eod_journal__email__snapshot_post" | "exit_signals_api_exit_signals_get" | "fire_alert_api_desk_alerts__alert_id__fire_patch" | "get_analysis_api_desk_analysis__ticker__get" | "get_cycle_tracker_api_cycle_tracker_get" | "get_early_entry_trigger_api_early_entry_trigger_get" | "get_history_bars_api_history_bars_get" | "get_market_position_api_market_position_get" | "get_my_tickers_api_my_tickers_get" | "get_positions_center_api_positions_center_get" | "get_premarket_bias_api_premarket_bias_get" | "get_signal_feed_api_signal_feed_get" | "get_stock_targets_api_stock_targets_get" | "get_track_mode_api_track_mode_get" | "get_trade_command_center_api_trade_command_center_get" | "get_trade_stats_api_desk_trades_stats_get" | "get_user_accent_api_user_accent_get" | "get_user_data_api_user_data__email__get" | "get_watchlist_api_desk_watchlist_get" | "health_check_api_health_get" | "investment_thesis_starter_api_investment_thesis_starter__ticker__get" | "journal_close_api_journal__email___entry_id__close_patch" | "journal_delete_api_journal__email___entry_id__delete" | "journal_history_log_api_journal_history_log_get" | "journal_history_log_auto_generate_api_journal_history_log_auto_generate_post" | "journal_history_morning_check_api_journal_history_morning_check_post" | "journal_list_api_journal__email__get" | "journal_notes_api_journal__email___entry_id__notes_patch" | "journal_refresh_api_journal_refresh__email__post" | "journal_save_api_journal_save_post" | "journal_update_api_journal__email___entry_id__update_patch" | "list_alerts_api_desk_alerts_get" | "list_alerts_center_api_alerts_get" | "list_alerts_summary_api_alerts_summary_get" | "list_day_trade_alerts_api_api_day_trade_alerts__email__get" | "list_open_trades_api_desk_trades_open_get" | "list_trade_ideas_api_trade_ideas__email__get" | "list_trades_api_desk_trades_get" | "metric_definitions_api_v1_metric_definitions_get" | "option_chain_liquidity_api_option_chain__ticker__get" | "patch_my_ticker_api_my_tickers__symbol__patch" | "patch_trade_idea_api_trade_ideas__email___idea_id__patch" | "position_trade_session_chart_api_position_trade_session_chart_get" | "post_alert_acknowledge_api_alerts__alert_id__acknowledge_post" | "post_alert_note_api_alerts__alert_id__note_post" | "post_alert_resolve_api_alerts__alert_id__resolve_post" | "post_alerts_clear_api_alerts_clear_post" | "post_my_ticker_api_my_tickers_post" | "post_overnight_runner_api_day_trade_overnight_runner_post" | "post_portfolio_add_api_portfolio_add_post" | "post_portfolio_close_api_portfolio_close_post" | "post_portfolio_parse_contract_api_portfolio_parse_contract_post" | "post_portfolio_remove_api_portfolio_remove_post" | "post_portfolio_update_api_portfolio_update_post" | "post_portfolio_update_note_api_portfolio_update_note_post" | "post_track_mode_add_api_track_mode_add_post" | "post_track_mode_remove_api_track_mode_remove_post" | "post_watchlist_add_api_watchlist_add_post" | "post_watchlist_remove_api_watchlist_remove_post" | "put_my_tickers_reorder_api_my_tickers_reorder_put" | "refresh_signal_feed_api_signal_feed_refresh_post" | "remove_from_watchlist_api_desk_watchlist__ticker__delete" | "root__get" | "save_user_data_api_user_data__email__put" | "scan_alerts_center_api_alerts_scan_post" | "search_tickers_api_search_tickers_get" | "send_alert_api_send_alert_post" | "send_test_email_api_test_email_post" | "set_user_accent_api_user_accent_put" | "swing_trade_scan_api_swing_trade_post" | "trade_dashboard_story_api_trade_dashboard_story_post" | "trade_worksheet_evaluate_api_trade_worksheet_evaluate_post" | "trading_cancel_api_trading_cancel_post" | "trading_close_position_api_trading_close_post" | "trading_execute_api_trading_execute_post" | "trading_orders_api_trading_orders_get" | "trading_positions_api_trading_positions_get" | "trading_status_api_trading_status_get" | "unified_analyze_api_v2_analyze__ticker__get" | "unified_analyze_public_api_v2_analyze__ticker__public_get" | "update_alert_api_desk_alerts__alert_id__patch" | "update_trade_api_desk_trades__trade_id__patch"
 
-export type ApiSchemaName = "ActiveTradeEnterRequest" | "ActiveTradeEnterResponse" | "ActiveTradeListResponse" | "ActiveTradeOut" | "AlertCreate" | "AlertEmailRequest" | "AlertItem" | "AlertNoteBody" | "AnalyzeRequest" | "AnalyzeResponse" | "AuthActivateResponse" | "AuthForgotPasswordResponse" | "AuthRegisterResponse" | "AuthResetPasswordResponse" | "AuthSessionResponse" | "BacktestRequest" | "CalculationRunCreateRequest" | "CalculationRunCreateResponse" | "CalculationRunResponse" | "CalculationRunTypeResponse" | "CalculationRunTypesResponse" | "CalculationRunsListResponse" | "CalculationSnapshotAuditEventResponse" | "CalculationSnapshotAuditLogResponse" | "CalculationSnapshotIntegrityResponse" | "CalculationSnapshotResponse" | "CarryTradeRequest" | "CarryTradeResponse" | "DayTradeChartCandleView" | "DayTradeChartDefaultsView" | "DayTradeChartEventView" | "DayTradeChartLevelView" | "DayTradeChartTradeFocusView" | "DayTradeChartView" | "DayTradeDecisionView" | "DayTradeDisplayStatus" | "DayTradeDisplayValue" | "DayTradeEvidenceItemView" | "DayTradeMarketStructureView" | "DayTradeRequest" | "DayTradeResponse" | "DayTradeRiskPlanView" | "DayTradeSelectedContractView" | "DayTradeSessionView" | "DayTradeStructurePivotView" | "DayTradeSymbolView" | "DayTradeTriggerRequirementView" | "DayTradeTriggerView" | "DayTradeVwapOverlayView" | "DayTradeVwapPointView" | "DayTradeWorkspaceAction" | "DayTradeWorkspaceResponse" | "EodJournalSnapshotRequest" | "ExitSignalAckBody" | "ForgotPasswordRequest" | "GoogleAuthRequest" | "HTTPValidationError" | "JournalCloseRequest" | "JournalNotesRequest" | "JournalSaveRequest" | "JournalUpdateRequest" | "LoginRequest" | "MetricDefinitionOut" | "MetricDefinitionsResponse" | "MyTickerBody" | "MyTickerUpdateBody" | "MyTickersReorderBody" | "OptionChainLiquidityResponse" | "OptionChainLiquidityRow" | "OptionLegOut" | "OptionRowOut" | "OvernightRunnerRequest" | "OvernightRunnerResponse" | "PortfolioAddBody" | "PortfolioCloseBody" | "PortfolioNoteBody" | "PortfolioRemoveBody" | "PortfolioUpdateBody" | "PricePoint" | "QuoteQualitySummary" | "RecommendationOut" | "RegisterRequest" | "ResetPasswordRequest" | "ScoreBreakdown" | "SignalFeedAlertCreateBody" | "SignalsOut" | "SwingTradeRequest" | "SwingTradeResponse" | "TestEmailRequest" | "TrackModeAddBody" | "TrackModeRemoveBody" | "TradeCheckRequest" | "TradeDashboardStoryRequest" | "TradeIdeaCreateRequest" | "TradeIdeaUpdateRequest" | "TradeLogCreate" | "TradeLogUpdate" | "TradeWorksheetEvaluateRequest" | "TradeWorksheetSelectedRow" | "TradingCancelRequest" | "TradingCloseRequest" | "TradingExecuteRequest" | "UserDataRequest" | "UserDataResponse" | "ValidationError" | "WatchlistAddRequest" | "WatchlistTickerBody"
+export type ApiSchemaName = "ActiveTradeEnterRequest" | "ActiveTradeEnterResponse" | "ActiveTradeListResponse" | "ActiveTradeOut" | "AlertCreate" | "AlertEmailRequest" | "AlertItem" | "AlertNoteBody" | "AnalyzeRequest" | "AnalyzeResponse" | "AuthActivateResponse" | "AuthForgotPasswordResponse" | "AuthRegisterResponse" | "AuthResetPasswordResponse" | "AuthSessionResponse" | "BacktestRequest" | "BrokerContractParseBody" | "CalculationRunCreateRequest" | "CalculationRunCreateResponse" | "CalculationRunResponse" | "CalculationRunTypeResponse" | "CalculationRunTypesResponse" | "CalculationRunsListResponse" | "CalculationSnapshotAuditEventResponse" | "CalculationSnapshotAuditLogResponse" | "CalculationSnapshotIntegrityResponse" | "CalculationSnapshotResponse" | "CarryTradeRequest" | "CarryTradeResponse" | "DayTradeAiCoachView" | "DayTradeChartCandleView" | "DayTradeChartDefaultsView" | "DayTradeChartEventView" | "DayTradeChartLevelView" | "DayTradeChartTradeFocusView" | "DayTradeChartView" | "DayTradeConfidenceView" | "DayTradeCurrentActionView" | "DayTradeCurrentStateView" | "DayTradeDecisionChangeView" | "DayTradeDecisionEngineView" | "DayTradeDecisionHierarchyView" | "DayTradeDecisionView" | "DayTradeDisplayStatus" | "DayTradeDisplayValue" | "DayTradeEngineScoresView" | "DayTradeEvidenceItemView" | "DayTradeExpectedStructureOptionView" | "DayTradeExpectedStructureView" | "DayTradeMarketContextView" | "DayTradeMarketStructureView" | "DayTradeMetricView" | "DayTradeNextOpportunityView" | "DayTradeProfessionalDecisionView" | "DayTradeReasoningEngineView" | "DayTradeRequest" | "DayTradeResponse" | "DayTradeRewardRiskView" | "DayTradeRiskDecisionView" | "DayTradeRiskPlanView" | "DayTradeSelectedContractView" | "DayTradeSessionView" | "DayTradeSetupLifecycleView" | "DayTradeStructurePivotView" | "DayTradeSymbolView" | "DayTradeTimelineEventView" | "DayTradeTrendHealthView" | "DayTradeTriggerRequirementView" | "DayTradeTriggerView" | "DayTradeVwapOverlayView" | "DayTradeVwapPointView" | "DayTradeWorkspaceAction" | "DayTradeWorkspaceResponse" | "EodJournalSnapshotRequest" | "ExitSignalAckBody" | "ForgotPasswordRequest" | "GoogleAuthRequest" | "HTTPValidationError" | "JournalCloseRequest" | "JournalHistoryMorningRequest" | "JournalHistoryMorningRow" | "JournalHistoryScenarioCheck" | "JournalNotesRequest" | "JournalSaveRequest" | "JournalUpdateRequest" | "KeyLevelOut" | "LoginRequest" | "MetricDefinitionOut" | "MetricDefinitionsResponse" | "MyTickerBody" | "MyTickerUpdateBody" | "MyTickersReorderBody" | "OptionChainLiquidityResponse" | "OptionChainLiquidityRow" | "OptionLegOut" | "OptionRowOut" | "OptionsFlowOut" | "OvernightRunnerRequest" | "OvernightRunnerResponse" | "PortfolioAddBody" | "PortfolioCloseBody" | "PortfolioNoteBody" | "PortfolioRemoveBody" | "PortfolioUpdateBody" | "PricePoint" | "QuoteQualitySummary" | "RecommendationOut" | "RegisterRequest" | "ResetPasswordRequest" | "ScoreBreakdown" | "SignalFeedAlertCreateBody" | "SignalsOut" | "SwingTradeRequest" | "SwingTradeResponse" | "TestEmailRequest" | "TrackModeAddBody" | "TrackModeRemoveBody" | "TradeCheckRequest" | "TradeDashboardStoryRequest" | "TradeIdeaCreateRequest" | "TradeIdeaUpdateRequest" | "TradeLogCreate" | "TradeLogUpdate" | "TradeWorksheetEvaluateRequest" | "TradeWorksheetSelectedRow" | "TradingCancelRequest" | "TradingCloseRequest" | "TradingExecuteRequest" | "UserDataRequest" | "UserDataResponse" | "ValidationError" | "WatchlistAddRequest" | "WatchlistTickerBody"
 
 export type ApiSchemas = {
   readonly "ActiveTradeEnterRequest": {
@@ -109,9 +109,11 @@ export type ApiSchemas = {
     readonly "execution_fields"?: Array<Record<string, unknown>>
     readonly "explanation"?: Record<string, unknown>
     readonly "filters_applied": Record<string, unknown>
+    readonly "key_levels"?: Array<ApiSchemas["KeyLevelOut"]>
     readonly "market_bias"?: string
     readonly "market_cap": string
     readonly "missing_confirmations"?: Array<string>
+    readonly "options_flow"?: ApiSchemas["OptionsFlowOut"]
     readonly "price_history": Array<ApiSchemas["PricePoint"]>
     readonly "puts_chain": Array<ApiSchemas["OptionRowOut"]>
     readonly "quote_quality_summary"?: ApiSchemas["QuoteQualitySummary"]
@@ -159,6 +161,10 @@ export type ApiSchemas = {
     readonly "strategy_mode"?: string
     readonly "ticker": string
     readonly "weeks_out"?: number
+  }
+  readonly "BrokerContractParseBody": {
+    readonly "text": string
+    readonly "trade_source"?: string
   }
   readonly "CalculationRunCreateRequest": {
     readonly "input"?: Record<string, unknown>
@@ -269,6 +275,9 @@ export type ApiSchemas = {
     readonly "ticker": string
     readonly "verdict"?: string
   }
+  readonly "DayTradeAiCoachView": {
+    readonly "lines"?: Array<string>
+  }
   readonly "DayTradeChartCandleView": {
     readonly "close": number
     readonly "high": number
@@ -326,6 +335,49 @@ export type ApiSchemas = {
     readonly "tradeFocus"?: ApiSchemas["DayTradeChartTradeFocusView"] | null
     readonly "vwapOverlay"?: ApiSchemas["DayTradeVwapOverlayView"] | null
   }
+  readonly "DayTradeConfidenceView": {
+    readonly "biasConfidence": ApiSchemas["DayTradeMetricView"]
+    readonly "entryQuality": ApiSchemas["DayTradeMetricView"]
+    readonly "entryTiming": ApiSchemas["DayTradeMetricView"]
+    readonly "tradeConfidence": ApiSchemas["DayTradeMetricView"]
+  }
+  readonly "DayTradeCurrentActionView": {
+    readonly "action": string
+    readonly "confidence": number
+    readonly "reason": string
+    readonly "recommendation": string
+  }
+  readonly "DayTradeCurrentStateView": {
+    readonly "explanation": string
+    readonly "score": number
+    readonly "state": string
+  }
+  readonly "DayTradeDecisionChangeView": {
+    readonly "bearish"?: Array<ApiSchemas["DayTradeMetricView"]>
+    readonly "bullish"?: Array<ApiSchemas["DayTradeMetricView"]>
+    readonly "invalidation"?: Array<ApiSchemas["DayTradeMetricView"]>
+  }
+  readonly "DayTradeDecisionEngineView": {
+    readonly "confidence": number
+    readonly "currentAction": ApiSchemas["DayTradeCurrentActionView"]
+    readonly "currentState": ApiSchemas["DayTradeCurrentStateView"]
+    readonly "expectedStructure": ApiSchemas["DayTradeExpectedStructureView"]
+    readonly "explanation": string
+    readonly "nextOpportunity": ApiSchemas["DayTradeNextOpportunityView"]
+    readonly "reasoning"?: Array<string>
+    readonly "rewardRisk": ApiSchemas["DayTradeRewardRiskView"]
+    readonly "setup": ApiSchemas["DayTradeSetupLifecycleView"]
+    readonly "trendHealth": ApiSchemas["DayTradeTrendHealthView"]
+  }
+  readonly "DayTradeDecisionHierarchyView": {
+    readonly "currentAction": ApiSchemas["DayTradeMetricView"]
+    readonly "currentPhase": ApiSchemas["DayTradeMetricView"]
+    readonly "marketContext": ApiSchemas["DayTradeMetricView"]
+    readonly "nextOpportunity": ApiSchemas["DayTradeMetricView"]
+    readonly "originalEntry"?: ApiSchemas["DayTradeMetricView"] | null
+    readonly "setup": ApiSchemas["DayTradeMetricView"]
+    readonly "stockBias": ApiSchemas["DayTradeMetricView"]
+  }
   readonly "DayTradeDecisionView": {
     readonly "context": ApiSchemas["DayTradeDisplayStatus"]
     readonly "headline": string
@@ -349,6 +401,15 @@ export type ApiSchemas = {
     readonly "raw"?: number | string | null
     readonly "tone"?: string | null
   }
+  readonly "DayTradeEngineScoresView": {
+    readonly "entryScore": ApiSchemas["DayTradeMetricView"]
+    readonly "marketScore": ApiSchemas["DayTradeMetricView"]
+    readonly "momentumScore": ApiSchemas["DayTradeMetricView"]
+    readonly "overallTradeScore": ApiSchemas["DayTradeMetricView"]
+    readonly "structureScore": ApiSchemas["DayTradeMetricView"]
+    readonly "trendScore": ApiSchemas["DayTradeMetricView"]
+    readonly "volumeScore": ApiSchemas["DayTradeMetricView"]
+  }
   readonly "DayTradeEvidenceItemView": {
     readonly "detail"?: string | null
     readonly "id": string
@@ -358,6 +419,23 @@ export type ApiSchemas = {
     readonly "result": string
     readonly "ruleId"?: string | null
     readonly "tone": string
+  }
+  readonly "DayTradeExpectedStructureOptionView": {
+    readonly "label": string
+    readonly "probability": number
+  }
+  readonly "DayTradeExpectedStructureView": {
+    readonly "current"?: Array<string>
+    readonly "expected"?: Array<ApiSchemas["DayTradeExpectedStructureOptionView"]>
+    readonly "explanation": string
+  }
+  readonly "DayTradeMarketContextView": {
+    readonly "breadth": ApiSchemas["DayTradeMetricView"]
+    readonly "qqq": ApiSchemas["DayTradeMetricView"]
+    readonly "relativeStrength": ApiSchemas["DayTradeMetricView"]
+    readonly "sector": ApiSchemas["DayTradeMetricView"]
+    readonly "spy": ApiSchemas["DayTradeMetricView"]
+    readonly "vix": ApiSchemas["DayTradeMetricView"]
   }
   readonly "DayTradeMarketStructureView": {
     readonly "confidence"?: number | null
@@ -380,6 +458,38 @@ export type ApiSchemas = {
     readonly "timeframe"?: string | null
     readonly "trend": string
     readonly "visibleByDefault"?: boolean
+  }
+  readonly "DayTradeMetricView": {
+    readonly "confidence"?: number | null
+    readonly "display": string
+    readonly "formula"?: string | null
+    readonly "inputs"?: Array<string>
+    readonly "reason"?: string | null
+    readonly "source"?: string | null
+    readonly "timestamp"?: string | null
+    readonly "value"?: unknown
+  }
+  readonly "DayTradeNextOpportunityView": {
+    readonly "explanation": string
+    readonly "nextOpportunity": string
+    readonly "probability": number
+    readonly "trigger": string
+  }
+  readonly "DayTradeProfessionalDecisionView": {
+    readonly "aiCoach": ApiSchemas["DayTradeAiCoachView"]
+    readonly "changesDecision": ApiSchemas["DayTradeDecisionChangeView"]
+    readonly "confidence": ApiSchemas["DayTradeConfidenceView"]
+    readonly "hierarchy": ApiSchemas["DayTradeDecisionHierarchyView"]
+    readonly "marketContext": ApiSchemas["DayTradeMarketContextView"]
+    readonly "risk": ApiSchemas["DayTradeRiskDecisionView"]
+    readonly "scores": ApiSchemas["DayTradeEngineScoresView"]
+    readonly "timeline"?: Array<ApiSchemas["DayTradeTimelineEventView"]>
+    readonly "why": ApiSchemas["DayTradeReasoningEngineView"]
+  }
+  readonly "DayTradeReasoningEngineView": {
+    readonly "negativeFactors"?: Array<ApiSchemas["DayTradeMetricView"]>
+    readonly "neutralFactors"?: Array<ApiSchemas["DayTradeMetricView"]>
+    readonly "positiveFactors"?: Array<ApiSchemas["DayTradeMetricView"]>
   }
   readonly "DayTradeRequest": {
     readonly "force_refresh"?: boolean
@@ -413,6 +523,23 @@ export type ApiSchemas = {
     readonly "trader_decision"?: Record<string, unknown>
     readonly "verdict": string
   }
+  readonly "DayTradeRewardRiskView": {
+    readonly "display": string
+    readonly "ratio"?: number | null
+    readonly "reward": ApiSchemas["DayTradeDisplayValue"]
+    readonly "risk": ApiSchemas["DayTradeDisplayValue"]
+    readonly "targetUsed"?: string | null
+  }
+  readonly "DayTradeRiskDecisionView": {
+    readonly "entry": ApiSchemas["DayTradeMetricView"]
+    readonly "rewardRemaining": ApiSchemas["DayTradeMetricView"]
+    readonly "risk": ApiSchemas["DayTradeMetricView"]
+    readonly "riskRemaining": ApiSchemas["DayTradeMetricView"]
+    readonly "riskReward": ApiSchemas["DayTradeMetricView"]
+    readonly "stop": ApiSchemas["DayTradeMetricView"]
+    readonly "target": ApiSchemas["DayTradeMetricView"]
+    readonly "tradeQuality": ApiSchemas["DayTradeMetricView"]
+  }
   readonly "DayTradeRiskPlanView": {
     readonly "entry": ApiSchemas["DayTradeDisplayValue"]
     readonly "positionSize": ApiSchemas["DayTradeDisplayValue"]
@@ -443,6 +570,16 @@ export type ApiSchemas = {
     readonly "sessionDate": string
     readonly "status": ApiSchemas["DayTradeDisplayStatus"]
   }
+  readonly "DayTradeSetupLifecycleView": {
+    readonly "currentGainPct"?: number | null
+    readonly "result"?: string | null
+    readonly "setupType": string
+    readonly "status": string
+    readonly "triggerPrice"?: number | null
+    readonly "triggerTime"?: string | null
+    readonly "validFrom"?: string | null
+    readonly "validUntil"?: string | null
+  }
   readonly "DayTradeStructurePivotView": {
     readonly "classification"?: string | null
     readonly "confirmed": boolean
@@ -460,9 +597,25 @@ export type ApiSchemas = {
   }
   readonly "DayTradeSymbolView": {
     readonly "change": ApiSchemas["DayTradeDisplayValue"]
+    readonly "changeAmount": ApiSchemas["DayTradeDisplayValue"]
     readonly "companyName"?: string | null
     readonly "price": ApiSchemas["DayTradeDisplayValue"]
     readonly "ticker": string
+  }
+  readonly "DayTradeTimelineEventView": {
+    readonly "id": string
+    readonly "label": string
+    readonly "phase": string
+    readonly "price"?: number | null
+    readonly "reason"?: string | null
+    readonly "status": string
+    readonly "timestamp"?: string | null
+  }
+  readonly "DayTradeTrendHealthView": {
+    readonly "explanation": string
+    readonly "inputs"?: Record<string, number>
+    readonly "label": string
+    readonly "score": number
   }
   readonly "DayTradeTriggerRequirementView": {
     readonly "displayValue"?: string | null
@@ -507,8 +660,10 @@ export type ApiSchemas = {
   readonly "DayTradeWorkspaceResponse": {
     readonly "chart": ApiSchemas["DayTradeChartView"]
     readonly "decision": ApiSchemas["DayTradeDecisionView"]
+    readonly "decisionEngine"?: ApiSchemas["DayTradeDecisionEngineView"] | null
     readonly "evidence"?: Array<ApiSchemas["DayTradeEvidenceItemView"]>
     readonly "generatedAt": string
+    readonly "professionalDecision"?: ApiSchemas["DayTradeProfessionalDecisionView"] | null
     readonly "provenance"?: Record<string, unknown> | null
     readonly "riskPlan": ApiSchemas["DayTradeRiskPlanView"]
     readonly "schemaVersion": string
@@ -516,6 +671,7 @@ export type ApiSchemas = {
     readonly "session": ApiSchemas["DayTradeSessionView"]
     readonly "symbol": ApiSchemas["DayTradeSymbolView"]
     readonly "tabs"?: Record<string, unknown>
+    readonly "trapDetection"?: Record<string, unknown> | null
     readonly "trigger": ApiSchemas["DayTradeTriggerView"]
   }
   readonly "EodJournalSnapshotRequest": {
@@ -542,6 +698,27 @@ export type ApiSchemas = {
   readonly "JournalCloseRequest": {
     readonly "exit_reason"?: string
     readonly "notes"?: string
+  }
+  readonly "JournalHistoryMorningRequest": {
+    readonly "evaluation_date"?: string | null
+    readonly "rows"?: Array<ApiSchemas["JournalHistoryMorningRow"]>
+  }
+  readonly "JournalHistoryMorningRow": {
+    readonly "bear"?: ApiSchemas["JournalHistoryScenarioCheck"] | null
+    readonly "bias"?: string | null
+    readonly "bull"?: ApiSchemas["JournalHistoryScenarioCheck"] | null
+    readonly "close"?: number | null
+    readonly "date"?: string | null
+    readonly "id"?: string
+    readonly "mode"?: string
+    readonly "ticker": string
+  }
+  readonly "JournalHistoryScenarioCheck": {
+    readonly "entry"?: number | null
+    readonly "prob"?: number | null
+    readonly "stop"?: number | null
+    readonly "t1"?: number | null
+    readonly "t2"?: number | null
   }
   readonly "JournalNotesRequest": {
     readonly "notes": string
@@ -585,6 +762,12 @@ export type ApiSchemas = {
     readonly "total_score"?: number | null
     readonly "trade_type"?: string | null
     readonly "underlying_entry"?: number | null
+  }
+  readonly "KeyLevelOut": {
+    readonly "kind": string
+    readonly "label": string
+    readonly "price": number
+    readonly "reason": string
   }
   readonly "LoginRequest": {
     readonly "email": string
@@ -673,6 +856,18 @@ export type ApiSchemas = {
     readonly "open_interest": number
     readonly "strike": number
     readonly "volume": number
+  }
+  readonly "OptionsFlowOut": {
+    readonly "callOpenInterest"?: number
+    readonly "callVolume"?: number
+    readonly "ivRank"?: number
+    readonly "ivSkew"?: number
+    readonly "openInterestPutCallRatio"?: number | null
+    readonly "putOpenInterest"?: number
+    readonly "putVolume"?: number
+    readonly "sentiment"?: string
+    readonly "summary"?: string
+    readonly "volumePutCallRatio"?: number | null
   }
   readonly "OvernightRunnerRequest": {
     readonly "avg_volume_20d"?: number
@@ -866,6 +1061,7 @@ export type ApiSchemas = {
     readonly "metrics": Record<string, unknown>
     readonly "missing_confirmations"?: Array<string>
     readonly "playbook_hint"?: string
+    readonly "professional_decision"?: Record<string, unknown>
     readonly "reason"?: string
     readonly "reasons": Array<string>
     readonly "recommended_contract_duration"?: string
@@ -1524,6 +1720,27 @@ export const API_OPERATIONS = [
     "summary": "Investment Thesis Starter"
   },
   {
+    "method": "get",
+    "path": "/api/journal/history-log",
+    "operationId": "journal_history_log_api_journal_history_log_get",
+    "tags": [],
+    "summary": "Journal History Log"
+  },
+  {
+    "method": "post",
+    "path": "/api/journal/history-log/auto-generate",
+    "operationId": "journal_history_log_auto_generate_api_journal_history_log_auto_generate_post",
+    "tags": [],
+    "summary": "Journal History Log Auto Generate"
+  },
+  {
+    "method": "post",
+    "path": "/api/journal/history-morning-check",
+    "operationId": "journal_history_morning_check_api_journal_history_morning_check_post",
+    "tags": [],
+    "summary": "Journal History Morning Check"
+  },
+  {
     "method": "post",
     "path": "/api/journal/refresh/{email}",
     "operationId": "journal_refresh_api_journal_refresh__email__post",
@@ -1662,6 +1879,15 @@ export const API_OPERATIONS = [
   },
   {
     "method": "post",
+    "path": "/api/portfolio/parse-contract",
+    "operationId": "post_portfolio_parse_contract_api_portfolio_parse_contract_post",
+    "tags": [
+      "command-center"
+    ],
+    "summary": "Post Portfolio Parse Contract"
+  },
+  {
+    "method": "post",
     "path": "/api/portfolio/remove",
     "operationId": "post_portfolio_remove_api_portfolio_remove_post",
     "tags": [
@@ -1686,6 +1912,13 @@ export const API_OPERATIONS = [
       "command-center"
     ],
     "summary": "Post Portfolio Update Note"
+  },
+  {
+    "method": "get",
+    "path": "/api/position-trade/session-chart",
+    "operationId": "position_trade_session_chart_api_position_trade_session_chart_get",
+    "tags": [],
+    "summary": "Position Trade Session Chart"
   },
   {
     "method": "get",
@@ -2093,6 +2326,9 @@ export const API_PATHS = [
   "/api/health",
   "/api/history-bars",
   "/api/investment-thesis/starter/{ticker}",
+  "/api/journal/history-log",
+  "/api/journal/history-log/auto-generate",
+  "/api/journal/history-morning-check",
   "/api/journal/refresh/{email}",
   "/api/journal/save",
   "/api/journal/{email}",
@@ -2108,9 +2344,11 @@ export const API_PATHS = [
   "/api/option-chain/{ticker}",
   "/api/portfolio/add",
   "/api/portfolio/close",
+  "/api/portfolio/parse-contract",
   "/api/portfolio/remove",
   "/api/portfolio/update",
   "/api/portfolio/update-note",
+  "/api/position-trade/session-chart",
   "/api/positions-center",
   "/api/premarket-bias",
   "/api/search-tickers",

@@ -293,6 +293,17 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertIsNotNone(parsed.chart.vwapOverlay)
         self.assertEqual(parsed.chart.vwapOverlay.points[0].value, 309.3333)
 
+    def test_symbol_exposes_backend_owned_signed_dollar_change(self) -> None:
+        workspace = _workspace(
+            "READY",
+            metric_overrides={"last_price": 379.08, "prev_close": 378.928, "change_pct": 0.04},
+        )
+
+        self.assertEqual(workspace["symbol"]["price"]["display"], "$379.08")
+        self.assertEqual(workspace["symbol"]["changeAmount"]["display"], "+$0.15")
+        self.assertEqual(workspace["symbol"]["changeAmount"]["tone"], "positive")
+        self.assertEqual(workspace["symbol"]["change"]["display"], "+0.04%")
+
     def test_vwap_overlay_uses_backend_bar_values_and_marks_gaps(self) -> None:
         workspace = _workspace(
             "READY",

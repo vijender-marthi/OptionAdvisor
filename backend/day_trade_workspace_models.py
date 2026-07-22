@@ -33,6 +33,7 @@ class DayTradeSymbolView(BaseModel):
     ticker: str
     companyName: str | None = None
     price: DayTradeDisplayValue
+    changeAmount: DayTradeDisplayValue
     change: DayTradeDisplayValue
 
 

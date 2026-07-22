@@ -40,7 +40,7 @@ DEFAULT_MAIL_FROM = os.getenv("OPTION_ADVISOR_DEFAULT_FROM_EMAIL", "adminzetayua
 
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
-    OptionRowOut, OptionChainLiquidityResponse, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
+    OptionRowOut, OptionChainLiquidityResponse, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary, KeyLevelOut, OptionsFlowOut,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
     TestEmailRequest, BacktestRequest,
     DayTradeRequest, DayTradeResponse, CarryTradeRequest, CarryTradeResponse, TradeDashboardStoryRequest,
@@ -1589,6 +1589,47 @@ def _analyze_ticker(
         )
         for p in signals.price_history
     ]
+    recent_price_history = price_history_out[-20:]
+    recent_lows = [point.low for point in recent_price_history if point.low > 0]
+    recent_highs = [point.high for point in recent_price_history if point.high > 0]
+    key_levels = [
+        KeyLevelOut(
+            label="Current Price",
+            price=round(signals.current_price, 2),
+            kind="current",
+            reason="Latest underlying price used by the options engine.",
+        ),
+        KeyLevelOut(
+            label="20D Support",
+            price=round(min(recent_lows), 2) if recent_lows else round(signals.ma20, 2),
+            kind="support",
+            reason="Lowest daily low in the last 20 sessions.",
+        ),
+        KeyLevelOut(
+            label="20D Resistance",
+            price=round(max(recent_highs), 2) if recent_highs else round(signals.ma20, 2),
+            kind="resistance",
+            reason="Highest daily high in the last 20 sessions.",
+        ),
+        KeyLevelOut(
+            label="MA 20",
+            price=round(signals.ma20, 2),
+            kind="moving_average",
+            reason="20-session moving average from the regular analysis engine.",
+        ),
+        KeyLevelOut(
+            label="MA 50",
+            price=round(signals.ma50, 2),
+            kind="moving_average",
+            reason="50-session moving average from the regular analysis engine.",
+        ),
+        KeyLevelOut(
+            label="MA 200",
+            price=round(signals.ma200, 2),
+            kind="moving_average",
+            reason="200-session moving average from the regular analysis engine.",
+        ),
+    ]
 
     # Full strikes for this expiry (sorted). The old ±10% NTM slice + head(20) omitted typical
     # Bull/Bear vertical short legs — Portfolio MTM couldn't find mids past ~110% of spot.
@@ -1601,6 +1642,34 @@ def _analyze_ticker(
         calls_chain_out,
         puts_chain_out,
         live_price > 0,
+    )
+    call_volume = sum(max(0, int(row.volume or 0)) for row in calls_chain_out)
+    put_volume = sum(max(0, int(row.volume or 0)) for row in puts_chain_out)
+    call_open_interest = sum(max(0, int(row.open_interest or 0)) for row in calls_chain_out)
+    put_open_interest = sum(max(0, int(row.open_interest or 0)) for row in puts_chain_out)
+    volume_put_call_ratio = round(put_volume / call_volume, 2) if call_volume else None
+    open_interest_put_call_ratio = round(put_open_interest / call_open_interest, 2) if call_open_interest else None
+    flow_sentiment = (
+        "Put-heavy" if volume_put_call_ratio is not None and volume_put_call_ratio > 1.15 else
+        "Call-heavy" if volume_put_call_ratio is not None and volume_put_call_ratio < 0.85 else
+        "Balanced"
+    )
+    options_flow = OptionsFlowOut(
+        callVolume=call_volume,
+        putVolume=put_volume,
+        callOpenInterest=call_open_interest,
+        putOpenInterest=put_open_interest,
+        volumePutCallRatio=volume_put_call_ratio,
+        openInterestPutCallRatio=open_interest_put_call_ratio,
+        ivRank=round(signals.iv_rank, 1),
+        ivSkew=round(signals.iv_skew, 2),
+        sentiment=flow_sentiment,
+        summary=(
+            f"{flow_sentiment} activity across the analyzed option chain. "
+            f"Volume put/call ratio is {volume_put_call_ratio:.2f}."
+            if volume_put_call_ratio is not None
+            else "Options volume is insufficient to establish a put/call flow ratio."
+        ),
     )
     resolved = resolve_trade_decision(
         {
@@ -1635,6 +1704,8 @@ def _analyze_ticker(
             "strategy_mode": strategy_mode,
         },
         quote_quality_summary=quote_quality_summary,
+        key_levels=key_levels,
+        options_flow=options_flow,
         market_bias=resolved.market_bias,
         setup_quality=resolved.setup_quality,
         verdict=str(resolved.verdict or "WAIT"),

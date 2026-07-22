@@ -264,6 +264,26 @@ class QuoteQualitySummary(BaseModel):
     banner_lines: list[str] = []
 
 
+class KeyLevelOut(BaseModel):
+    label: str
+    price: float
+    kind: str
+    reason: str
+
+
+class OptionsFlowOut(BaseModel):
+    callVolume: int = 0
+    putVolume: int = 0
+    callOpenInterest: int = 0
+    putOpenInterest: int = 0
+    volumePutCallRatio: float | None = None
+    openInterestPutCallRatio: float | None = None
+    ivRank: float = 0.0
+    ivSkew: float = 0.0
+    sentiment: str = "Neutral"
+    summary: str = "Options flow data is unavailable."
+
+
 class AnalyzeResponse(BaseModel):
     ticker: str
     company_name: str
@@ -276,6 +296,8 @@ class AnalyzeResponse(BaseModel):
     price_history: list[PricePoint]
     filters_applied: dict
     quote_quality_summary: QuoteQualitySummary = Field(default_factory=QuoteQualitySummary)
+    key_levels: list[KeyLevelOut] = Field(default_factory=list)
+    options_flow: OptionsFlowOut = Field(default_factory=OptionsFlowOut)
     market_bias: str = "NEUTRAL"
     setup_quality: str = "WEAK"
     verdict: str = "WAIT"
