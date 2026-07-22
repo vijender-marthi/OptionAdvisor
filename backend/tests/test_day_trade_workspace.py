@@ -156,6 +156,16 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertIn(workspace["decisionEngine"]["currentAction"]["action"], {"GO LONG", "WAIT"})
         self.assertIn("trendHealth", workspace["decisionEngine"])
 
+    def test_professional_decision_uses_intraday_table_blockers(self) -> None:
+        workspace = _workspace(
+            "WAIT",
+            metric_overrides={"decision_table": {"blockers": ["ATR > 120%", "RVOL < 0.7x"]}},
+        )
+
+        blockers = workspace["professionalDecision"]["blockers"]
+        self.assertEqual([item["display"] for item in blockers], ["ATR > 120%", "RVOL < 0.7x"])
+        self.assertTrue(all(item["source"] == "day_trade.decision_table" for item in blockers))
+
     def test_assembler_review_mode_disables_live_execution(self) -> None:
         from day_trade_workspace import build_day_trade_workspace_response
 

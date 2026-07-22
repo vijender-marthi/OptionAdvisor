@@ -2556,6 +2556,13 @@
           "aiCoach": {
             "$ref": "#/components/schemas/DayTradeAiCoachView"
           },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeMetricView"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
           "changesDecision": {
             "$ref": "#/components/schemas/DayTradeDecisionChangeView"
           },

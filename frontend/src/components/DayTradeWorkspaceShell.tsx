@@ -872,6 +872,7 @@ export function TradeDecisionPanel({
 
 function ProfessionalDecisionSummary({ decision }: { decision: ProfessionalDecisionPayload }) {
   const h = decision.hierarchy
+  const blockers = decision.blockers ?? []
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
@@ -887,6 +888,26 @@ function ProfessionalDecisionSummary({ decision }: { decision: ProfessionalDecis
         <Value label="Entry Quality" value={decision.confidence.entryQuality.display} />
         <Value label="Entry Timing" value={decision.confidence.entryTiming.display} />
         <Value label="Trade Score" value={decision.scores.overallTradeScore?.display || '—'} />
+      </div>
+      <div className={`rounded-lg border px-3 py-2 ${blockers.length ? 'border-amber-500/30 bg-amber-500/10' : 'border-emerald-500/25 bg-emerald-500/10'}`}>
+        <div className={`text-[10px] font-black uppercase tracking-wide ${blockers.length ? 'text-amber-700 dark:text-amber-200' : 'text-emerald-700 dark:text-emerald-200'}`}>
+          Intraday Blockers
+        </div>
+        {blockers.length ? (
+          <div className="mt-1 grid gap-1">
+            {blockers.map(blocker => (
+              <div key={`${blocker.display}-${blocker.timestamp || ''}`} className="flex items-start gap-2 text-xs text-secondary">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                <span>{blocker.display}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-1 flex items-center gap-2 text-xs text-secondary">
+            <CheckCircle2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-300" />
+            <span>No intraday blockers</span>
+          </div>
+        )}
       </div>
       {h.nextOpportunity.reason && (
         <div className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-xs text-secondary">

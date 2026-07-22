@@ -187,11 +187,37 @@ body {
 
 button, input, select, textarea { font: inherit; }
 
-/* Operational workspaces share the Day Trade full-canvas treatment. This only
-   reaches route-level children of the app shell, so compact dialogs and cards
-   retain their intentional reading widths. */
-.app-main-scroll > [class*="max-w-"],
-.app-main-scroll > .trade-command-center-page,
+/* A measured page gutter keeps broad desktop workspaces from touching the
+   browser edge while preserving the full, data-dense canvas inside. */
+.app-page-frame {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 0.5rem;
+}
+
+.app-page-frame--workstation {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.app-page-frame--workstation > * {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+@media (min-width: 768px) {
+  .app-page-frame { padding-inline: 0.75rem; }
+}
+
+@media (min-width: 1536px) {
+  .app-page-frame { padding-inline: 1rem; }
+}
+
+/* Operational workspaces share the Day Trade full-canvas treatment inside the
+   shared page gutter, so compact dialogs and cards retain reading widths. */
+.app-page-frame > [class*="max-w-"],
+.app-page-frame > .trade-command-center-page,
 .trade-command-center-page {
   width: 100%;
   max-width: none !important;

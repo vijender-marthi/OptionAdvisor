@@ -1322,8 +1322,8 @@ export default function TickerPage() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-surface-page text-primary">
-    <div className="flex min-h-screen w-full gap-1">
+    <div className="min-h-screen bg-surface-page text-primary md:min-h-0 md:flex-1 md:overflow-hidden">
+    <div className="flex min-h-screen w-full gap-1 md:h-full md:min-h-0">
       {/* Left sidebar */}
       <div className="hidden w-72 shrink-0 2xl:w-80 xl:block">
         <LeftSidebar

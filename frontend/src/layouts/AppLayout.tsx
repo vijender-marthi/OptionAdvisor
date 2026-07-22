@@ -73,7 +73,9 @@ export default function AppLayout({ children }: { children?: ReactNode }) {
         <MarketStrip />
         <CacheTimestamp />
         <WatchlistNoticeBanner />
-        {children ?? <Outlet />}
+        <div className={`app-page-frame ${fixedWorkstation ? 'app-page-frame--workstation' : ''}`}>
+          {children ?? <Outlet />}
+        </div>
         {!fixedWorkstation && <CopyrightFooter />}
       </main>
       <AdvisoryDisclaimerModal />

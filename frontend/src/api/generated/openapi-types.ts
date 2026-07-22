@@ -477,6 +477,7 @@ export type ApiSchemas = {
   }
   readonly "DayTradeProfessionalDecisionView": {
     readonly "aiCoach": ApiSchemas["DayTradeAiCoachView"]
+    readonly "blockers"?: Array<ApiSchemas["DayTradeMetricView"]>
     readonly "changesDecision": ApiSchemas["DayTradeDecisionChangeView"]
     readonly "confidence": ApiSchemas["DayTradeConfidenceView"]
     readonly "hierarchy": ApiSchemas["DayTradeDecisionHierarchyView"]

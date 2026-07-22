@@ -1094,6 +1094,24 @@ def _professional_decision(
     timing = _entry_timing_label(metrics, reward_risk, current_action)
     grade = _entry_grade(overall_score, timing)
     positive, negative, neutral = _professional_factors(metrics, market_structure, risk_levels)
+    decision_table = _as_dict(metrics.get("decision_table"))
+    intraday_blockers = [
+        str(blocker).strip()
+        for blocker in _as_list(decision_table.get("blockers"))
+        if str(blocker).strip()
+    ]
+    blocker_metrics = [
+        _metric(
+            value=blocker,
+            display=blocker,
+            formula="Intraday decision-table blocker gate",
+            inputs=["decision_table.blockers"],
+            reason="The same blocker is shown in the Trade Dashboard intraday table.",
+            timestamp=generated_at,
+            source="day_trade.decision_table",
+        )
+        for blocker in intraday_blockers
+    ]
     last = _num(metrics.get("last_price"))
     entry = _num(risk_levels.get("entry"))
     stop = _num(risk_levels.get("stop"))
@@ -1183,6 +1201,7 @@ def _professional_decision(
             "breadth": _metric(value=metrics.get("breadth"), display=str(metrics.get("breadth") or "Unavailable"), formula="Market breadth context", inputs=["breadth"], timestamp=generated_at, confidence=None),
             "relativeStrength": _metric(value=metrics.get("relative_strength"), display=str(metrics.get("relative_strength") or "Unavailable"), formula="Ticker versus market context", inputs=["relative_strength"], timestamp=generated_at, confidence=None),
         },
+        "blockers": blocker_metrics,
         "timeline": _professional_timeline(setup, risk_levels, metrics),
         "aiCoach": {"lines": coach_lines},
     }

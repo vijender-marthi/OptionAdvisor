@@ -712,6 +712,8 @@ export type ProfessionalDecisionPayload = {
   scores: Record<string, ProfessionalDecisionMetric>
   risk: Record<string, ProfessionalDecisionMetric>
   marketContext: Record<string, ProfessionalDecisionMetric>
+  /** Canonical blocker list from the Trade Dashboard intraday decision table. */
+  blockers?: ProfessionalDecisionMetric[]
   timeline: Array<{ id: string; label: string; phase: string; timestamp?: string | null; price?: number | null; status: string; reason?: string | null }>
   aiCoach: { lines: string[] }
 }

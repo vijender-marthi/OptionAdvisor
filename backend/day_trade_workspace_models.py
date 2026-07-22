@@ -243,6 +243,8 @@ class DayTradeProfessionalDecisionView(BaseModel):
     scores: DayTradeEngineScoresView
     risk: DayTradeRiskDecisionView
     marketContext: DayTradeMarketContextView
+    # Canonical intraday-table gates; the workspace only presents these values.
+    blockers: list[DayTradeMetricView] = Field(default_factory=list)
     timeline: list[DayTradeTimelineEventView] = Field(default_factory=list)
     aiCoach: DayTradeAiCoachView
 
