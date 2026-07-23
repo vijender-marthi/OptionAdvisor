@@ -424,8 +424,8 @@ def _build_decision_message(
         direction = "bullish" if is_bullish else "bearish"
         return (
             f"{ticker} has {direction} trend, but earnings are {days_str}. "
-            "Naked calls risk severe IV crush after the report. "
-            "Avoid or use a tight debit spread. Wait for post-earnings base if needed."
+            "New directional premium is exposed to event-gap and IV-crush risk. "
+            "Wait for a post-earnings base and fresh confirmation before opening a swing position."
         )
 
     if decision_label == "WEAK_SETUP":
@@ -2113,10 +2113,16 @@ def _build_swing_professional_decision(
     market_raw = str(decision.get("market_context") or metrics.get("market_context") or metrics.get("market_bias") or "Neutral").upper()
     market_context = "Bullish" if "SUPPORT" in market_raw or "BULL" in market_raw else "Bearish" if "WEAK" in market_raw or "BEAR" in market_raw else "Neutral"
     final_action = str(decision.get("final_action") or "NO_TRADE")
-    current_action = "WAIT" if final_action in {"WAIT_PULLBACK", "WAIT_BREAKOUT", "WAIT_FOR_BREAKDOWN", "AVOID_CHASE", "NO_TRADE"} else final_action.replace("_", " ")
+    risk_flags = [str(flag) for flag in list(decision.get("risk_flags") or [])]
+    earnings_gate = "EARNINGS_IMMINENT" in risk_flags
+    current_action = "WAIT FOR EARNINGS" if earnings_gate else "WAIT" if final_action in {"WAIT_PULLBACK", "WAIT_BREAKOUT", "WAIT_FOR_BREAKDOWN", "AVOID_CHASE", "NO_TRADE"} else final_action.replace("_", " ")
     setup = str(metrics.get("entry_recommendation_state") or decision.get("decision_label") or "Swing Setup").replace("_", " ").title()
+    if earnings_gate:
+        setup = "Earnings Risk - Confirmation Pending"
     phase = "Pending" if "WAIT" in final_action or final_action == "NO_TRADE" else "Confirmed" if final_action in {"GO", "GO_SMALL", "STRONG_GO"} else "Armed"
     next_opportunity = "Bullish Pullback" if stock_bias == "Bullish" else "Bearish Pullback" if stock_bias == "Bearish" else "No Trade"
+    if earnings_gate:
+        next_opportunity = "Post-Earnings Confirmation"
     if "BREAKOUT" in final_action:
         next_opportunity = "Breakout"
     if "BREAKDOWN" in final_action:
@@ -2139,11 +2145,33 @@ def _build_swing_professional_decision(
     risk_remaining = abs(last - stop) if stop is not None and last is not None else None
     structure_display = str(market_structure.get("display") or market_structure.get("structure") or "")
 
-    positive = [_prof_metric(value=item, display=item, reason="Backend swing reason.", timestamp=generated_at, confidence=score_100) for item in reasons[:5]]
+    # A technical edge is evidence, not an entry approval when a hard risk gate is
+    # active. Keep the evidence visible without presenting a contradictory GO.
+    positive_reasons = [
+        item for item in reasons
+        if not (earnings_gate and item.upper().startswith(("GO", "STRONG GO")))
+    ]
+    positive = [_prof_metric(value=item, display=item, reason="Backend swing reason.", timestamp=generated_at, confidence=score_100) for item in positive_reasons[:5]]
     if structure_display:
         positive.append(_prof_metric(value="Structure", display=structure_display, reason="Backend-confirmed daily market structure.", timestamp=generated_at, confidence=score_100))
-    negative = [_prof_metric(value=item, display=item, reason="Backend risk flag.", timestamp=generated_at, confidence=score_100) for item in list(decision.get("risk_flags") or [])[:5]]
-    neutral = [_prof_metric(value=item, display=item, reason="Pending backend confirmation.", timestamp=generated_at, confidence=score_100) for item in list(decision.get("confirmation_needed") or [])[:5]]
+    risk_display = {
+        "EARNINGS_IMMINENT": "Earnings imminent - wait for the event to pass before opening a directional swing.",
+        "EARNINGS_SOON": "Earnings are close - reduce exposure and account for event-gap risk.",
+    }
+    negative = [
+        _prof_metric(
+            value=item,
+            display=risk_display.get(item, "Contract duration exceeds the preferred swing window." if item.startswith("DTE_TOO_LONG") else item.replace("_", " ").title()),
+            reason="Backend risk flag.",
+            timestamp=generated_at,
+            confidence=score_100,
+        )
+        for item in risk_flags[:5]
+    ]
+    neutral_reasons = list(decision.get("confirmation_needed") or [])
+    if earnings_gate:
+        neutral_reasons.insert(0, "Wait for post-earnings price acceptance before evaluating a new entry.")
+    neutral = [_prof_metric(value=item, display=item, reason="Pending backend confirmation.", timestamp=generated_at, confidence=score_100) for item in neutral_reasons[:5]]
 
     bullish_changes = [
         _prof_metric(value="Breakout", display="Breakout", reason="Price breaks backend resistance with confirmation.", timestamp=generated_at),
@@ -2153,6 +2181,9 @@ def _build_swing_professional_decision(
         _prof_metric(value="Breakdown", display="Breakdown", reason="Price loses backend support.", timestamp=generated_at),
         _prof_metric(value="VWAP Reject", display="VWAP Reject", reason="Price rejects key mean/reference level.", timestamp=generated_at),
     ]
+    if earnings_gate:
+        bullish_changes = [_prof_metric(value="Post-Earnings Reclaim", display="Post-Earnings Reclaim", reason="After the report, price reclaims the backend trend level with confirmation.", timestamp=generated_at)]
+        bearish_changes = [_prof_metric(value="Post-Earnings Breakdown", display="Post-Earnings Breakdown", reason="After the report, price loses backend support with confirmation.", timestamp=generated_at)]
     invalidation = [_prof_metric(value="Invalidation", display=f"Lost {_prof_money(stop)}", reason="Setup invalidates if backend stop/structure level is lost.", timestamp=generated_at)]
     coach_lines = [
         f"What happened: {ticker} has {stock_bias.lower()} swing bias and {setup}.",

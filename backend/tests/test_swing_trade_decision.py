@@ -253,6 +253,7 @@ def test_earnings_imminent_avoid_naked_calls():
     assert d["decision_label"] == "BULLISH_BUT_EARNINGS_RISK"
     assert "EARNINGS_IMMINENT" in d["risk_flags"]
     assert d["avoid_reason"] is not None
+    assert "New directional premium" in d["decision_message"]
 
 def test_earnings_soon_penalises_score():
     """earnings_within_days = 4 → risk HIGH, score penalised, flag set."""
