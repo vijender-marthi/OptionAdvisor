@@ -120,7 +120,7 @@ class PlaybookHintTests(unittest.TestCase):
         )
         self.assertIn("bounce", h.lower())
 
-    def test_earnings_layer_replaces_long_call_with_spread(self):
+    def test_earnings_window_blocks_directional_playbook(self):
         d = _decision(
             swing_bias="BULLISH",
             entry_quality="GOOD_ENTRY",
@@ -137,7 +137,8 @@ class PlaybookHintTests(unittest.TestCase):
             hv_20=25.0,
             earnings_days=4,
         )
-        self.assertIn("call debit spread", h.lower())
+        self.assertIn("no new directional swing", h.lower())
+        self.assertIn("calendar review", h.lower())
         self.assertIn("earnings", h.lower())
 
     def test_no_trade_weak(self):

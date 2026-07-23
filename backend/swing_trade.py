@@ -37,6 +37,11 @@ from verdict_resolver import resolve_verdict
 
 Bias    = Optional[Literal["long", "short"]]
 
+# A 3-5 day swing opened inside this window can run directly into an earnings
+# print. The engine may describe a calendar review, but must not authorize a
+# new directional premium trade until the post-event structure is known.
+EARNINGS_DIRECTIONAL_BLACKOUT_DAYS = 7
+
 # ── Scoring constants ─────────────────────────────────────────────────
 MA_FAST          = 20
 MA_SLOW          = 50
@@ -416,7 +421,7 @@ def _build_decision_message(
             "Wait for a pullback to MA20 or consolidation before considering entry."
         )
 
-    if decision_label in ("BULLISH_BUT_EARNINGS_RISK",):
+    if decision_label in ("BULLISH_BUT_EARNINGS_RISK", "EARNINGS_EVENT_WINDOW"):
         days_str = (
             f"in {earnings_within_days} day{'s' if (earnings_within_days or 0) != 1 else ''}"
             if earnings_within_days is not None else "very soon"
@@ -424,8 +429,8 @@ def _build_decision_message(
         direction = "bullish" if is_bullish else "bearish"
         return (
             f"{ticker} has {direction} trend, but earnings are {days_str}. "
-            "New directional premium is exposed to event-gap and IV-crush risk. "
-            "Wait for a post-earnings base and fresh confirmation before opening a swing position."
+            "Do not open a new directional swing into the event; reassess after the print "
+            "for a base and fresh confirmation. A calendar is a separate event-volatility review, not a directional entry."
         )
 
     if decision_label == "WEAK_SETUP":
@@ -560,7 +565,7 @@ def build_swing_trade_decision(
     if earnings_within_days is not None:
         if earnings_within_days <= 2:
             risk_flags.append("EARNINGS_IMMINENT")
-        elif earnings_within_days <= 5:
+        elif earnings_within_days <= EARNINGS_DIRECTIONAL_BLACKOUT_DAYS:
             risk_flags.append("EARNINGS_SOON")
 
     if iv_rank is not None:
@@ -680,6 +685,15 @@ def build_swing_trade_decision(
             "IV crush risk is high after the report."
         )
 
+    elif "EARNINGS_SOON" in risk_flags:
+        entry_quality = "WAIT_EARNINGS"
+        decision_label = "EARNINGS_EVENT_WINDOW"
+        final_action = "WAIT_EARNINGS"
+        avoid_reason = (
+            f"Earnings are within {earnings_within_days} day(s), inside the "
+            f"{EARNINGS_DIRECTIONAL_BLACKOUT_DAYS}-day directional swing blackout window."
+        )
+
     elif "VIX_EXTREME" in risk_flags:
         # Hard gate: matches the scoring engine's NO-GO verdict for VIX >= 35.
         entry_quality  = "BAD_ENTRY"
@@ -785,7 +799,11 @@ def build_swing_trade_decision(
     _iv_high      = iv_rank is not None and iv_rank >= 60   # spread territory
     _iv_moderate  = iv_rank is not None and iv_rank >= 50   # still use spreads over longs
 
-    if final_action == "AVOID_NAKED_CALLS":
+    if final_action == "WAIT_EARNINGS":
+        # A calendar can be assessed separately for event-volatility structure,
+        # but the scan must not manufacture a directional trade through earnings.
+        suggested_strategy = "CALENDAR_REVIEW" if _iv_moderate else "NO_TRADE"
+    elif final_action == "AVOID_NAKED_CALLS":
         # Earnings imminent — credit spreads preferred (sell expensive pre-earnings IV);
         # fall back to debit spreads if IV is not elevated
         if _iv_very_high:
@@ -819,7 +837,9 @@ def build_swing_trade_decision(
         suggested_strategy = "NO_TRADE"
 
     # ── 10. Suggested expiry window ────────────────────────────────────
-    if suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
+    if final_action == "WAIT_EARNINGS":
+        suggested_expiry_window = "Post-earnings reassessment"
+    elif suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
         suggested_expiry_window = "No trade"
     elif risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
         suggested_expiry_window = "6-8 weeks"
@@ -833,7 +853,9 @@ def build_swing_trade_decision(
     # Contract duration varies by risk/quality — never use the holding period
     # as the expiration length.
     expected_holding_period = "3-5 trading days"
-    if suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
+    if final_action == "WAIT_EARNINGS":
+        recommended_contract_duration = ""
+    elif suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
         recommended_contract_duration = ""
     elif risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
         recommended_contract_duration = "14-21"
@@ -1700,9 +1722,14 @@ def _next_earnings_calendar_days(ticker: str, asof: date, force_refresh: bool = 
 
 
 def _finalize_playbook_earnings(hint: str, earnings_days: Optional[int]) -> str:
-    """Layer rule 7: within 5 calendar days, discourage naked single-leg premium."""
-    if earnings_days is None or not (0 <= earnings_days <= 5):
+    """Block new directional swings inside the configured earnings event window."""
+    if earnings_days is None or not (0 <= earnings_days <= EARNINGS_DIRECTIONAL_BLACKOUT_DAYS):
         return hint
+    if earnings_days > 2:
+        return (
+            "Earnings event window — no new directional swing. Reassess after the print; "
+            "calendar review only if the event-volatility structure is suitable."
+        )
     lower = hint.lower()
     if lower.startswith("long call"):
         return "Call debit spread — earnings soon; avoid naked long premium."

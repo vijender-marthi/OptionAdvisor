@@ -228,24 +228,15 @@ def _calc_targets(
     """
     MA-based targets.
 
-    Target 1:
-      - If price already above MA20: MA20 × 1.02  (2% extended zone above MA20)
-      - Else: MA20 itself  (reclaim as first milestone)
-
-    Target 2:
-      - max(MA50 × 1.03, entry_price × 1.15)  (greater of MA50+3% or 15% gain)
+    The generic target endpoint is used for long-position planning. It must
+    never return a first target below the current or requested entry price.
+    Moving averages remain context anchors, while targets are forward-looking.
     """
-    if ma20 > 0 and current_price > ma20:
-        target1 = round(ma20 * 1.02, 2)
-    elif ma20 > 0:
-        target1 = round(ma20, 2)
-    else:
-        target1 = round(entry_price * 1.08, 2)
-
-    if ma50 > 0:
-        target2 = round(max(ma50 * 1.03, entry_price * 1.15), 2)
-    else:
-        target2 = round(entry_price * 1.15, 2)
+    reference = max(entry_price, current_price)
+    ma20_extension = ma20 * 1.02 if ma20 > 0 else 0.0
+    ma50_extension = ma50 * 1.03 if ma50 > 0 else 0.0
+    target1 = round(max(reference * 1.03, ma20_extension), 2)
+    target2 = round(max(reference * 1.06, ma50_extension, target1 * 1.03), 2)
 
     return target1, target2
 

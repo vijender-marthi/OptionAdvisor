@@ -357,6 +357,7 @@ class DayTradeMarketStructureView(BaseModel):
     sequence: list[str] = Field(default_factory=list)
     currentPivot: str | None = None
     currentPivotDetail: DayTradeStructurePivotView | None = None
+    provisionalPivot: DayTradeStructurePivotView | None = None
     expectedNext: str | None = None
     expectedNextPivot: str | None = None
     invalidationLevel: float | None = None

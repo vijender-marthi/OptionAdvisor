@@ -106,6 +106,18 @@ class TrendEntryTimingLayerTests(unittest.TestCase):
 
 
 class SwingTradeDecisionRegressionTests(unittest.TestCase):
+    def test_earnings_window_blocks_new_directional_swing_for_seven_days(self):
+        decision = build_swing_trade_decision(
+            "AAPL", bull_score=8.0, bear_score=1.5,
+            market_context="MARKET_SUPPORTIVE",
+            rsi_val=60.0, dist_ma20_pct=2.0, mom_5d_pct=2.0,
+            earnings_within_days=7, iv_rank=60.0,
+        )
+        self.assertIn("EARNINGS_SOON", decision["risk_flags"])
+        self.assertEqual(decision["final_action"], "WAIT_EARNINGS")
+        self.assertEqual(decision["decision_label"], "EARNINGS_EVENT_WINDOW")
+        self.assertEqual(decision["suggested_strategy"], "CALENDAR_REVIEW")
+
     def test_bearish_extended_oversold_triggers_wait_pullback(self):
         """RSI < 28 on a bearish setup should wait for bounce/reset, not a blind short."""
         d = build_swing_trade_decision(

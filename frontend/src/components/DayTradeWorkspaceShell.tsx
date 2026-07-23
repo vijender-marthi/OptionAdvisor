@@ -618,6 +618,7 @@ export function TradeDecisionPanel({
   const reward = entry != null && target2 != null ? Math.abs(target2 - entry) : null
   const decisionChecks = buildDecisionChecks(workspace)
   const decisionWarnings = buildDecisionWarnings(workspace)
+  const formingPivot = workspace.chart.marketStructure?.provisionalPivot
   const shouldRenderWidget = (title: string) => {
     const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
     return placement === 'bottom' ? docked : !docked
@@ -783,6 +784,12 @@ export function TradeDecisionPanel({
             </div>
             <Value label="Sequence" value={workspace.chart.marketStructure.sequence.length ? workspace.chart.marketStructure.sequence.join(' → ') : workspace.chart.marketStructure.display} />
             <Value label="Current Pivot" value={workspace.chart.marketStructure.currentPivot || '—'} />
+            {formingPivot && (
+              <Value
+                label="Forming"
+                value={`${formingPivot.label}? · $${formingPivot.price.toFixed(2)}`}
+              />
+            )}
             <Value label="Expected Next" value={workspace.chart.marketStructure.expectedNextPivot || '—'} />
             <Value label="Invalidation" value={workspace.chart.marketStructure.invalidationLevel == null ? '—' : `$${workspace.chart.marketStructure.invalidationLevel.toFixed(2)}`} />
             <Value label="Strength" value={workspace.chart.marketStructure.structureStrength == null ? '—' : `${workspace.chart.marketStructure.structureStrength.toFixed(0)}%`} />
@@ -793,7 +800,7 @@ export function TradeDecisionPanel({
               </>
             )}
             <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-tertiary dark:bg-slate-900">
-              {workspace.chart.marketStructure.explanation || 'Backend-confirmed 5m structure.'}
+              {formingPivot?.explanation || workspace.chart.marketStructure.explanation || 'Backend-confirmed 5m structure.'}
             </div>
           </div>
         ) : (

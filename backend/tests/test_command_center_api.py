@@ -15,7 +15,7 @@ storage.init_db()
 
 from auth_routes import require_access_email  # noqa: E402
 import command_center_router as command_center_router_module  # noqa: E402
-from command_center_router import api_envelope  # noqa: E402
+from command_center_router import _parse_broker_contract_text, api_envelope  # noqa: E402
 import main as main_module  # noqa: E402
 from main import app  # noqa: E402
 
@@ -36,6 +36,32 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertIn("fetched_at", env)
         self.assertTrue(env["stale"])
         self.assertIsNone(env["error"])
+
+    def test_broker_contract_parser_accepts_plural_order_ticket(self) -> None:
+        parsed = _parse_broker_contract_text(
+            "Buy to Open\n2 Contracts AAPL Jul 31 2026 322.5 Calls Limit at $7.12 (Day)\nFilled at $7.10"
+        )
+        self.assertEqual(parsed["action"], "BUY")
+        self.assertEqual(parsed["contracts"], "2")
+        self.assertEqual(parsed["ticker"], "AAPL")
+        self.assertEqual(parsed["expiry"], "2026-07-31")
+        self.assertEqual(parsed["strike"], "322.5")
+        self.assertEqual(parsed["option_type"], "CALL")
+        self.assertEqual(parsed["premium"], "7.10")
+        self.assertEqual(parsed["price_source"], "fill")
+
+    def test_broker_contract_parser_accepts_activity_export(self) -> None:
+        parsed = _parse_broker_contract_text(
+            "07/21/26 Actions menu more_vert Bought To Open CALL AAPL 07/24/26 330.000 AAPL 2.000 2.860 -573.03"
+        )
+        self.assertEqual(parsed["action"], "BUY")
+        self.assertEqual(parsed["contracts"], "2.000")
+        self.assertEqual(parsed["ticker"], "AAPL")
+        self.assertEqual(parsed["expiry"], "2026-07-24")
+        self.assertEqual(parsed["strike"], "330.000")
+        self.assertEqual(parsed["option_type"], "CALL")
+        self.assertEqual(parsed["premium"], "2.860")
+        self.assertEqual(parsed["price_source"], "broker activity")
 
     def test_trade_command_center_happy_path(self) -> None:
         storage.save_user_state(

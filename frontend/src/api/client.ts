@@ -537,6 +537,21 @@ type DayTradeWorkspaceChart = Omit<
     display: string
     sequence: string[]
     currentPivot?: string | null
+    provisionalPivot?: {
+      id: string
+      timestamp: string
+      label: string
+      classification?: string | null
+      pivotType: string
+      type?: string | null
+      price: number
+      sourceTimeframe: string
+      timeframe?: string | null
+      confirmed: boolean
+      status?: string | null
+      latest?: boolean
+      explanation?: string | null
+    } | null
     expectedNextPivot?: string | null
     invalidationLevel?: number | null
     structureStrength?: number | null

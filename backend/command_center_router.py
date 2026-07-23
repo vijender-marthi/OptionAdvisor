@@ -1936,40 +1936,88 @@ def _broker_single_leg_metrics(action: str, option_type: str, strike: float, pre
     }
 
 
-@command_center_router.post("/portfolio/parse-contract")
-def post_portfolio_parse_contract(body: BrokerContractParseBody, auth_email: str = Depends(require_access_email)):
-    text = re.sub(r"\s+", " ", body.text).strip()
+def _parse_broker_contract_text(raw_text: str) -> dict[str, Any]:
+    """Parse the supported single-leg order-ticket and broker-export formats."""
+    text = re.sub(r"\s+", " ", raw_text).strip()
     order_match = re.search(
-        r"\b(Buy|Sell)\s+to\s+Open\s+(\d+)\s+Contracts?\s+([A-Z]{1,6})\s+([A-Za-z]{3,9})\s+"
-        r"(\d{1,2})\s+(\d{4})\s+(\d+(?:\.\d+)?)\s+(Call|Put)\b",
+        r"\b(?P<action>Buy|Sell)\s+to\s+Open\s+(?P<contracts>\d+)\s+Contracts?\s+"
+        r"(?P<ticker>[A-Z]{1,6})\s+(?P<month>[A-Za-z]{3,9})\s+(?P<day>\d{1,2})\s+"
+        r"(?P<year>\d{4})\s+(?P<strike>\d+(?:\.\d+)?)\s+(?P<option_type>Calls?|Puts?)\b",
         text,
         flags=re.IGNORECASE,
     )
-    if not order_match:
+    if order_match:
+        fill_match = re.search(r"\bFilled\s+at\s+\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
+        limit_match = re.search(r"\bLimit\s+at\s+\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
+        premium_raw = fill_match.group(1) if fill_match else (limit_match.group(1) if limit_match else None)
+        month = _BROKER_MONTHS.get(order_match.group("month").lower())
+        if not month or premium_raw is None:
+            raise HTTPException(status_code=422, detail="Could not read the contract expiry month or premium.")
+        return {
+            "action": order_match.group("action").upper(),
+            "contracts": order_match.group("contracts"),
+            "ticker": order_match.group("ticker").upper(),
+            "expiry": f"{order_match.group('year')}-{month}-{order_match.group('day').zfill(2)}",
+            "strike": order_match.group("strike"),
+            "option_type": order_match.group("option_type").upper().rstrip("S"),
+            "premium": premium_raw,
+            "price_source": "fill" if fill_match else "limit",
+        }
+
+    # Broker activity exports commonly flatten into:
+    # "Bought To Open CALL AAPL 07/24/26 330.000 AAPL 2.000 2.860 -573.03"
+    # The first number after the repeated symbol is contract quantity; the next
+    # is the per-contract option premium. The final value is the total P&L.
+    export_match = re.search(
+        r"\b(?P<action>Bought|Sold)\s+To\s+Open\s+(?P<option_type>Calls?|Puts?)\s+"
+        r"(?P<ticker>[A-Z]{1,6})\s+(?P<month>\d{1,2})/(?P<day>\d{1,2})/(?P<year>\d{2,4})\s+"
+        r"(?P<strike>\d+(?:\.\d+)?)\b(?:\s+[A-Z]{1,6})?\s+"
+        r"(?P<contracts>\d+(?:\.\d+)?)\s+(?P<premium>\d+(?:\.\d+)?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not export_match:
         raise HTTPException(
             status_code=422,
-            detail="Could not read that contract. Expected Buy/Sell to Open, contracts, ticker, date, strike, call/put, and limit or filled price.",
+            detail="Could not read that contract. Paste an order ticket or broker activity row with action, contracts, ticker, expiry, strike, call/put, and price.",
         )
-    fill_match = re.search(r"\bFilled\s+at\s+\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
-    limit_match = re.search(r"\bLimit\s+at\s+\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
-    premium_raw = fill_match.group(1) if fill_match else (limit_match.group(1) if limit_match else None)
-    month = _BROKER_MONTHS.get(order_match.group(4).lower())
-    if not month or premium_raw is None:
-        raise HTTPException(status_code=422, detail="Could not read the contract expiry month or premium.")
+
+    year_text = export_match.group("year")
+    year = f"20{year_text}" if len(year_text) == 2 else year_text
+    try:
+        expiry = date(int(year), int(export_match.group("month")), int(export_match.group("day"))).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Contract expiry is invalid.") from exc
+    return {
+        "action": "BUY" if export_match.group("action").upper() == "BOUGHT" else "SELL",
+        "contracts": export_match.group("contracts"),
+        "ticker": export_match.group("ticker").upper(),
+        "expiry": expiry,
+        "strike": export_match.group("strike"),
+        "option_type": export_match.group("option_type").upper().rstrip("S"),
+        "premium": export_match.group("premium"),
+        "price_source": "broker activity",
+    }
+
+
+@command_center_router.post("/portfolio/parse-contract")
+def post_portfolio_parse_contract(body: BrokerContractParseBody, auth_email: str = Depends(require_access_email)):
+    parsed_contract = _parse_broker_contract_text(body.text)
 
     try:
-        contracts = int(order_match.group(2))
-        strike = float(order_match.group(7))
-        premium = float(premium_raw)
+        contracts_value = float(parsed_contract["contracts"])
+        contracts = int(contracts_value)
+        strike = float(parsed_contract["strike"])
+        premium = float(parsed_contract["premium"])
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Contract quantity, strike, or premium is invalid.") from exc
-    if contracts < 1 or strike <= 0 or premium <= 0:
+    if contracts_value != contracts or contracts < 1 or strike <= 0 or premium <= 0:
         raise HTTPException(status_code=422, detail="Contract quantity, strike, and premium must be positive.")
 
-    action = "SELL" if order_match.group(1).upper() == "SELL" else "BUY"
-    option_type = "CALL" if order_match.group(8).upper() == "CALL" else "PUT"
-    ticker = order_match.group(3).upper()
-    expiry = f"{order_match.group(6)}-{month}-{order_match.group(5).zfill(2)}"
+    action = str(parsed_contract["action"])
+    option_type = str(parsed_contract["option_type"])
+    ticker = str(parsed_contract["ticker"])
+    expiry = str(parsed_contract["expiry"])
     strategy, bias = _broker_strategy(action, option_type)
     metrics = _broker_single_leg_metrics(action, option_type, strike, premium)
     try:
@@ -2035,7 +2083,7 @@ def post_portfolio_parse_contract(body: BrokerContractParseBody, auth_email: str
             "strike": strike,
             "option_type": option_type,
             "premium": premium,
-            "price_source": "fill" if fill_match else "limit",
+            "price_source": parsed_contract["price_source"],
         },
     })
 

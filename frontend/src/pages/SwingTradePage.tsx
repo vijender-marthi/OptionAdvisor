@@ -2540,9 +2540,9 @@ function OverviewTab({ result, unified, fibTargets }: { result: SwingTradeScanRe
         <InfoPanel title="Trade Levels">
           <div className="grid gap-2 sm:grid-cols-2">
             <Value label="Entry" value={money(exec.entry)} />
-            <Value label="Stop" value={money(fibTargets?.suggested_stop_loss ?? exec.stop)} />
-            <Value label="Target 1" value={money(fibTargets?.suggested_target1 ?? exec.target1)} />
-            <Value label="Target 2" value={money(fibTargets?.suggested_target2 ?? exec.target2)} />
+            <Value label="Stop" value={money(exec.stop ?? fibTargets?.suggested_stop_loss)} />
+            <Value label="Target 1" value={money(exec.target1 ?? fibTargets?.suggested_target1)} />
+            <Value label="Target 2" value={money(exec.target2 ?? fibTargets?.suggested_target2)} />
           </div>
         </InfoPanel>
       </div>
@@ -2679,49 +2679,64 @@ function OptionsTab({ result, ocKey }: { result: SwingTradeScanResult | null; oc
 function ExitTab({ result, unified }: { result: SwingTradeScanResult | null; unified: UnifiedAnalysis | null }) {
   const exitRows = unified?.exit_rows || []
   const backendRules = (result?.metrics as Record<string, unknown> | undefined)?.exit_rules
+  const unifiedRows = exitRows.map(row => ({
+    when: row.when,
+    price: row.price,
+    action: row.action,
+    note: row.note,
+    type: '',
+  }))
+  const ruleRows = Array.isArray(backendRules)
+    ? backendRules.filter(isRecord).map(rule => ({
+        when: text(rule.trigger) || 'Exit condition',
+        price: num(rule.price),
+        action: text(rule.action) || 'Review position',
+        note: text(rule.note),
+        type: text(rule.type).toLowerCase(),
+      }))
+    : []
+  const displayRows = unifiedRows.length ? unifiedRows : ruleRows
   return (
     <div className="grid gap-3">
       <SectionHero
         eyebrow="Exit Plan"
-        title={exitRows.length ? `${exitRows.length} managed exit step${exitRows.length === 1 ? '' : 's'}` : 'No backend exit rows'}
+        title={displayRows.length ? `${displayRows.length} managed exit step${displayRows.length === 1 ? '' : 's'}` : 'Exit plan unavailable'}
         body={result?.decision_message || 'Use backend exit rows for the active swing plan.'}
         tone={result?.bias}
         badge={result?.ticker || 'Swing'}
       />
       <InfoPanel title="Exit Steps">
-      {exitRows.length ? (
+      {displayRows.length ? (
         <div className="grid gap-2">
-          {exitRows.map((row, index) => (
+          {displayRows.map((row, index) => {
+            const isStop = row.type === 'stop' || /stop|exit full|close/i.test(row.when)
+            const isTarget = row.type === 't1' || row.type === 't2' || /target/i.test(row.when)
+            const tone = isStop
+              ? 'border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+              : isTarget
+                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+                : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-200'
+            return (
             <div key={`${row.when}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">Step {index + 1}</div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-tertiary">{isStop ? 'Risk Control' : isTarget ? 'Profit Plan' : `Step ${index + 1}`}</div>
                   <div className="mt-1 text-sm font-semibold text-heading">{row.when}</div>
                 </div>
                 <div className="rounded-md bg-slate-50 px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums text-heading dark:bg-slate-900">
-                  {row.price}
+                  {typeof row.price === 'number' ? money(row.price) : row.price || '—'}
                 </div>
               </div>
               <div className="mt-2 text-sm leading-relaxed text-secondary">{row.action}</div>
-              {row.note && <div className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-200">{row.note}</div>}
+              {row.note && <div className={`mt-2 rounded-md border px-2.5 py-1.5 text-xs ${tone}`}>{row.note}</div>}
             </div>
-          ))}
+            )
+          })}
         </div>
       ) : (
-        <EmptyTab text="No unified exit rows returned by backend." />
+        <EmptyTab text="No backend exit steps are available for this swing snapshot." />
       )}
       </InfoPanel>
-      {Array.isArray(backendRules) && backendRules.length > 0 && (
-        <InfoPanel title="Backend Rules">
-        <div className="grid gap-2 md:grid-cols-2">
-          {backendRules.map((rule, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-white/[0.08] dark:bg-slate-950">
-              <pre className="whitespace-pre-wrap font-sans text-secondary">{JSON.stringify(rule, null, 2)}</pre>
-            </div>
-          ))}
-        </div>
-        </InfoPanel>
-      )}
     </div>
   )
 }

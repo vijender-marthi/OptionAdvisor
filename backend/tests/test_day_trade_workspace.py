@@ -399,6 +399,7 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual(structure["id"], "market-structure-5m")
         self.assertGreaterEqual(len(structure["pivots"]), 3)
         self.assertLessEqual(len(structure["pivots"]), 15)
+        self.assertIn("provisionalPivot", structure)
         self.assertTrue(all(pivot["confirmed"] for pivot in structure["pivots"]))
         self.assertTrue(structure["pivots"][-1]["latest"])
 
