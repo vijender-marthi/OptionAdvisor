@@ -53,6 +53,8 @@ type SortKey = 'ticker' | 'dte' | 'entryPrice' | 'max_profit' | 'max_loss' | 'pn
 type PositionCategory = 'all' | 'options' | 'stocks'
 
 const SHARES_PER_OPTION_CONTRACT = 100
+const QUICK_ENTRY_TEMPLATE = 'CALL AAPL JUL 24 2026 $330 (100 SHS)'
+const BROKER_CONTRACT_TEMPLATE = 'Buy to Open\n1 Contract AAPL Jul 24 2026 330 Call\nFilled at $2.86'
 
 const MONTH_ABBR: Record<string, string> = {
   JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',
@@ -74,9 +76,9 @@ function parseQuickEntryText(text: string): {
   if (!typeMatch) return null
   const optionType = typeMatch[1] as 'CALL' | 'PUT'
 
-  const tickerMatch = upper.match(/\(([A-Z]{1,6})\)/)
+  const tickerMatch = upper.match(/\(([A-Z]{1,6})\)|\b(?:CALL|PUT)\s+([A-Z]{1,6})\b/i)
   if (!tickerMatch) return null
-  const ticker = tickerMatch[1]
+  const ticker = (tickerMatch[1] || tickerMatch[2]).toUpperCase()
 
   const monthMatch = upper.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+(\d{1,2})\s+(\d{2,4})\b/i)
   if (!monthMatch) return null
@@ -96,7 +98,9 @@ function parseQuickEntryText(text: string): {
   // Company name: text between ticker ) and the month abbreviation
   const tickerEnd = tickerMatch.index! + tickerMatch[0].length
   const monthStart = monthMatch.index!
-  const companyName = text.slice(tickerEnd, monthStart).replace(/[()]/g, '').trim()
+  const companyName = tickerMatch[1]
+    ? text.slice(tickerEnd, monthStart).replace(/[()]/g, '').trim()
+    : ''
 
   return { optionType, ticker, companyName, expiry, strike, shares }
 }
@@ -3446,7 +3450,7 @@ function AddPositionModal({
     ...emptyForm(),
     tradeSource: sourceOptions[0]?.id ?? 'regular',
   }))
-  const [brokerText, setBrokerText] = useState('')
+  const [brokerText, setBrokerText] = useState(BROKER_CONTRACT_TEMPLATE)
   const [brokerParseError, setBrokerParseError] = useState('')
   const [brokerImporting, setBrokerImporting] = useState(false)
 
@@ -3579,7 +3583,7 @@ function AddPositionModal({
     })
   }
 
-  const [quickText, setQuickText] = useState('')
+  const [quickText, setQuickText] = useState(QUICK_ENTRY_TEMPLATE)
   const [quickParsed, setQuickParsed] = useState<ReturnType<typeof parseQuickEntryText>>(null)
   const [quickPrice, setQuickPrice] = useState('')
   const [quickMargin, setQuickMargin] = useState('')
@@ -3638,7 +3642,7 @@ function AddPositionModal({
               className="w-full min-h-[60px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-primary outline-none placeholder:text-tertiary focus:border-emerald-500 dark:border-white/[0.08] dark:bg-slate-800"
               value={quickText}
               onChange={e => { setQuickText(e.target.value); setQuickParsed(null) }}
-              placeholder={'CALL (NVDA) NVIDIA CORPORATION JUL 31 26 $205 (100 SHS)'}
+              placeholder={QUICK_ENTRY_TEMPLATE}
             />
             <button type="button" onClick={handleParseQuick} disabled={!quickText.trim()}
               className={`${getActionButtonClass('trade')} mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50`}>
@@ -3711,7 +3715,7 @@ function AddPositionModal({
               <button
                 type="button"
                 onClick={() => handleImportBrokerContract(true)}
-                disabled={brokerImporting || !brokerText.trim()}
+                disabled={brokerImporting || !brokerText.trim() || brokerText.trim() === BROKER_CONTRACT_TEMPLATE}
                 className={`${getActionButtonClass('trade')} rounded-lg px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 {brokerImporting ? 'Reading...' : 'Add Contract'}

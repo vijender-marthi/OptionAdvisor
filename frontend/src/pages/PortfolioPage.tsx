@@ -64,6 +64,7 @@ function findStrikeRow(chain: OptionRow[], strike: number): OptionRow | undefine
 
 /** US equity options: premium is per share of underlying; one contract = 100 shares. */
 const SHARES_PER_OPTION_CONTRACT = 100
+const BROKER_CONTRACT_TEMPLATE = 'Buy to Open\n1 Contract AAPL Jul 24 2026 330 Call\nFilled at $2.86'
 
 /**
  * Per-share mark-to-market vs entry leg mids using current chain mids (same expiry row as cached analysis).
@@ -369,7 +370,7 @@ function ManualPositionEditor({
   const [notes,           setNotes]          = useState('')
   const [legStrikes,      setLegStrikes]     = useState<string[]>(['', '', '', ''])
   const [legPremiums,     setLegPremiums]    = useState<string[]>(['', '', '', ''])
-  const [brokerText,      setBrokerText]     = useState('')
+  const [brokerText,      setBrokerText]     = useState(BROKER_CONTRACT_TEMPLATE)
   const [brokerParseError, setBrokerParseError] = useState('')
   const [brokerImporting, setBrokerImporting] = useState(false)
 
@@ -384,7 +385,7 @@ function ManualPositionEditor({
       setNotes('')
       setLegStrikes(['', '', '', ''])
       setLegPremiums(['', '', '', ''])
-      setBrokerText('')
+      setBrokerText(BROKER_CONTRACT_TEMPLATE)
       setBrokerParseError('')
       setBrokerImporting(false)
       return
@@ -400,7 +401,7 @@ function ManualPositionEditor({
     setNotes(initialPosition.notes ?? '')
     setLegStrikes(strikes)
     setLegPremiums(premiums)
-    setBrokerText('')
+    setBrokerText(BROKER_CONTRACT_TEMPLATE)
     setBrokerParseError('')
     setBrokerImporting(false)
   }, [initialPosition])
@@ -554,7 +555,7 @@ function ManualPositionEditor({
             <button
               type="button"
               onClick={() => handleImportBrokerContract(true)}
-              disabled={brokerImporting || !brokerText.trim()}
+              disabled={brokerImporting || !brokerText.trim() || brokerText.trim() === BROKER_CONTRACT_TEMPLATE}
               className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-gray-700"
             >
               {brokerImporting ? 'Reading...' : 'Add Contract'}
