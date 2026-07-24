@@ -289,6 +289,115 @@ def _five_minute_bars_for_structure(chart_bars: list[Any]) -> list[dict[str, Any
     return _interval_chart_bars(chart_bars, "5m")
 
 
+def _flag_pattern_overlay(chart_bars: list[Any], interval: str) -> dict[str, Any] | None:
+    """Detect one conservative, backend-owned Bull/Bear Flag overlay.
+
+    This is intentionally a display annotation, not a new entry signal.  It
+    needs a directional pole, a contained counter-trend flag, and a separate
+    volume-confirmed breakout before it is called confirmed.
+    """
+    if interval not in {"1m", "5m", "15m"}:
+        return None
+    bars = _chart_candles(chart_bars)[-8:]
+    if len(bars) < 8:
+        return None
+
+    pole = bars[:4]
+    flag = bars[4:7]
+    trigger = bars[7]
+    pole_open = pole[0]["open"]
+    pole_close = pole[-1]["close"]
+    pole_move = pole_close - pole_open
+    average_range = sum(max(0.0, bar["high"] - bar["low"]) for bar in bars) / len(bars)
+    minimum_pole = max(average_range * 2.0, abs(pole_open) * 0.0015)
+    if abs(pole_move) < minimum_pole:
+        return None
+
+    flag_high = max(bar["high"] for bar in flag)
+    flag_low = min(bar["low"] for bar in flag)
+    flag_height = flag_high - flag_low
+    flag_start_close = flag[0]["close"]
+    flag_end_close = flag[-1]["close"]
+    flag_volume = sum(bar["volume"] for bar in flag) / len(flag)
+    volume_confirmed = trigger["volume"] >= flag_volume * 1.15 if flag_volume > 0 else False
+
+    bullish = pole_move > 0
+    pullback_move = flag_end_close - pole_close
+    within_retrace = abs(pullback_move) <= abs(pole_move) * 0.68
+    contained = flag_height <= abs(pole_move) * 0.72
+    counter_trend = flag_end_close <= flag_start_close if bullish else flag_end_close >= flag_start_close
+    if not within_retrace or not contained or not counter_trend:
+        return None
+
+    if bullish:
+        confirmed = trigger["close"] > flag_high and volume_confirmed
+        breakout_level = flag_high
+        stop_level = flag_low
+        target_level = breakout_level + abs(pole_move)
+        label = "Bull Flag"
+        direction = "bullish"
+        tone = "positive"
+        pole_start_price = pole[0]["low"]
+        pole_end_price = pole[-1]["high"]
+    else:
+        confirmed = trigger["close"] < flag_low and volume_confirmed
+        breakout_level = flag_low
+        stop_level = flag_high
+        target_level = breakout_level - abs(pole_move)
+        label = "Bear Flag"
+        direction = "bearish"
+        tone = "danger"
+        pole_start_price = pole[0]["high"]
+        pole_end_price = pole[-1]["low"]
+
+    status = "CONFIRMED" if confirmed else "FORMING"
+    confidence = 0.78 if confirmed else 0.58
+    detail = (
+        f"{label} breakout closed beyond the flag rail with volume confirmation."
+        if confirmed
+        else f"{label} is forming; wait for a close beyond the flag rail with volume."
+    )
+    return {
+        "id": "continuation-flag",
+        "label": label,
+        "direction": direction,
+        "status": status,
+        "tone": tone,
+        "confidence": confidence,
+        "detail": detail,
+        "breakoutLevel": round(breakout_level, 4),
+        "stopLevel": round(stop_level, 4),
+        "targetLevel": round(target_level, 4),
+        "visibleByDefault": True,
+        "segments": [
+            {
+                "id": "pole",
+                "fromTimestamp": pole[0]["time"],
+                "fromPrice": round(pole_start_price, 4),
+                "toTimestamp": pole[-1]["time"],
+                "toPrice": round(pole_end_price, 4),
+                "role": "pole",
+            },
+            {
+                "id": "flag-upper",
+                "fromTimestamp": flag[0]["time"],
+                "fromPrice": round(flag[0]["high"], 4),
+                "toTimestamp": flag[-1]["time"],
+                "toPrice": round(flag[-1]["high"], 4),
+                "role": "flag_upper",
+            },
+            {
+                "id": "flag-lower",
+                "fromTimestamp": flag[0]["time"],
+                "fromPrice": round(flag[0]["low"], 4),
+                "toTimestamp": flag[-1]["time"],
+                "toPrice": round(flag[-1]["low"], 4),
+                "role": "flag_lower",
+            },
+        ],
+    }
+
+
 DAY_STRUCTURE_LEFT_BARS = 2
 DAY_STRUCTURE_RIGHT_BARS = 2
 DAY_STRUCTURE_MIN_MOVE_PCT = 0.0005
@@ -1526,6 +1635,7 @@ def build_day_trade_workspace_response(
     chart_bars = _interval_chart_bars(raw_chart_bars, interval)
     candles = _chart_candles(chart_bars)
     vwap_overlay = _vwap_overlay(chart_bars, metrics, session_date)
+    pattern_overlay = _flag_pattern_overlay(chart_bars, interval)
     levels = _chart_levels(metrics, entry_guidance, risk_levels)
     events: list[dict[str, Any]] = []
     scale_level_ids = [level["id"] for level in levels if level.get("affectsTradeFocusScale")]
@@ -1615,6 +1725,7 @@ def build_day_trade_workspace_response(
             "events": events,
             "vwapOverlay": vwap_overlay,
             "marketStructure": market_structure,
+            "patternOverlay": pattern_overlay,
             "defaults": {
                 "interval": interval if interval in {"1m", "5m", "15m", "1h"} else "1m",
                 "visibleRange": "1h",
@@ -1629,6 +1740,7 @@ def build_day_trade_workspace_response(
                     *[level["id"] for level in levels if level.get("visibleByDefault")],
                     *([vwap_overlay["id"]] if vwap_overlay.get("visibleByDefault") else []),
                     *([market_structure["id"]] if market_structure.get("visibleByDefault") else []),
+                    *([pattern_overlay["id"]] if pattern_overlay and pattern_overlay.get("visibleByDefault") else []),
                 ],
             },
             "tradeFocus": {
@@ -1652,88 +1764,6 @@ def build_day_trade_workspace_response(
             "ruleSetVersion": "day-trade-workspace-assembler-2026.07",
             "dataAsOf": metrics.get("data_debug_snapshot", {}).get("lastCandleTime") if isinstance(metrics.get("data_debug_snapshot"), dict) else None,
             "sourceIds": ["day_trade.run_day_trade_scan", "decision_resolver.resolve_trade_decision"],
-        },
-    }
-
-
-def build_position_session_chart_response(
-    *,
-    symbol: str,
-    company_name: str | None,
-    chart_bars: list[Any],
-    interval: str = "5m",
-) -> dict[str, Any]:
-    """Build a backend-owned Position Trading session chart DTO."""
-    generated_at = _now_iso()
-    interval_value = interval if interval in {"1m", "5m", "15m", "1h"} else "5m"
-    last_bar = chart_bars[-1] if chart_bars and isinstance(chart_bars[-1], dict) else {}
-    last_price = _num(last_bar.get("c", last_bar.get("close")))
-    metrics = {
-        "last_price": last_price,
-        "vwap": _num(last_bar.get("vwap")),
-        "session_date": str(last_bar.get("sessionDate") or date.today().isoformat()),
-        "confidence": None,
-    }
-    market_structure = _market_structure(chart_bars, metrics)
-    interval_bars = _interval_chart_bars(chart_bars, interval_value)
-    candles = _chart_candles(interval_bars)
-    vwap_overlay = _vwap_overlay(interval_bars, metrics, None)
-    visible_ids = []
-    if vwap_overlay.get("visibleByDefault"):
-        visible_ids.append(vwap_overlay["id"])
-    if market_structure.get("visibleByDefault"):
-        visible_ids.append(market_structure["id"])
-
-    return {
-        "schemaVersion": DAY_TRADE_WORKSPACE_SCHEMA_VERSION,
-        "generatedAt": generated_at,
-        "symbol": {
-            "ticker": symbol.upper(),
-            "companyName": company_name or symbol.upper(),
-            "price": _display_money(last_price),
-            "changeAmount": _display_signed_money(None),
-            "change": _display_percent(None),
-        },
-        "session": {
-            "mode": "position_review",
-            "status": _status("SEVEN_DAY", "7 Day Session Chart", "info"),
-            "sessionDate": str(metrics["session_date"]),
-            "displayDate": "Last 7 trading days",
-            "marketTimeZone": "America/New_York",
-            "isExecutionAllowed": False,
-            "reviewCopy": "Position Trading chart view. Trade decisions remain owned by the Position Trading engine.",
-        },
-        "chart": {
-            "candles": candles,
-            "levels": [],
-            "events": [],
-            "vwapOverlay": vwap_overlay,
-            "marketStructure": market_structure,
-            "defaults": {
-                "interval": interval_value,
-                "visibleRange": "1h",
-                "initialVisibleBars": 84,
-                "initialBarSpacing": 10,
-                "minBarSpacing": 3,
-                "maxBarSpacing": 20,
-                "rightOffsetBars": 6,
-                "scaleMode": "trade_focus",
-                "followLive": True,
-                "visibleOverlayIds": visible_ids,
-            },
-            "tradeFocus": {
-                "scalePaddingPercent": 8,
-                "levelIdsAllowedToAffectScale": [],
-            },
-        },
-        "structureSummary": {
-            "trend": market_structure.get("trend"),
-            "display": market_structure.get("display"),
-            "sequence": market_structure.get("sequence", []),
-            "expectedNext": market_structure.get("expectedNext"),
-            "confidence": market_structure.get("confidence"),
-            "invalidationLevel": market_structure.get("invalidationLevel"),
-            "explanation": market_structure.get("explanation"),
         },
     }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { analyzeOptions, fetchPositionSessionChart } from '../api/client'
-import type { PositionSessionChartResponse } from '../api/client'
+import type { PositionSwingChartResponse } from '../api/client'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import type { AnalyzeResponse, StrategyMode } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -10,7 +10,6 @@ import type {
   CenterTab,
   RecListTab,
   SidebarTab,
-  ChartInterval,
   SortField,
   DEFAULT_FILTERS,
 } from '../types/positionTrading'
@@ -32,7 +31,6 @@ function createInitialState(): PositionTradingViewState {
     sidebarTab: 'my-tickers',
     centerTab: 'overview',
     recListTab: 'list',
-    chartInterval: '5m',
     filters: {
       strategy: 'all',
       timeHorizon: 'all',
@@ -53,7 +51,7 @@ function createInitialState(): PositionTradingViewState {
 export function usePositionTrading() {
   const { tickerCache, getCached, setCached, isMarketHours } = useApp()
   const [state, setState] = useState<PositionTradingViewState>(createInitialState)
-  const [positionChart, setPositionChart] = useState<PositionSessionChartResponse | null>(null)
+  const [positionChart, setPositionChart] = useState<PositionSwingChartResponse | null>(null)
   const [positionChartLoading, setPositionChartLoading] = useState(false)
   const [positionChartError, setPositionChartError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
@@ -148,7 +146,6 @@ export function usePositionTrading() {
       try {
         const response = await fetchPositionSessionChart({
           symbol: state.selectedSymbol,
-          interval: state.chartInterval,
           forceRefresh: false,
         })
         if (!cancelled) {
@@ -165,7 +162,7 @@ export function usePositionTrading() {
     }
     void load()
     return () => { cancelled = true }
-  }, [state.selectedSymbol, state.chartInterval])
+  }, [state.selectedSymbol])
 
   const refreshAnalysis = useCallback(async () => {
     if (!state.selectedSymbol) return

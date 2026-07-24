@@ -10,7 +10,7 @@ import {
   Eye, EyeOff,
 } from 'lucide-react'
 import { analyzeOptions, fetchPositionSessionChart } from '../api/client'
-import type { PositionSessionChartResponse } from '../api/client'
+import type { PositionSwingChartResponse } from '../api/client'
 import type { AnalyzeResponse, Recommendation, Signals, StrategyMode } from '../types'
 import { useApp } from '../contexts/AppContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
@@ -26,7 +26,7 @@ import type {
 } from '../types/positionTrading'
 
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
-import DayTradeWorkspaceChart from '../components/DayTradeWorkspaceChart'
+import PositionSwingChart from '../components/PositionSwingChart'
 
 const stateStatus = (rec: { status?: string }): RecommendationState =>
   (['GO', 'WAIT', 'CAUTION', 'AVOID'] as RecommendationState[]).includes(rec.status as RecommendationState)
@@ -1140,8 +1140,7 @@ export default function TickerPage() {
   const [strategyGuideOpen, setStrategyGuideOpen] = useState(false)
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
   const [centerTab, setCenterTab] = useState<'recommendations' | 'chart' | 'flow' | 'levels'>('recommendations')
-  const [chartInterval, setChartInterval] = useState<'1m' | '5m' | '15m' | '1h'>('5m')
-  const [positionChart, setPositionChart] = useState<PositionSessionChartResponse | null>(null)
+  const [positionChart, setPositionChart] = useState<PositionSwingChartResponse | null>(null)
   const [positionChartLoading, setPositionChartLoading] = useState(false)
   const [positionChartError, setPositionChartError] = useState('')
 
@@ -1306,7 +1305,6 @@ export default function TickerPage() {
     try {
       const response = await fetchPositionSessionChart({
         symbol: selectedSymbol,
-        interval: chartInterval,
         forceRefresh,
       })
       setPositionChart(response)
@@ -1316,7 +1314,7 @@ export default function TickerPage() {
     } finally {
       setPositionChartLoading(false)
     }
-  }, [selectedSymbol, chartInterval])
+  }, [selectedSymbol])
 
   useEffect(() => {
     if (centerTab === 'chart' && selectedSymbol) void loadPositionChart()
@@ -1493,33 +1491,18 @@ export default function TickerPage() {
             <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface-card">
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
                 <div>
-                  <h2 className="text-sm font-bold text-text-primary">Session Chart</h2>
-                  <p className="mt-0.5 text-[11px] text-text-tertiary">Backend-supplied intraday price structure and volume.</p>
+                  <h2 className="text-sm font-bold text-text-primary">Position Chart</h2>
+                  <p className="mt-0.5 text-[11px] text-text-tertiary">Backend-supplied swing structure across daily, weekly, and monthly views.</p>
                 </div>
-                <div className="flex items-center gap-1">
-                  {(['1m', '5m', '15m', '1h'] as const).map(interval => (
-                    <button
-                      key={interval}
-                      type="button"
-                      onClick={() => setChartInterval(interval)}
-                      className={`rounded px-2 py-1 font-mono text-[10px] font-bold transition-colors ${
-                        chartInterval === interval
-                          ? 'bg-semantic-accent text-white'
-                          : 'text-text-tertiary hover:bg-surface-muted hover:text-text-primary'
-                      }`}
-                    >
-                      {interval}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => void loadPositionChart(true)}
-                    className="ml-1 rounded p-1 text-text-tertiary transition-colors hover:bg-surface-muted hover:text-text-primary"
-                    title="Refresh session chart"
-                  >
-                    <RefreshCw size={14} />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadPositionChart(true)}
+                  className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-muted hover:text-text-primary"
+                  title="Refresh position chart"
+                  aria-label="Refresh position chart"
+                >
+                  <RefreshCw size={14} />
+                </button>
               </div>
               <div className="min-h-[360px] flex-1 p-3">
                 {positionChartLoading && !positionChart && (
@@ -1533,13 +1516,7 @@ export default function TickerPage() {
                 )}
                 {positionChart && (
                   <div className="h-full overflow-hidden rounded-lg border border-border bg-surface-canvas">
-                    <DayTradeWorkspaceChart
-                      chart={positionChart.chart}
-                      marketTimeZone={positionChart.session.marketTimeZone}
-                      activeInterval={chartInterval}
-                      onIntervalChange={setChartInterval}
-                      rangeOptions={['1h', '2h', '7d']}
-                    />
+                    <PositionSwingChart chart={positionChart} />
                   </div>
                 )}
                 {!positionChartLoading && !positionChart && !positionChartError && (

@@ -333,6 +333,29 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual(overlay["points"][-1]["state"], "forming")
         self.assertEqual(overlay["latestValue"], 101.4091)
 
+    def test_chart_returns_confirmed_bull_flag_overlay(self) -> None:
+        bars = [
+            {"t": f"2026-07-09T09:{30 + index:02d}:00-04:00", "o": open_, "h": high, "l": low, "c": close, "v": volume, "vwap": close}
+            for index, (open_, high, low, close, volume) in enumerate([
+                (100, 101, 99, 101, 1000),
+                (101, 103, 100, 103, 1000),
+                (103, 105, 102, 105, 1000),
+                (105, 107, 104, 106.5, 1000),
+                (106.5, 107, 105.5, 106, 700),
+                (106, 106.5, 105, 105.7, 650),
+                (105.7, 106, 104.8, 105.5, 600),
+                (105.5, 108, 105.4, 107.5, 1200),
+            ])
+        ]
+        workspace = _workspace("READY", metric_overrides={"chart_bars": bars, "vwap": 105.5})
+
+        overlay = workspace["chart"]["patternOverlay"]
+        self.assertIsNotNone(overlay)
+        self.assertEqual(overlay["label"], "Bull Flag")
+        self.assertEqual(overlay["status"], "CONFIRMED")
+        self.assertEqual(len(overlay["segments"]), 3)
+        self.assertIn(overlay["id"], workspace["chart"]["defaults"]["visibleOverlayIds"])
+
     def test_interval_chart_uses_bucket_close_vwap_not_average(self) -> None:
         bars = [
             {"t": "2026-07-09T09:30:00-04:00", "o": 100, "h": 101, "l": 99, "c": 100.5, "v": 1000, "vwap": 100.1667},

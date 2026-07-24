@@ -337,8 +337,6 @@ export function TradeDecisionHeader({
   onToggleBottomDock?: () => void
   onOpenAllWidgets?: () => void
 }) {
-  const [moreOpen, setMoreOpen] = useState(false)
-  const secondaryActions = workspace.decision.secondaryActions || []
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-2 py-1 dark:border-white/[0.07]">
       <div className="min-w-0">
@@ -407,56 +405,20 @@ export function TradeDecisionHeader({
             <span className="hidden sm:inline">Expand All</span>
           </button>
         )}
-        <button
-          type="button"
-          disabled={!action.enabled}
-          onClick={() => onAction?.(action)}
-          className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-black uppercase tracking-wide transition ${
-            action.enabled
-              ? 'bg-violet-600 text-white hover:bg-violet-500'
-              : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-tertiary dark:border-white/[0.08] dark:bg-slate-900'
-          }`}
-          title={action.disabledReason || action.label}
-        >
-          {action.label}
-        </button>
-        {secondaryActions.length > 0 && (
-          <>
-            <button
-              type="button"
-              onClick={() => setMoreOpen(cur => !cur)}
-              className="shrink-0 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-black text-secondary hover:border-violet-400 dark:border-white/[0.08]"
-              aria-haspopup="menu"
-              aria-expanded={moreOpen}
-            >
-              More
-            </button>
-            {moreOpen && (
-              <div className="absolute right-0 top-11 z-20 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-slate-950" role="menu">
-                {secondaryActions.map(item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled={!item.enabled}
-                    onClick={() => {
-                      setMoreOpen(false)
-                      onAction?.(item)
-                    }}
-                    className={`flex w-full flex-col rounded-lg px-3 py-2 text-left text-xs ${
-                      item.enabled
-                        ? 'text-secondary hover:bg-slate-50 dark:hover:bg-slate-900'
-                        : 'cursor-not-allowed text-tertiary opacity-70'
-                    }`}
-                    title={item.disabledReason || item.label}
-                    role="menuitem"
-                  >
-                    <span className="font-black">{item.label}</span>
-                    {!item.enabled && item.disabledReason && <span className="mt-0.5 text-[10px]">{item.disabledReason}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
+        {action.label !== 'Create Trigger Alert' && (
+          <button
+            type="button"
+            disabled={!action.enabled}
+            onClick={() => onAction?.(action)}
+            className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-black uppercase tracking-wide transition ${
+              action.enabled
+                ? 'bg-violet-600 text-white hover:bg-violet-500'
+                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-tertiary dark:border-white/[0.08] dark:bg-slate-900'
+            }`}
+            title={action.disabledReason || action.label}
+          >
+            {action.label}
+          </button>
         )}
       </div>
     </div>

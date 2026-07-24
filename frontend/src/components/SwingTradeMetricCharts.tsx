@@ -105,6 +105,9 @@ export function parseChartPayload(raw: unknown): SwingTradeChartPoint[] | null {
     out.push({
       d,
       c,
+      o: typeof o.o === 'number' ? o.o : o.o === null ? null : undefined,
+      h: typeof o.h === 'number' ? o.h : o.h === null ? null : undefined,
+      l: typeof o.l === 'number' ? o.l : o.l === null ? null : undefined,
       ma20: typeof o.ma20 === 'number' ? o.ma20 : o.ma20 === null ? null : undefined,
       ma50: typeof o.ma50 === 'number' ? o.ma50 : o.ma50 === null ? null : undefined,
       rsi: typeof o.rsi === 'number' ? o.rsi : o.rsi === null ? null : undefined,

@@ -525,7 +525,7 @@ export type DayTradeWorkspaceAction = ApiSchemas['DayTradeWorkspaceAction']
 
 type DayTradeWorkspaceChart = Omit<
   ApiSchemas['DayTradeChartView'],
-  'candles' | 'defaults' | 'events' | 'levels' | 'marketStructure' | 'tradeFocus' | 'vwapOverlay'
+  'candles' | 'defaults' | 'events' | 'levels' | 'marketStructure' | 'patternOverlay' | 'tradeFocus' | 'vwapOverlay'
 > & {
   candles: ApiSchemas['DayTradeChartCandleView'][]
   levels: ApiSchemas['DayTradeChartLevelView'][]
@@ -580,6 +580,27 @@ type DayTradeWorkspaceChart = Omit<
     visibleByDefault: boolean
     showZigZagByDefault: boolean
     explanation?: string | null
+  } | null
+  patternOverlay?: {
+    id: string
+    label: string
+    direction: string
+    status: string
+    tone: DayTradeSemanticTone
+    confidence: number
+    detail: string
+    breakoutLevel: number
+    stopLevel: number
+    targetLevel: number
+    visibleByDefault: boolean
+    segments: Array<{
+      id: string
+      fromTimestamp: string
+      fromPrice: number
+      toTimestamp: string
+      toPrice: number
+      role: string
+    }>
   } | null
   vwapOverlay?: (Omit<ApiSchemas['DayTradeVwapOverlayView'], 'points'> & {
     points: ApiSchemas['DayTradeVwapPointView'][]
@@ -799,19 +820,34 @@ export interface DayTradeWorkspaceQuery {
   forceRefresh?: boolean
 }
 
-export type PositionSessionChartResponse = Pick<
-  DayTradeWorkspaceResponse,
-  'schemaVersion' | 'generatedAt' | 'symbol' | 'session' | 'chart'
-> & {
-  structureSummary?: {
-    trend?: string | null
-    display?: string | null
-    sequence?: string[]
-    expectedNext?: string | null
-    confidence?: number | null
-    invalidationLevel?: number | null
-    explanation?: string | null
+export interface PositionSwingChartPoint {
+  d: string
+  o?: number | null
+  h?: number | null
+  l?: number | null
+  c: number
+  v?: number | null
+  ma20?: number | null
+  ma50?: number | null
+}
+
+export interface PositionSwingChartResponse {
+  schemaVersion: 'position-swing-chart.v1' | string
+  generatedAt: string
+  symbol: {
+    ticker: string
+    companyName: string
+    price: number
+    changeAmount?: number | null
+    changePercent?: number | null
   }
+  chartSeriesByTimeframe: Record<string, {
+    timeframe: string
+    count: number
+    points: PositionSwingChartPoint[]
+    pattern_overlay?: Record<string, unknown> | null
+  }>
+  marketStructure?: Record<string, unknown> | null
 }
 
 const DAY_TRADE_WORKSPACE_SCHEMA_VERSION = 'day-trade-workspace.v1'
@@ -1149,13 +1185,11 @@ export const fetchDayTradeWorkspace = async (query: DayTradeWorkspaceQuery): Pro
 
 export const fetchPositionSessionChart = async (query: {
   symbol: string
-  interval?: '1m' | '5m' | '15m' | '1h'
   forceRefresh?: boolean
-}): Promise<PositionSessionChartResponse> => {
-  const { data } = await api.get<PositionSessionChartResponse>('/position-trade/session-chart', {
+}): Promise<PositionSwingChartResponse> => {
+  const { data } = await api.get<PositionSwingChartResponse>('/position-trade/session-chart', {
     params: {
       symbol: query.symbol.trim().toUpperCase(),
-      interval: query.interval ?? '5m',
       ...(query.forceRefresh ? { force_refresh: true } : {}),
     },
   })
@@ -1217,10 +1251,13 @@ export const getTradeDashboardStory = async (ticker: string, forceRefresh = fals
   return data
 }
 
-/** Single daily point in `metrics.chart_series` from POST /api/swing-trade (bounded tail, ~6 months). */
+/** Single daily point in `metrics.chart_series` from POST /api/swing-trade (bounded tail, ~1 trading year). */
 export interface SwingTradeChartPoint {
   d: string
   c: number
+  o?: number | null
+  h?: number | null
+  l?: number | null
   ma20?: number | null
   ma50?: number | null
   rsi?: number | null

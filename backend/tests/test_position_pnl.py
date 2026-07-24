@@ -6,7 +6,11 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from command_center_router import calculate_position_pnl, _sanitize_iv
+from command_center_router import (
+    _position_option_period_pnl,
+    _sanitize_iv,
+    calculate_position_pnl,
+)
 
 
 class TestSanitizeIV(unittest.TestCase):
@@ -203,6 +207,37 @@ class TestCalculatePositionPnl(unittest.TestCase):
         self.assertEqual(r["mark_source"], "bs_theoretical")
         # BS should produce a positive price for ITM call
         self.assertGreater(r["current_mark_per_share"], 0.0)
+
+
+class TestOptionPeriodPnl(unittest.TestCase):
+    def test_uses_actual_option_marks_for_day_and_week(self):
+        position = {
+            "contracts": 2,
+            "legs": [{"action": "BUY", "option_type": "CALL", "strike": 100}],
+        }
+        current = {"CALL:100.0": (11.0, 13.0, 12.0)}
+        history = {"CALL:100.0": (11.5, 9.0, 8.0)}
+
+        self.assertEqual(
+            _position_option_period_pnl(position, current, history),
+            (600.0, 800.0),
+        )
+
+    def test_rejects_partial_spread_history(self):
+        position = {
+            "contracts": 1,
+            "legs": [
+                {"action": "BUY", "option_type": "CALL", "strike": 100},
+                {"action": "SELL", "option_type": "CALL", "strike": 105},
+            ],
+        }
+        current = {
+            "CALL:100.0": (11.0, 13.0, 12.0),
+            "CALL:105.0": (7.0, 9.0, 8.0),
+        }
+        history = {"CALL:100.0": (11.5, 9.0, 8.0)}
+
+        self.assertIsNone(_position_option_period_pnl(position, current, history))
 
 
 if __name__ == "__main__":

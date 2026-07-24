@@ -1868,8 +1868,8 @@ def compute_playbook_hint(
     return _finalize_playbook_earnings(hint, earnings_days)
 
 
-# Bounded daily series for swing UI charts (JSON-serializable; caps payload size).
-SWING_CHART_MAX_POINTS = 130
+# Bounded daily series for swing UI charts (roughly one trading year).
+SWING_CHART_MAX_POINTS = 252
 
 
 def build_swing_chart_series(
@@ -1879,6 +1879,9 @@ def build_swing_chart_series(
     rsi: pd.Series,
     hv20: pd.Series,
     volume: Optional[pd.Series] = None,
+    open_: Optional[pd.Series] = None,
+    high: Optional[pd.Series] = None,
+    low: Optional[pd.Series] = None,
     *,
     max_points: int = SWING_CHART_MAX_POINTS,
 ) -> dict[str, Any]:
@@ -1887,9 +1890,12 @@ def build_swing_chart_series(
     sessions for front-end Recharts.  ``hv20`` (from ``build_hv_series``) may use a shorter
     index — it is reindexed to ``close`` before sampling.
     """
-    cap = max(20, min(int(max_points), 200))
+    cap = max(20, min(int(max_points), 300))
     hv_a = hv20.reindex(close.index)
     vol_a = volume.reindex(close.index) if volume is not None else None
+    open_a = open_.reindex(close.index) if open_ is not None else None
+    high_a = high.reindex(close.index) if high is not None else None
+    low_a = low.reindex(close.index) if low is not None else None
     n = len(close)
     lo = max(0, n - cap)
 
@@ -1924,6 +1930,9 @@ def build_swing_chart_series(
         points.append({
             "d": d,
             "c": cval,
+            "o": num_price(open_a.iloc[i]) if open_a is not None else None,
+            "h": num_price(high_a.iloc[i]) if high_a is not None else None,
+            "l": num_price(low_a.iloc[i]) if low_a is not None else None,
             "ma20": num_price(ma20.iloc[i]),
             "ma50": num_price(ma50.iloc[i]),
             "rsi": num_rsi_hv(rsi.iloc[i]),
@@ -1934,6 +1943,48 @@ def build_swing_chart_series(
     return {"max_points": cap, "count": len(points), "points": points}
 
 
+def _swing_flag_pattern_overlay(points: list[dict[str, Any]], timeframe: str) -> dict[str, Any] | None:
+    """Return one conservative Bull/Bear Flag display annotation from OHLC bars."""
+    if timeframe not in {"Daily", "Weekly"} or len(points) < 8:
+        return None
+    bars = points[-8:]
+    if any(not isinstance(bar.get("o"), (int, float)) or not isinstance(bar.get("h"), (int, float)) or not isinstance(bar.get("l"), (int, float)) for bar in bars):
+        return None
+    pole, flag, trigger = bars[:4], bars[4:7], bars[7]
+    pole_move = float(pole[-1]["c"]) - float(pole[0]["o"])
+    average_range = sum(float(bar["h"]) - float(bar["l"]) for bar in bars) / len(bars)
+    if abs(pole_move) < max(average_range * 2.0, abs(float(pole[0]["o"])) * 0.015):
+        return None
+    bullish = pole_move > 0
+    flag_high = max(float(bar["h"]) for bar in flag)
+    flag_low = min(float(bar["l"]) for bar in flag)
+    flag_height = flag_high - flag_low
+    counter_trend = float(flag[-1]["c"]) <= float(flag[0]["c"]) if bullish else float(flag[-1]["c"]) >= float(flag[0]["c"])
+    retrace = abs(float(flag[-1]["c"]) - float(pole[-1]["c"]))
+    if not counter_trend or flag_height > abs(pole_move) * 0.72 or retrace > abs(pole_move) * 0.68:
+        return None
+    flag_volume = sum(float(bar.get("v") or 0) for bar in flag) / len(flag)
+    volume_confirmed = float(trigger.get("v") or 0) >= flag_volume * 1.15 if flag_volume > 0 else False
+    confirmed = float(trigger["c"]) > flag_high and volume_confirmed if bullish else float(trigger["c"]) < flag_low and volume_confirmed
+    breakout = flag_high if bullish else flag_low
+    return {
+        "id": "continuation_pattern",
+        "label": "Bull Flag" if bullish else "Bear Flag",
+        "direction": "bullish" if bullish else "bearish",
+        "status": "CONFIRMED" if confirmed else "FORMING",
+        "confidence": 78 if confirmed else 58,
+        "detail": "Breakout confirmed with volume." if confirmed else "Wait for a close beyond the flag rail with volume.",
+        "breakout": round(breakout, 4),
+        "stop": round(flag_low if bullish else flag_high, 4),
+        "target": round(breakout + abs(pole_move) if bullish else breakout - abs(pole_move), 4),
+        "segments": [
+            {"role": "pole", "from": pole[0]["d"], "fromPrice": round(float(pole[0]["l"] if bullish else pole[0]["h"]), 4), "to": pole[-1]["d"], "toPrice": round(float(pole[-1]["h"] if bullish else pole[-1]["l"]), 4)},
+            {"role": "flag_upper", "from": flag[0]["d"], "fromPrice": round(float(flag[0]["h"]), 4), "to": flag[-1]["d"], "toPrice": round(float(flag[-1]["h"]), 4)},
+            {"role": "flag_lower", "from": flag[0]["d"], "fromPrice": round(float(flag[0]["l"]), 4), "to": flag[-1]["d"], "toPrice": round(float(flag[-1]["l"]), 4)},
+        ],
+    }
+
+
 def build_swing_chart_timeframe_series(
     raw: pd.DataFrame,
     timeframe: str,
@@ -1942,15 +1993,27 @@ def build_swing_chart_timeframe_series(
     if raw is None or raw.empty or "Close" not in raw.columns:
         return {"timeframe": timeframe, "max_points": 0, "count": 0, "points": []}
 
-    frame = raw.sort_index().dropna(subset=["Close"])[[column for column in ("Close", "Volume") if column in raw.columns]].copy()
+    frame = raw.sort_index().dropna(subset=["Close"])[[column for column in ("Open", "High", "Low", "Close", "Volume") if column in raw.columns]].copy()
     if timeframe == "Weekly":
         aggregations: dict[str, str] = {"Close": "last"}
+        if "Open" in frame.columns:
+            aggregations["Open"] = "first"
+        if "High" in frame.columns:
+            aggregations["High"] = "max"
+        if "Low" in frame.columns:
+            aggregations["Low"] = "min"
         if "Volume" in frame.columns:
             aggregations["Volume"] = "sum"
         frame = frame.resample("W-FRI").agg(aggregations).dropna(subset=["Close"])
         max_points = 104
     elif timeframe == "Monthly":
         aggregations = {"Close": "last"}
+        if "Open" in frame.columns:
+            aggregations["Open"] = "first"
+        if "High" in frame.columns:
+            aggregations["High"] = "max"
+        if "Low" in frame.columns:
+            aggregations["Low"] = "min"
         if "Volume" in frame.columns:
             aggregations["Volume"] = "sum"
         frame = frame.resample("ME").agg(aggregations).dropna(subset=["Close"])
@@ -1971,9 +2034,12 @@ def build_swing_chart_timeframe_series(
         rsi,
         hv20,
         frame["Volume"].astype(float) if "Volume" in frame.columns else None,
+        frame["Open"].astype(float) if "Open" in frame.columns else None,
+        frame["High"].astype(float) if "High" in frame.columns else None,
+        frame["Low"].astype(float) if "Low" in frame.columns else None,
         max_points=max_points,
     )
-    return {"timeframe": timeframe, **payload}
+    return {"timeframe": timeframe, **payload, "pattern_overlay": _swing_flag_pattern_overlay(payload["points"], timeframe)}
 
 
 def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> dict[str, Any]:

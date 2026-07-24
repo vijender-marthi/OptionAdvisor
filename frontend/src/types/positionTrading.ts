@@ -4,7 +4,6 @@ import type { MyTickerEntry } from '../api/commandCenter'
 export type CenterTab = 'overview' | 'chart' | 'key-levels' | 'flow' | 'news'
 export type RecListTab = 'list' | 'performance' | 'history'
 export type SidebarTab = 'my-tickers' | 'markets'
-export type ChartInterval = '1m' | '5m' | '15m'
 export type SortField = 'symbol' | 'price' | 'change' | 'confidence' | 'state'
 
 export interface FilterState {
@@ -79,7 +78,6 @@ export interface PositionTradingViewState {
   sidebarTab: SidebarTab
   centerTab: CenterTab
   recListTab: RecListTab
-  chartInterval: ChartInterval
   filters: FilterState
   sortField: SortField
   sortAsc: boolean
@@ -97,7 +95,6 @@ export interface PositionTradingActions {
   setSidebarTab: (tab: SidebarTab) => void
   setCenterTab: (tab: CenterTab) => void
   setRecListTab: (tab: RecListTab) => void
-  setChartInterval: (interval: ChartInterval) => void
   setFilters: (filters: FilterState) => void
   setSortField: (field: SortField) => void
   setSortAsc: (asc: boolean) => void

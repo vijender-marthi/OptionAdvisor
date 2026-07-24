@@ -70,6 +70,24 @@ class SwingChartSeriesTests(unittest.TestCase):
         self.assertEqual(weekly["points"][-1]["c"], 160.0)
         self.assertEqual(monthly["points"][-1]["c"], 160.0)
 
+    def test_daily_series_returns_backend_bull_flag_annotation(self) -> None:
+        idx = pd.date_range("2026-01-05", periods=8, freq="B")
+        raw = pd.DataFrame({
+            "Open": [100, 101, 103, 105, 106.5, 106, 105.7, 105.5],
+            "High": [101, 103, 105, 107, 107, 106.5, 106, 108],
+            "Low": [99, 100, 102, 104, 105.5, 105, 104.8, 105.4],
+            "Close": [101, 103, 105, 106.5, 106, 105.7, 105.5, 107.5],
+            "Volume": [1000, 1000, 1000, 1000, 700, 650, 600, 1200],
+        }, index=idx)
+
+        payload = build_swing_chart_timeframe_series(raw, "Daily")
+
+        overlay = payload["pattern_overlay"]
+        self.assertEqual(overlay["label"], "Bull Flag")
+        self.assertEqual(overlay["status"], "CONFIRMED")
+        self.assertEqual(len(overlay["segments"]), 3)
+        self.assertEqual(payload["points"][-1]["h"], 108.0)
+
 
 if __name__ == "__main__":
     unittest.main()

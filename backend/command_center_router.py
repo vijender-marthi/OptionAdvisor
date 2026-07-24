@@ -586,6 +586,98 @@ def _fetch_live_option_marks(
         return {}
 
 
+def _fetch_option_mark_history(
+    ticker: str, expiry: str, required_keys: set[str],
+) -> dict[str, tuple[float, float, float]]:
+    """Return current-close, prior-close, and Monday-close by option contract.
+
+    Daily and weekly P&L must be based on actual contract marks.  A
+    Black-Scholes reprice is useful as a display fallback for a position, but
+    it is not a valid substitute for a prior option close: volatility and time
+    decay can make that comparison materially wrong.
+    """
+    try:
+        chain = yf.Ticker(ticker).option_chain(expiry)
+        result: dict[str, tuple[float, float, float]] = {}
+        for option_type, rows in (("CALL", chain.calls), ("PUT", chain.puts)):
+            for _, row in rows.iterrows():
+                contract_symbol = str(row.get("contractSymbol") or "").strip()
+                strike = _float_or(row.get("strike"), 0.0)
+                key = f"{option_type}:{strike}"
+                if key not in required_keys or not contract_symbol or strike <= 0:
+                    continue
+                try:
+                    history = yf.Ticker(contract_symbol).history(
+                        period="7d", interval="1d", auto_adjust=False,
+                    )
+                    if history is None or history.empty or "Close" not in history:
+                        continue
+                    closes = history["Close"].dropna()
+                    if len(closes) < 2:
+                        continue
+                    current_close = float(closes.iloc[-1])
+                    prior_close = float(closes.iloc[-2])
+                    week_start = datetime.now(timezone.utc).date() - timedelta(
+                        days=datetime.now(timezone.utc).weekday(),
+                    )
+                    current_week_closes = [
+                        float(value)
+                        for index, value in closes.items()
+                        if getattr(index, "date", lambda: None)() is not None
+                        and index.date() >= week_start
+                    ]
+                    # Holiday weeks may not have a Monday print; use the first
+                    # available close in the current week as the baseline.
+                    monday_close = current_week_closes[0] if current_week_closes else current_close
+                    if current_close > 0 and prior_close >= 0 and monday_close >= 0:
+                        result[key] = (
+                            current_close, prior_close, monday_close,
+                        )
+                except Exception:
+                    continue
+        return result
+    except Exception:
+        return {}
+
+
+def _position_option_period_pnl(
+    position: dict[str, Any],
+    current_marks: dict[str, tuple[float, float, float]],
+    historical_marks: dict[str, tuple[float, float, float]],
+) -> Optional[tuple[float, float]]:
+    """Return verified day/week P&L for an option position, or ``None``.
+
+    Every leg must have a current market mark and historical option closes.
+    Partial spreads are deliberately excluded rather than reporting a blended
+    number from actual and theoretical prices.
+    """
+    contracts = max(1, int(_float_or(position.get("contracts"), 1)))
+    current_value = 0.0
+    prior_value = 0.0
+    monday_value = 0.0
+    for leg in position.get("legs", []):
+        option_type = str(leg.get("option_type", "CALL")).upper()
+        strike = _float_or(leg.get("strike"), 0.0)
+        key = f"{option_type}:{strike}"
+        live = current_marks.get(key)
+        historical = historical_marks.get(key)
+        if live is None or historical is None:
+            return None
+        bid, ask, last = live
+        current_mark = (bid + ask) / 2 if bid > 0 and ask > 0 else last
+        if current_mark <= 0:
+            return None
+        sign = -1.0 if str(leg.get("action", "BUY")).upper() == "SELL" else 1.0
+        current_value += sign * current_mark
+        prior_value += sign * historical[1]
+        monday_value += sign * historical[2]
+    multiplier = 100.0 * contracts
+    return (
+        round((current_value - prior_value) * multiplier, 2),
+        round((current_value - monday_value) * multiplier, 2),
+    )
+
+
 def calculate_position_pnl(
     position: dict[str, Any],
     *,
@@ -936,15 +1028,26 @@ def _compute_positions_pnl(
                 expiry_groups.setdefault((sym, exp), []).append(p)
 
         live_marks: dict[str, dict[str, tuple[float, float, float]]] = {}
-        for (sym, exp), _ in expiry_groups.items():
+        historical_marks: dict[str, dict[str, tuple[float, float, float]]] = {}
+        for (sym, exp), positions in expiry_groups.items():
             marks = _fetch_live_option_marks(sym, exp)
             if marks:
                 live_marks[f"{sym}:{exp}"] = marks
+            required_keys = {
+                f"{str(leg.get('option_type', 'CALL')).upper()}:{_float_or(leg.get('strike'), 0.0)}"
+                for position in positions
+                for leg in position.get("legs", [])
+            }
+            history = _fetch_option_mark_history(sym, exp, required_keys)
+            if history:
+                historical_marks[f"{sym}:{exp}"] = history
 
         mtm_total = 0.0
         day_total = 0.0
         week_total = 0.0
         has_mtm = False
+        has_option_period_pnl = False
+        has_stock_period_pnl = False
 
         for p in all_open_for_pnl:
             sym = str(p.get("ticker", "")).upper()
@@ -964,13 +1067,6 @@ def _compute_positions_pnl(
                 live_option_marks=pos_marks,
                 underlying_price=S_now,
             )
-            # Day P&L from BS only (avoids stale mark cross-contamination)
-            bs_today = calculate_position_pnl(
-                p, live_option_marks=None, underlying_price=S_now,
-            )
-            bs_yesterday = calculate_position_pnl(
-                p, live_option_marks=None, underlying_price=S_prev,
-            )
             pid = str(p.get("id", ""))
             if pid:
                 per_position_pnl[pid] = {
@@ -982,12 +1078,17 @@ def _compute_positions_pnl(
                     "invalid_reason": current_result.get("invalid_reason"),
                 }
             mtm_total += current_result["pnl"]
-            day_total += bs_today["pnl"] - bs_yesterday["pnl"]
-            # Weekly P&L: current BS value minus Monday BS value
-            bs_monday = calculate_position_pnl(
-                p, live_option_marks=None, underlying_price=S_mon,
-            )
-            week_total += bs_today["pnl"] - bs_monday["pnl"]
+            if has_legs:
+                period_pnl = _position_option_period_pnl(
+                    p,
+                    pos_marks or {},
+                    historical_marks.get(exp_key, {}),
+                )
+                if period_pnl is not None:
+                    day_delta, week_delta = period_pnl
+                    day_total += day_delta
+                    week_total += week_delta
+                    has_option_period_pnl = True
             has_mtm = True
 
         # ── Stock P&L (simple: price delta × shares) ──────────────────────────
@@ -1018,6 +1119,7 @@ def _compute_positions_pnl(
             stock_mtm_total  += pnl
             stock_day_total  += d_pnl
             stock_week_total += w_pnl
+            has_stock_period_pnl = True
             has_mtm = True
 
         combined_mtm  = mtm_total  + stock_mtm_total
@@ -1025,16 +1127,17 @@ def _compute_positions_pnl(
         combined_week = week_total + stock_week_total
 
         total_pl    = round(realized_pnl + combined_mtm, 2) if (realized_count > 0 or has_mtm) else None
-        day_pl      = round(combined_day  + today_closed_pnl, 2) if (has_mtm or today_closed_pnl != 0) else None
-        day_pl_pct  = round(((combined_day + today_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or today_closed_pnl != 0) and total_cost_basis > 0 else None
-        week_pl     = round(combined_week + week_closed_pnl, 2) if (has_mtm or week_closed_pnl != 0) else None
-        week_pl_pct = round(((combined_week + week_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or week_closed_pnl != 0) and total_cost_basis > 0 else None
+        has_period_pnl = has_option_period_pnl or has_stock_period_pnl
+        day_pl      = round(combined_day  + today_closed_pnl, 2) if (has_period_pnl or today_closed_pnl != 0) else None
+        day_pl_pct  = round(((combined_day + today_closed_pnl) / total_cost_basis * 100), 2) if (has_period_pnl or today_closed_pnl != 0) and total_cost_basis > 0 else None
+        week_pl     = round(combined_week + week_closed_pnl, 2) if (has_period_pnl or week_closed_pnl != 0) else None
+        week_pl_pct = round(((combined_week + week_closed_pnl) / total_cost_basis * 100), 2) if (has_period_pnl or week_closed_pnl != 0) and total_cost_basis > 0 else None
 
         # Separate per-type metrics for the Stocks tab summary banner
-        options_day_pl  = round(day_total  + today_closed_pnl, 2) if (day_total  != 0 or today_closed_pnl != 0) else None
-        options_week_pl = round(week_total + week_closed_pnl,  2) if (week_total != 0 or week_closed_pnl != 0) else None
-        stocks_day_pl   = round(stock_day_total,  2) if stock_day_total  != 0 else None
-        stocks_week_pl  = round(stock_week_total, 2) if stock_week_total != 0 else None
+        options_day_pl  = round(day_total  + today_closed_pnl, 2) if (has_option_period_pnl or today_closed_pnl != 0) else None
+        options_week_pl = round(week_total + week_closed_pnl,  2) if (has_option_period_pnl or week_closed_pnl != 0) else None
+        stocks_day_pl   = round(stock_day_total,  2) if has_stock_period_pnl else None
+        stocks_week_pl  = round(stock_week_total, 2) if has_stock_period_pnl else None
         stocks_unrealized_pl = round(stock_mtm_total, 2) if stock_open else None
 
         return {

@@ -371,6 +371,30 @@ class DayTradeMarketStructureView(BaseModel):
     explanation: str | None = None
 
 
+class DayTradePatternSegmentView(BaseModel):
+    id: str
+    fromTimestamp: str
+    fromPrice: float
+    toTimestamp: str
+    toPrice: float
+    role: str
+
+
+class DayTradePatternOverlayView(BaseModel):
+    id: str
+    label: str
+    direction: str
+    status: str
+    tone: str
+    confidence: float
+    detail: str
+    breakoutLevel: float
+    stopLevel: float
+    targetLevel: float
+    visibleByDefault: bool = True
+    segments: list[DayTradePatternSegmentView] = Field(default_factory=list)
+
+
 class DayTradeChartDefaultsView(BaseModel):
     interval: str
     visibleRange: str
@@ -395,6 +419,7 @@ class DayTradeChartView(BaseModel):
     events: list[DayTradeChartEventView] = Field(default_factory=list)
     vwapOverlay: DayTradeVwapOverlayView | None = None
     marketStructure: DayTradeMarketStructureView | None = None
+    patternOverlay: DayTradePatternOverlayView | None = None
     defaults: DayTradeChartDefaultsView
     tradeFocus: DayTradeChartTradeFocusView | None = None
 

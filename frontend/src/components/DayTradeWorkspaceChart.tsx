@@ -25,6 +25,15 @@ type VwapRenderPoint = {
   time: string
 }
 
+type PatternRenderSegment = {
+  id: string
+  role: string
+  fromX: number
+  fromY: number
+  toX: number
+  toY: number
+}
+
 type ChartIconButtonProps = {
   label: string
   onClick: () => void
@@ -273,6 +282,21 @@ export default function DayTradeWorkspaceChart({
         return { ...pivot, x, y: yForPrice(anchorPrice), provisional }
       })
       .filter((point): point is NonNullable<typeof point> => point != null)
+    const patternSegments: PatternRenderSegment[] = (chart.patternOverlay?.segments || [])
+      .map(segment => {
+        const fromX = visibleTimes.get(segment.fromTimestamp)
+        const toX = visibleTimes.get(segment.toTimestamp)
+        if (fromX == null || toX == null) return null
+        return {
+          id: segment.id,
+          role: segment.role,
+          fromX,
+          fromY: yForPrice(segment.fromPrice),
+          toX,
+          toY: yForPrice(segment.toPrice),
+        }
+      })
+      .filter((segment): segment is PatternRenderSegment => segment != null)
 
     return {
       visibleCandles,
@@ -283,6 +307,7 @@ export default function DayTradeWorkspaceChart({
       xAxisTicks,
       vwapSegments,
       structurePoints,
+      patternSegments,
       minPrice,
       maxPrice,
       startIndex,
@@ -296,17 +321,19 @@ export default function DayTradeWorkspaceChart({
     for (const event of chart.events) map.set(event.id, { id: event.id, label: event.title })
     if (chart.vwapOverlay) map.set(chart.vwapOverlay.id, { id: chart.vwapOverlay.id, label: chart.vwapOverlay.label })
     if (chart.marketStructure) map.set(chart.marketStructure.id, { id: chart.marketStructure.id, label: 'HH / HL / LH / LL' })
+    if (chart.patternOverlay) map.set(chart.patternOverlay.id, { id: chart.patternOverlay.id, label: `${chart.patternOverlay.label} pattern` })
     return [...map.values()]
-  }, [chart.events, chart.levels, chart.marketStructure, chart.vwapOverlay])
+  }, [chart.events, chart.levels, chart.marketStructure, chart.patternOverlay, chart.vwapOverlay])
 
   const activeChips = useMemo(() => {
     const chips: Array<{ id: string; label: string; removable: boolean }> = []
     if (chart.vwapOverlay) chips.push({ id: chart.vwapOverlay.id, label: 'VWAP', removable: true })
     for (const level of chart.levels) chips.push({ id: level.id, label: level.label, removable: true })
     if (chart.marketStructure) chips.push({ id: chart.marketStructure.id, label: 'HH / HL / LH / LL', removable: true })
+    if (chart.patternOverlay) chips.push({ id: chart.patternOverlay.id, label: chart.patternOverlay.label, removable: true })
     chips.push({ id: 'volume', label: 'Volume', removable: false })
     return chips
-  }, [chart.levels, chart.marketStructure, chart.vwapOverlay])
+  }, [chart.levels, chart.marketStructure, chart.patternOverlay, chart.vwapOverlay])
 
   const crosshairDetail = useMemo(() => {
     if (!crosshair || !model.visibleCandles.length) return null
@@ -370,6 +397,7 @@ export default function DayTradeWorkspaceChart({
   }
 
   const vwapVisible = Boolean(chart.vwapOverlay && visibleOverlayIds.has(chart.vwapOverlay.id))
+  const patternVisible = Boolean(chart.patternOverlay && visibleOverlayIds.has(chart.patternOverlay.id))
   const latestVwap = chart.vwapOverlay && typeof chart.vwapOverlay.latestValue === 'number' && Number.isFinite(chart.vwapOverlay.latestValue)
     ? chart.vwapOverlay.latestValue
     : null
@@ -638,6 +666,34 @@ export default function DayTradeWorkspaceChart({
             />
           )
         })}
+        {patternVisible && chart.patternOverlay && model.patternSegments.length > 0 && (() => {
+          const color = toneStroke(chart.patternOverlay.tone)
+          const anchor = model.patternSegments[model.patternSegments.length - 1]
+          const isConfirmed = chart.patternOverlay.status === 'CONFIRMED'
+          return (
+            <g>
+              {model.patternSegments.map(segment => (
+                <line
+                  key={segment.id}
+                  x1={segment.fromX}
+                  y1={segment.fromY}
+                  x2={segment.toX}
+                  y2={segment.toY}
+                  stroke={color}
+                  strokeWidth={segment.role === 'pole' ? 2.8 : 1.8}
+                  strokeDasharray={segment.role === 'pole' ? undefined : '5 4'}
+                  strokeLinecap="round"
+                  opacity={isConfirmed ? 0.95 : 0.68}
+                />
+              ))}
+              <circle cx={anchor.toX} cy={anchor.toY} r={isConfirmed ? 4.5 : 3.5} fill={color} stroke="white" strokeWidth="1.4" />
+              <rect x={clamp(anchor.toX + 7, 8, WIDTH - 166)} y={clamp(anchor.toY - 34, PRICE_TOP + 4, PRICE_BOTTOM - 26)} width="158" height="22" rx="6" className="fill-white/95 stroke-slate-300 dark:fill-slate-950/95 dark:stroke-white/15" />
+              <text x={clamp(anchor.toX + 14, 15, WIDTH - 159)} y={clamp(anchor.toY - 19, PRICE_TOP + 19, PRICE_BOTTOM - 11)} className="fill-slate-800 text-[10px] font-black dark:fill-slate-100">
+                {chart.patternOverlay.label} · {isConfirmed ? 'Confirmed' : 'Forming'}
+              </text>
+            </g>
+          )
+        })()}
         {chart.marketStructure && visibleOverlayIds.has(chart.marketStructure.id) && model.structurePoints.length > 0 && (
           <g>
             {chart.marketStructure.showZigZagByDefault && model.structurePoints.length > 1 && (

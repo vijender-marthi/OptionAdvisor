@@ -57,7 +57,12 @@ from trade_structure import build_trade_dashboard_story
 from services.market_structure_service import classify_structure as _classify_market_structure
 from services.pivot_detection_service import detect_confirmed_pivots as _detect_confirmed_pivots
 from ai_coach import get_ai_coach
-from swing_trade import run_swing_trade_scan, clear_scan_cache as _clear_swing_scan_cache
+from swing_trade import (
+    run_swing_trade_scan,
+    clear_scan_cache as _clear_swing_scan_cache,
+    build_swing_chart_timeframe_series,
+    build_swing_market_structure,
+)
 from unified_analysis import serialize_day_trade, serialize_swing_trade, serialize_regular_trade
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
@@ -65,7 +70,6 @@ from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDI
 from day_trade_workspace import (
     build_day_trade_workspace_response,
     build_day_trade_workspace_unavailable_response,
-    build_position_session_chart_response,
 )
 from day_trade_workspace_models import DayTradeWorkspaceResponse as DayTradeWorkspaceResponseModel
 from auth_routes import auth_router, ensure_same_user, require_access_email
@@ -3355,83 +3359,46 @@ def day_trade_workspace(
         )
 
 
-def _position_session_chart_bars(raw: pd.DataFrame) -> list[dict[str, Any]]:
-    if raw is None or raw.empty:
-        return []
-    df = raw.copy()
-    if not isinstance(df.index, pd.DatetimeIndex):
-        df.index = pd.to_datetime(df.index, errors="coerce")
-    df = df[df.index.notna()]
-    if df.empty:
-        return []
-    if df.index.tz is None:
-        df.index = df.index.tz_localize("UTC")
-    df = df.tz_convert("America/New_York")
-    try:
-        df = df.between_time("09:30", "16:00")
-    except Exception:
-        pass
-    if df.empty:
-        return []
-    required = ["Open", "High", "Low", "Close"]
-    missing = [col for col in required if col not in df.columns]
-    if missing:
-        return []
-    if "Volume" not in df.columns:
-        df["Volume"] = 0
-    typical = (df["High"].astype(float) + df["Low"].astype(float) + df["Close"].astype(float)) / 3.0
-    volume = df["Volume"].fillna(0).astype(float).clip(lower=0)
-    session_key = df.index.date
-    cumulative_volume = volume.groupby(session_key).cumsum()
-    cumulative_pv = (typical * volume).groupby(session_key).cumsum()
-    vwap = cumulative_pv / cumulative_volume.replace(0, np.nan)
-    rows: list[dict[str, Any]] = []
-    for ts, row in df.iterrows():
-        close_value = row.get("Close")
-        if pd.isna(close_value):
-            continue
-        vwap_value = vwap.loc[ts] if ts in vwap.index else np.nan
-        rows.append(
-            {
-                "t": ts.tz_convert("UTC").isoformat().replace("+00:00", "Z"),
-                "o": round(float(row["Open"]), 4),
-                "h": round(float(row["High"]), 4),
-                "l": round(float(row["Low"]), 4),
-                "c": round(float(close_value), 4),
-                "v": round(float(row.get("Volume") or 0), 4),
-                "vwap": None if pd.isna(vwap_value) else round(float(vwap_value), 4),
-                "sessionDate": ts.date().isoformat(),
-            }
-        )
-    return rows
-
-
 @app.get("/api/position-trade/session-chart")
 def position_trade_session_chart(
     symbol: str = Query(..., min_length=1),
-    interval: str = Query(default="5m", regex="^(1m|5m|15m|1h)$"),
     force_refresh: bool = Query(default=False, alias="force_refresh"),
 ) -> dict[str, Any]:
+    """Return the Position Trading chart in the Swing Trade timeframe model."""
     ticker = symbol.strip().upper()
     if not ticker:
         raise HTTPException(status_code=400, detail="symbol is required")
     try:
-        raw = bar_cache.get_history(ticker, period="7d", interval="1m", auto_adjust=True, force_refresh=force_refresh)
-        chart_bars = _position_session_chart_bars(raw)
-        if not chart_bars:
-            raise ValueError("No regular-session intraday bars returned for the last 7 days.")
+        raw = bar_cache.get_history(ticker, period="2y", interval="1d", auto_adjust=True, force_refresh=force_refresh)
+        if raw is None or raw.empty or "Close" not in raw.columns:
+            raise ValueError("No daily price history returned for the position chart.")
+        raw = raw.sort_index().dropna(subset=["Close"])
         try:
             info = bar_cache.get_info(ticker, force_refresh=force_refresh)
         except Exception:
             info = {}
-        return build_position_session_chart_response(
-            symbol=ticker,
-            company_name=str(info.get("longName") or info.get("shortName") or ticker),
-            chart_bars=chart_bars,
-            interval=interval,
-        )
+        last_close = float(raw["Close"].iloc[-1])
+        previous_close = float(raw["Close"].iloc[-2]) if len(raw) > 1 else None
+        change_amount = last_close - previous_close if previous_close else None
+        change_percent = (change_amount / previous_close * 100.0) if previous_close and change_amount is not None else None
+        return {
+            "schemaVersion": "position-swing-chart.v1",
+            "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "symbol": {
+                "ticker": ticker,
+                "companyName": str(info.get("longName") or info.get("shortName") or ticker),
+                "price": round(last_close, 4),
+                "changeAmount": round(change_amount, 4) if change_amount is not None else None,
+                "changePercent": round(change_percent, 4) if change_percent is not None else None,
+            },
+            "chartSeriesByTimeframe": {
+                timeframe: build_swing_chart_timeframe_series(raw, timeframe)
+                for timeframe in ("Daily", "Weekly", "Monthly")
+            },
+            "marketStructure": build_swing_market_structure(raw),
+        }
     except Exception as exc:
-        log.warning("POSITION_SESSION_CHART_UNAVAILABLE symbol=%s interval=%s error=%s", ticker, interval, exc)
+        log.warning("POSITION_SESSION_CHART_UNAVAILABLE symbol=%s error=%s", ticker, exc)
         raise HTTPException(status_code=502, detail=f"Position session chart unavailable for {ticker}: {exc}") from exc
 
 

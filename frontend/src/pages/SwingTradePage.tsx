@@ -420,6 +420,8 @@ function buildIndicatorFramework(
   const hasMa20Series = Boolean(points?.some(point => num(point.ma20) != null))
   const hasMa50Series = Boolean(points?.some(point => num(point.ma50) != null))
   const hasVolumeSeries = Boolean(points?.some(point => num(point.v) != null))
+  const chartSeriesByTimeframe = isRecord(metrics?.chart_series_by_timeframe) ? metrics.chart_series_by_timeframe : null
+  const hasContinuationPattern = ['Daily', 'Weekly'].some(timeframe => isRecord(chartSeriesByTimeframe?.[timeframe]) && isRecord(chartSeriesByTimeframe?.[timeframe]?.pattern_overlay))
   const hasFibAnchors = hasBackendValue(fibTargets?.fib_swing_high, fibTargets?.fib_swing_low, fibTargets?.fib_direction)
   const hasFibLevels = Boolean(fibTargets?.fib_retracement_levels?.length)
   const marketStructure = isRecord(metrics?.market_structure) ? metrics.market_structure : null
@@ -438,6 +440,7 @@ function buildIndicatorFramework(
     hasMa20Series ? 'sma20' : null,
     hasMa50Series ? 'sma50' : null,
     hasVolumeSeries ? 'volume' : null,
+    hasContinuationPattern ? 'continuation_pattern' : null,
     hasBackendValue(marketStructure?.display, result?.metrics && text((result.metrics as Record<string, unknown>).trend_direction), unified?.structure) ? 'structure' : null,
     hasFibAnchors ? 'fibonacci_retracement' : null,
     hasEntry ? 'entry' : null,
@@ -474,6 +477,7 @@ function buildIndicatorFramework(
     { id: 'support_resistance', name: 'Support and Resistance', category: 'levels', panel: 'price', ...available(hasBackendValue(fibTargets?.suggested_stop_loss, fibTargets?.suggested_target1, exec.stop, exec.target1)), currentValue: `${money(fibTargets?.suggested_stop_loss ?? exec.stop)} / ${money(fibTargets?.suggested_target1 ?? exec.target1)}`, formula: 'Backend support/resistance levels', inputs: 'Stock-targets and execution levels', interpretation: 'Nearby levels returned by backend APIs.', source: 'Stock Targets API' },
     { id: 'swing_pivots', name: 'Swing High / Swing Low', category: 'levels', panel: 'structure', ...available(hasFibAnchors), currentValue: fibAnchorLabel, formula: 'Backend-confirmed swing pivots', inputs: 'Stock-targets fib anchors', interpretation: 'Labels are limited to backend-selected anchors.', source: 'Stock Targets API' },
     { id: 'structure', name: 'HH / HL / LH / LL Structure', category: 'levels', panel: 'structure', ...available(hasBackendValue(marketStructure?.display, result?.metrics && text((result.metrics as Record<string, unknown>).trend_direction), unified?.structure)), currentValue: compactLabel(text(marketStructure?.display) || text(metrics?.trend_direction) || unified?.structure), formula: 'Backend confirmed daily pivot structure', inputs: 'Swing metrics market_structure.pivots', interpretation: compactLabel(text(marketStructure?.story) || result?.playbook_hint || result?.decision_message || 'Structure context returned by backend'), source: 'Swing Trade API' },
+    { id: 'continuation_pattern', name: 'Bull / Bear Flag', category: 'levels', panel: 'price', ...available(hasContinuationPattern), currentValue: hasContinuationPattern ? 'Backend pattern present' : undefined, formula: 'Backend pole and contained counter-trend flag detection', inputs: 'Backend OHLC + volume series', interpretation: 'Shown only when the backend finds a conservative daily or weekly continuation pattern.', source: 'Swing Trade API' },
     { id: 'bos', name: 'BOS', category: 'levels', panel: 'structure', ...available(false) },
     { id: 'choch', name: 'CHoCH', category: 'levels', panel: 'structure', ...available(false) },
     { id: 'entry', name: 'Entry', category: 'levels', panel: 'price', ...available(hasEntry), currentValue: money(exec.breakout ?? unified?.entry_price), formula: 'Backend execution entry', inputs: 'exec_levels.breakout / unified entry_price', interpretation: 'Entry level supplied by the backend decision snapshot.', source: 'Swing Trade API' },
@@ -1827,6 +1831,18 @@ function SwingPrimaryChart({
     : []
   const structureTone = String((metrics?.market_structure as Record<string, unknown> | undefined)?.bias || '').toLowerCase()
   const structureColor = structureTone.includes('bear') ? '#ef4444' : structureTone.includes('bull') ? '#10b981' : '#f59e0b'
+  const patternOverlay = isRecord(chartPayload) && isRecord(chartPayload.pattern_overlay) ? chartPayload.pattern_overlay : null
+  const patternSegments = activeIds.has('continuation_pattern') && patternOverlay
+    ? (Array.isArray(patternOverlay.segments) ? patternOverlay.segments : []).map(segment => {
+        if (!isRecord(segment)) return null
+        const from = visibleIndexByDate.get(swingDateKey(text(segment.from)))
+        const to = visibleIndexByDate.get(swingDateKey(text(segment.to)))
+        const fromPrice = num(segment.fromPrice)
+        const toPrice = num(segment.toPrice)
+        if (from == null || to == null || fromPrice == null || toPrice == null) return null
+        return { role: text(segment.role), fromX: xFor(from), fromY: yFor(fromPrice), toX: xFor(to), toY: yFor(toPrice) }
+      }).filter((segment): segment is { role: string; fromX: number; fromY: number; toX: number; toY: number } => Boolean(segment))
+    : []
   const nearestIndex = crosshair && visible.length
     ? clamp(Math.round(crosshair.x / Math.max(1, xStep) - 0.5), 0, visible.length - 1)
     : null
@@ -1834,10 +1850,10 @@ function SwingPrimaryChart({
   const crosshairDetail = nearest && nearestIndex != null
     ? (() => {
         const absoluteIndex = visibleStartIndex + nearestIndex
-        const open = points[absoluteIndex - 1]?.c ?? nearest.c
+        const open = num(nearest.o) ?? points[absoluteIndex - 1]?.c ?? nearest.c
         const close = nearest.c
-        const rangeHigh = Math.max(open, close)
-        const rangeLow = Math.min(open, close)
+        const rangeHigh = num(nearest.h) ?? Math.max(open, close)
+        const rangeLow = num(nearest.l) ?? Math.min(open, close)
         return {
           point: nearest,
           open,
@@ -1968,7 +1984,7 @@ function SwingPrimaryChart({
             <button type="button" onClick={() => setOverlayOpen(cur => !cur)} className="rounded-md border border-slate-200 p-1.5 text-secondary dark:border-white/[0.08]" aria-label="Chart overlays" title="Overlays"><Layers size={15} /></button>
             {overlayOpen && (
               <div className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-slate-950">
-                {['fibonacci_retracement', 'fibonacci_extension', 'swing_pivots', 'structure', 'entry', 'stop', 'target1', 'target2'].map(id => {
+                {['fibonacci_retracement', 'fibonacci_extension', 'swing_pivots', 'structure', 'continuation_pattern', 'entry', 'stop', 'target1', 'target2'].map(id => {
                   const item = indicatorById.get(id)
                   return (
                     <label key={id} className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-xs font-bold ${item?.available ? 'cursor-pointer text-secondary hover:bg-slate-50 dark:hover:bg-slate-900' : 'cursor-not-allowed text-tertiary opacity-50'}`}>
@@ -2034,10 +2050,13 @@ function SwingPrimaryChart({
             const prev = visible[index - 1]?.c ?? point.c
             const up = point.c >= prev
             const x = xFor(index)
-            const openY = yFor(prev)
+            const open = num(point.o) ?? prev
+            const high = num(point.h) ?? Math.max(open, point.c)
+            const low = num(point.l) ?? Math.min(open, point.c)
+            const openY = yFor(open)
             const closeY = yFor(point.c)
-            const highY = Math.min(openY, closeY) - Math.max(2, Math.abs(closeY - openY) * 0.2)
-            const lowY = Math.max(openY, closeY) + Math.max(2, Math.abs(closeY - openY) * 0.2)
+            const highY = yFor(high)
+            const lowY = yFor(low)
             const bodyTop = Math.min(openY, closeY)
             const bodyHeight = Math.max(2, Math.abs(closeY - openY))
             const volHeight = ((point.v || 0) / maxVol) * (volumeBottom - volumeTop)
@@ -2058,6 +2077,21 @@ function SwingPrimaryChart({
               <text x="12" y={yFor(num(fibTargets?.ema9) || 0) - 5} className="fill-sky-400 text-[10px] font-bold">EMA9 {money(fibTargets?.ema9)}</text>
             </g>
           )}
+          {patternOverlay && patternSegments.length > 0 && (() => {
+            const bullish = text(patternOverlay.direction).toLowerCase() === 'bullish'
+            const color = bullish ? '#10b981' : '#ef4444'
+            const status = text(patternOverlay.status) === 'CONFIRMED' ? 'Confirmed' : 'Forming'
+            const anchor = patternSegments[patternSegments.length - 1]
+            return (
+              <g>
+                {patternSegments.map((segment, index) => (
+                  <line key={`${segment.role}-${index}`} x1={segment.fromX} y1={segment.fromY} x2={segment.toX} y2={segment.toY} stroke={color} strokeWidth={segment.role === 'pole' ? 2.8 : 1.8} strokeDasharray={segment.role === 'pole' ? undefined : '5 4'} opacity={status === 'Confirmed' ? 0.95 : 0.68} />
+                ))}
+                <rect x={Math.max(8, Math.min(width - 156, anchor.toX + 8))} y={Math.max(priceTop + 4, Math.min(priceBottom - 24, anchor.toY - 30))} width="150" height="20" rx="6" fill="var(--surface-card)" stroke={color} strokeWidth="1" />
+                <text x={Math.max(15, Math.min(width - 149, anchor.toX + 15))} y={Math.max(priceTop + 18, Math.min(priceBottom - 10, anchor.toY - 16))} fill={color} className="text-[10px] font-black">{text(patternOverlay.label)} · {status}</text>
+              </g>
+            )
+          })()}
           {[...lineLevels, ...fibLevels, ...fibExtensionLevels].map(level => {
             const y = yFor(level.value)
             return (
