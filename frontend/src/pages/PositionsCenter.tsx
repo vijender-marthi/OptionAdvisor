@@ -1363,6 +1363,11 @@ function TradingPositionCard({
   const guidance = deriveAiGuidance(pos)
   const isExpiringSoon = (safeDte(pos.dte, 99)) <= 7
   const dteForDisplay = safeDte(pos.dte, 0) > 0 ? String(safeDte(pos.dte, 99)) : '—'
+  const listTarget = pos.target1 != null && pos.target1 > 0
+    ? pos.target1
+    : pos.target2 != null && pos.target2 > 0
+      ? pos.target2
+      : null
 
   // For closed positions, always prefer the user-entered realized_pnl over the
   // server-calculated perPositionPnl (which uses the old pnlPct-based formula).
@@ -1457,9 +1462,17 @@ function TradingPositionCard({
             <span className="text-secondary">{stratelabel(pos.strategy)}</span>
             {pos.bias && <span className="opacity-60">{pos.bias.replace(/_/g, ' ')}</span>}
             <span className="opacity-40">·</span>
-            <span>{pos.contracts}× {pos.expiry || '—'}</span>
+            <span>{pos.contracts}×</span>
+            <span className={isExpiringSoon ? 'font-bold text-amber-500 dark:text-amber-300' : 'font-bold text-secondary'}>
+              {pos.expiry || '—'}
+            </span>
             {safeDte(pos.dte, 0) > 0 && (
               <span className={isExpiringSoon ? 'font-semibold text-amber-400' : ''}>{dteForDisplay} DTE</span>
+            )}
+            {listTarget != null && (
+              <span className="font-mono font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                Target {fmtUsd(listTarget)}
+              </span>
             )}
             {pos.status === 'open' && !hasInvalidPremium && creditTotal > 0 && (
               <span className={isCredit ? 'font-medium text-emerald-400' : 'font-medium text-amber-400'}>
@@ -2104,10 +2117,6 @@ export default function PositionsCenter() {
   const closedPortfolio = useMemo(() => displayPortfolio.filter(p => p.status === 'closed'), [displayPortfolio])
   const stockPortfolio  = useMemo(() => displayPortfolio.filter(isStockPos), [displayPortfolio])
   const optionPortfolio = useMemo(() => displayPortfolio.filter(isOptionPos), [displayPortfolio])
-  const openStockPortfolio = useMemo(() => openPortfolio.filter(isStockPos), [openPortfolio])
-  const closedStockPortfolio = useMemo(() => closedPortfolio.filter(isStockPos), [closedPortfolio])
-  const openOptionPortfolio = useMemo(() => openPortfolio.filter(isOptionPos), [openPortfolio])
-  const closedOptionPortfolio = useMemo(() => closedPortfolio.filter(isOptionPos), [closedPortfolio])
   const derivedOpt   = openPortfolio.filter(p => !isStockPos(p) && (p.legs?.length ?? 0) > 0).length
   const derivedStock = openPortfolio.filter(isStockPos).length
 
@@ -2244,6 +2253,17 @@ export default function PositionsCenter() {
 
     return list
   }, [positions, searchQuery, tradeStyle, typeFilter, riskFilter, closedDateFilter, expiryFilter, sortKey, sortDir])
+
+  // The workspace has separate open and closed sections, but both must consume
+  // the same filtered and sorted result set as the controls above.
+  const filteredOpenPositions = useMemo(
+    () => filtered.filter(position => position.status === 'open'),
+    [filtered],
+  )
+  const filteredClosedPositions = useMemo(
+    () => filtered.filter(position => position.status === 'closed'),
+    [filtered],
+  )
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedId(cur => (cur === id ? null : id))
@@ -2621,8 +2641,8 @@ export default function PositionsCenter() {
       ) : tab === 'options' ? (
         <PositionCategoryWorkspace
           category="options"
-          openPositions={openOptionPortfolio}
-          closedPositions={closedOptionPortfolio}
+          openPositions={filteredOpenPositions}
+          closedPositions={filteredClosedPositions}
           allPositions={displayPortfolio}
           perPositionPnl={perPositionPnl}
           aiAnalyses={aiAnalyses}
@@ -2642,8 +2662,8 @@ export default function PositionsCenter() {
       ) : tab === 'stocks' ? (
         <PositionCategoryWorkspace
           category="stocks"
-          openPositions={openStockPortfolio}
-          closedPositions={closedStockPortfolio}
+          openPositions={filteredOpenPositions}
+          closedPositions={filteredClosedPositions}
           allPositions={displayPortfolio}
           perPositionPnl={perPositionPnl}
           aiAnalyses={aiAnalyses}
@@ -2877,6 +2897,8 @@ function StockPositionCard({
   const pnlPct    = analysis?.pnl_pct    ?? 0
   const currentPx = analysis?.current_price ?? entry
   const decision  = analysis?.decision ?? 'HOLD'
+  const analysisTarget = analysis?.target1 ?? 0
+  const listTarget = analysisTarget > 0 ? analysisTarget : pos.target1
 
   return (
     <div className={`rounded-xl border transition-all ${
@@ -2901,6 +2923,9 @@ function StockPositionCard({
           {shares.toLocaleString()} sh <span className="text-tertiary">× ${entry.toFixed(2)}</span>
           {costBasis > 0 && (
             <span className="text-tertiary ml-1">= ${costBasis.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+          )}
+          {listTarget != null && listTarget > 0 && (
+            <span className="ml-2 font-mono font-bold text-emerald-700 dark:text-emerald-400">Target {fmtUsd(listTarget)}</span>
           )}
         </div>
 
