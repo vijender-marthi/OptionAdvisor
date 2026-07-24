@@ -230,8 +230,9 @@ def _bucket_start(value: datetime, interval: str) -> datetime:
 def _interval_chart_bars(chart_bars: list[Any], interval: str) -> list[dict[str, Any]]:
     """Shape backend chart bars to the requested interval.
 
-    VWAP remains the canonical cumulative value from the final source bar in
-    each bucket. It is never averaged from lower-timeframe VWAP points.
+    VWAP and its sigma bands remain canonical cumulative values from the final
+    source bar in each bucket. They are never averaged from lower-timeframe
+    points.
     """
     if interval not in {"5m", "15m", "1h"}:
         return [bar for bar in chart_bars if isinstance(bar, dict)]
@@ -268,6 +269,10 @@ def _interval_chart_bars(chart_bars: list[Any], interval: str) -> list[dict[str,
                 "c": round(close_value, 4),
                 "v": round(volume_value, 4),
                 "vwap": round(_num(raw.get("vwap")), 4) if _num(raw.get("vwap")) is not None else None,
+                "vwap_upper1": round(_num(raw.get("vwap_upper1")), 4) if _num(raw.get("vwap_upper1")) is not None else None,
+                "vwap_lower1": round(_num(raw.get("vwap_lower1")), 4) if _num(raw.get("vwap_lower1")) is not None else None,
+                "vwap_upper2": round(_num(raw.get("vwap_upper2")), 4) if _num(raw.get("vwap_upper2")) is not None else None,
+                "vwap_lower2": round(_num(raw.get("vwap_lower2")), 4) if _num(raw.get("vwap_lower2")) is not None else None,
                 "vwap_source_time": str(raw_time),
             }
         else:
@@ -277,6 +282,9 @@ def _interval_chart_bars(chart_bars: list[Any], interval: str) -> list[dict[str,
             current["v"] = round(float(current["v"]) + volume_value, 4)
             vwap_value = _num(raw.get("vwap"))
             current["vwap"] = round(vwap_value, 4) if vwap_value is not None else None
+            for field in ("vwap_upper1", "vwap_lower1", "vwap_upper2", "vwap_lower2"):
+                band_value = _num(raw.get(field))
+                current[field] = round(band_value, 4) if band_value is not None else None
             current["vwap_source_time"] = str(raw_time)
 
     if current is not None:
@@ -1362,6 +1370,46 @@ def _vwap_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: 
     }
 
 
+def _sigma_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: str | None) -> dict[str, Any] | None:
+    """Expose the scan engine's canonical session VWAP sigma bands to the chart."""
+    points: list[dict[str, Any]] = []
+    for index, bar in enumerate(chart_bars):
+        if not isinstance(bar, dict):
+            continue
+        time_value = bar.get("time") or bar.get("t")
+        if not time_value:
+            continue
+        plus_one = _num(bar.get("vwap_upper1"))
+        minus_one = _num(bar.get("vwap_lower1"))
+        plus_two = _num(bar.get("vwap_upper2"))
+        minus_two = _num(bar.get("vwap_lower2"))
+        has_band = any(value is not None for value in (plus_one, minus_one, plus_two, minus_two))
+        points.append(
+            {
+                "barStartUtc": str(time_value),
+                "plusOne": round(plus_one, 4) if plus_one is not None else None,
+                "minusOne": round(minus_one, 4) if minus_one is not None else None,
+                "plusTwo": round(plus_two, 4) if plus_two is not None else None,
+                "minusTwo": round(minus_two, 4) if minus_two is not None else None,
+                "sourceTimestampUtc": str(bar.get("vwap_source_time") or time_value),
+                "state": "forming" if index == len(chart_bars) - 1 else "closed",
+                "quality": "good" if has_band else "unavailable",
+            }
+        )
+    if not any(point["quality"] == "good" for point in points):
+        return None
+    return {
+        "id": "session-vwap-sigma",
+        "label": "VWAP Sigma Bands",
+        "sessionDate": str(metrics.get("session_date") or session_date or date.today().isoformat()),
+        "exchangeTimeZone": "America/New_York",
+        "anchorPolicy": "regular_session_open",
+        "visibleByDefault": True,
+        "affectsTradeFocusScale": True,
+        "points": points,
+    }
+
+
 def _level(level_id: str, kind: str, price: Any, label: str, tone: str, priority: int, active: bool = True, visible: bool = True, scale: bool = True) -> dict[str, Any] | None:
     n = _num(price)
     if n is None or n <= 0:
@@ -1635,6 +1683,7 @@ def build_day_trade_workspace_response(
     chart_bars = _interval_chart_bars(raw_chart_bars, interval)
     candles = _chart_candles(chart_bars)
     vwap_overlay = _vwap_overlay(chart_bars, metrics, session_date)
+    sigma_overlay = _sigma_overlay(chart_bars, metrics, session_date)
     pattern_overlay = _flag_pattern_overlay(chart_bars, interval)
     levels = _chart_levels(metrics, entry_guidance, risk_levels)
     events: list[dict[str, Any]] = []
@@ -1724,6 +1773,7 @@ def build_day_trade_workspace_response(
             "levels": levels,
             "events": events,
             "vwapOverlay": vwap_overlay,
+            "sigmaOverlay": sigma_overlay,
             "marketStructure": market_structure,
             "patternOverlay": pattern_overlay,
             "defaults": {
@@ -1739,6 +1789,7 @@ def build_day_trade_workspace_response(
                 "visibleOverlayIds": [
                     *[level["id"] for level in levels if level.get("visibleByDefault")],
                     *([vwap_overlay["id"]] if vwap_overlay.get("visibleByDefault") else []),
+                    *([sigma_overlay["id"]] if sigma_overlay and sigma_overlay.get("visibleByDefault") else []),
                     *([market_structure["id"]] if market_structure.get("visibleByDefault") else []),
                     *([pattern_overlay["id"]] if pattern_overlay and pattern_overlay.get("visibleByDefault") else []),
                 ],
@@ -1891,6 +1942,7 @@ def build_day_trade_workspace_unavailable_response(
             "levels": levels,
             "events": events,
             "vwapOverlay": vwap_overlay,
+            "sigmaOverlay": None,
             "marketStructure": None,
             "defaults": {
                 "interval": interval if interval in {"1m", "5m", "15m", "1h"} else "1m",

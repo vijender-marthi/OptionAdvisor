@@ -18,6 +18,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ from stock_decision_engine import analyze_stock_position
 import exit_monitor
 
 command_center_router = APIRouter(tags=["command-center"])
+MARKET_TIME_ZONE = ZoneInfo("America/New_York")
 
 
 def api_envelope(
@@ -586,10 +588,47 @@ def _fetch_live_option_marks(
         return {}
 
 
+def _option_period_close_baselines(
+    closes: pd.Series,
+    *,
+    as_of_date: date,
+) -> Optional[tuple[float, float]]:
+    """Return the prior-session and prior-week closes for an option contract.
+
+    Yahoo's daily option history does not reliably include a current-session
+    bar while the market is open.  Selecting ``iloc[-2]`` therefore sometimes
+    skips yesterday and turns Day P&L into a two-session move.  Use dates, not
+    row positions: the day baseline is the last completed close before today,
+    while the week baseline is the last completed close before Monday.
+    """
+    dated: list[tuple[date, float]] = []
+    for index, value in closes.items():
+        try:
+            timestamp = pd.Timestamp(index)
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.tz_convert(MARKET_TIME_ZONE)
+            close_date = timestamp.date()
+            close_value = float(value)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if close_value >= 0:
+            dated.append((close_date, close_value))
+    if not dated:
+        return None
+
+    dated.sort(key=lambda item: item[0])
+    prior_sessions = [item for item in dated if item[0] < as_of_date]
+    week_start = as_of_date - timedelta(days=as_of_date.weekday())
+    prior_week_sessions = [item for item in dated if item[0] < week_start]
+    if not prior_sessions or not prior_week_sessions:
+        return None
+    return prior_sessions[-1][1], prior_week_sessions[-1][1]
+
+
 def _fetch_option_mark_history(
     ticker: str, expiry: str, required_keys: set[str],
 ) -> dict[str, tuple[float, float, float]]:
-    """Return current-close, prior-close, and Monday-close by option contract.
+    """Return prior-session and prior-week option closes by contract.
 
     Daily and weekly P&L must be based on actual contract marks.  A
     Black-Scholes reprice is useful as a display fallback for a position, but
@@ -613,26 +652,14 @@ def _fetch_option_mark_history(
                     if history is None or history.empty or "Close" not in history:
                         continue
                     closes = history["Close"].dropna()
-                    if len(closes) < 2:
-                        continue
-                    current_close = float(closes.iloc[-1])
-                    prior_close = float(closes.iloc[-2])
-                    week_start = datetime.now(timezone.utc).date() - timedelta(
-                        days=datetime.now(timezone.utc).weekday(),
+                    baselines = _option_period_close_baselines(
+                        closes,
+                        as_of_date=datetime.now(MARKET_TIME_ZONE).date(),
                     )
-                    current_week_closes = [
-                        float(value)
-                        for index, value in closes.items()
-                        if getattr(index, "date", lambda: None)() is not None
-                        and index.date() >= week_start
-                    ]
-                    # Holiday weeks may not have a Monday print; use the first
-                    # available close in the current week as the baseline.
-                    monday_close = current_week_closes[0] if current_week_closes else current_close
-                    if current_close > 0 and prior_close >= 0 and monday_close >= 0:
-                        result[key] = (
-                            current_close, prior_close, monday_close,
-                        )
+                    if baselines is None:
+                        continue
+                    prior_close, week_start_close = baselines
+                    result[key] = (0.0, prior_close, week_start_close)
                 except Exception:
                     continue
         return result
@@ -910,6 +937,20 @@ def _cost_basis_ref_per_share(p: dict) -> float:
     return _float_or(p.get("max_profit"), 0.0)
 
 
+def _position_period_cost_basis(p: dict[str, Any]) -> float:
+    """Return the capital basis used for a portfolio-level period P&L percent."""
+    if _is_stock_position(p):
+        return max(0.0, _float_or(p.get("entryPrice") or p.get("entry_price"), 0.0)) * max(1.0, _float_or(p.get("shares"), 1.0))
+    configured_risk = abs(_float_or(p.get("capital_at_risk"), 0.0))
+    if configured_risk > 0:
+        return configured_risk
+    contracts = max(1.0, _float_or(p.get("contracts"), 1.0))
+    max_loss = abs(_float_or(p.get("max_loss"), 0.0))
+    if max_loss > 0:
+        return max_loss * 100.0 * contracts
+    return abs(_cost_basis_ref_per_share(p)) * 100.0 * contracts
+
+
 def _compute_positions_pnl(
     open_pos: list[dict],
     closed_pos: list[dict],
@@ -921,10 +962,11 @@ def _compute_positions_pnl(
     realized_count = 0
     today_closed_pnl = 0.0
     week_closed_pnl = 0.0
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(MARKET_TIME_ZONE).date()
     today_str = today.isoformat()
     monday = today - timedelta(days=today.weekday())  # this week's Monday
-    total_cost_basis = 0.0
+    today_cost_basis = 0.0
+    week_cost_basis = 0.0
     for p in closed_pos:
         rp = p.get("realized_pnl")
         exit_date = str(p.get("exitDate") or "")[:10]
@@ -933,8 +975,10 @@ def _compute_positions_pnl(
             realized_count += 1
             if exit_date == today_str:
                 today_closed_pnl += _float_or(rp, 0.0)
+                today_cost_basis += _position_period_cost_basis(p)
             if exit_date >= str(monday):
                 week_closed_pnl += _float_or(rp, 0.0)
+                week_cost_basis += _position_period_cost_basis(p)
         else:
             pnl_pct = p.get("pnlPct")
             if pnl_pct is None:
@@ -948,9 +992,10 @@ def _compute_positions_pnl(
             realized_count += 1
             if exit_date == today_str:
                 today_closed_pnl += pnl_dollar
+                today_cost_basis += _position_period_cost_basis(p)
             if exit_date >= str(monday):
                 week_closed_pnl += pnl_dollar
-        total_cost_basis += _float_or(p.get("entryPrice"), 0.0) * max(1, _float_or(p.get("contracts"), 1.0)) * SHARES
+                week_cost_basis += _position_period_cost_basis(p)
 
     per_position_pnl: dict[str, dict[str, float]] = {}
     for p in closed_pos:
@@ -991,7 +1036,7 @@ def _compute_positions_pnl(
 
     if not all_open_all_types:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
-        return {"total_pl": total_pl, "day_pl": round(today_closed_pnl, 2), "day_pl_pct": round((today_closed_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2), "week_pl": round(week_closed_pnl, 2), "week_pl_pct": round((week_closed_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2), "per_position": per_position_pnl}
+        return {"total_pl": total_pl, "day_pl": round(today_closed_pnl, 2), "day_pl_pct": round((today_closed_pnl / today_cost_basis * 100) if today_cost_basis > 0 else 0, 2), "week_pl": round(week_closed_pnl, 2), "week_pl_pct": round((week_closed_pnl / week_cost_basis * 100) if week_cost_basis > 0 else 0, 2), "per_position": per_position_pnl}
 
     # ── 2. Fetch underlying prices and live option marks for open positions ─
     try:
@@ -1048,6 +1093,8 @@ def _compute_positions_pnl(
         has_mtm = False
         has_option_period_pnl = False
         has_stock_period_pnl = False
+        open_option_period_basis = 0.0
+        open_stock_period_basis = 0.0
 
         for p in all_open_for_pnl:
             sym = str(p.get("ticker", "")).upper()
@@ -1089,6 +1136,7 @@ def _compute_positions_pnl(
                     day_total += day_delta
                     week_total += week_delta
                     has_option_period_pnl = True
+                    open_option_period_basis += _position_period_cost_basis(p)
             has_mtm = True
 
         # ── Stock P&L (simple: price delta × shares) ──────────────────────────
@@ -1120,18 +1168,21 @@ def _compute_positions_pnl(
             stock_day_total  += d_pnl
             stock_week_total += w_pnl
             has_stock_period_pnl = True
+            open_stock_period_basis += _position_period_cost_basis(p)
             has_mtm = True
 
         combined_mtm  = mtm_total  + stock_mtm_total
         combined_day  = day_total  + stock_day_total
         combined_week = week_total + stock_week_total
+        day_period_basis = open_option_period_basis + open_stock_period_basis + today_cost_basis
+        week_period_basis = open_option_period_basis + open_stock_period_basis + week_cost_basis
 
         total_pl    = round(realized_pnl + combined_mtm, 2) if (realized_count > 0 or has_mtm) else None
         has_period_pnl = has_option_period_pnl or has_stock_period_pnl
         day_pl      = round(combined_day  + today_closed_pnl, 2) if (has_period_pnl or today_closed_pnl != 0) else None
-        day_pl_pct  = round(((combined_day + today_closed_pnl) / total_cost_basis * 100), 2) if (has_period_pnl or today_closed_pnl != 0) and total_cost_basis > 0 else None
+        day_pl_pct  = round(((combined_day + today_closed_pnl) / day_period_basis * 100), 2) if (has_period_pnl or today_closed_pnl != 0) and day_period_basis > 0 else None
         week_pl     = round(combined_week + week_closed_pnl, 2) if (has_period_pnl or week_closed_pnl != 0) else None
-        week_pl_pct = round(((combined_week + week_closed_pnl) / total_cost_basis * 100), 2) if (has_period_pnl or week_closed_pnl != 0) and total_cost_basis > 0 else None
+        week_pl_pct = round(((combined_week + week_closed_pnl) / week_period_basis * 100), 2) if (has_period_pnl or week_closed_pnl != 0) and week_period_basis > 0 else None
 
         # Separate per-type metrics for the Stocks tab summary banner
         options_day_pl  = round(day_total  + today_closed_pnl, 2) if (has_option_period_pnl or today_closed_pnl != 0) else None

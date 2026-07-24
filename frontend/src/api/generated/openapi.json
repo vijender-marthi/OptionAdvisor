@@ -1710,6 +1710,26 @@
               }
             ]
           },
+          "patternOverlay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradePatternOverlayView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sigmaOverlay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeSigmaOverlayView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tradeFocus": {
             "anyOf": [
               {
@@ -2371,6 +2391,16 @@
             "title": "Pivots",
             "type": "array"
           },
+          "provisionalPivot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayTradeStructurePivotView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sequence": {
             "items": {
               "type": "string"
@@ -2549,6 +2579,114 @@
           "probability"
         ],
         "title": "DayTradeNextOpportunityView",
+        "type": "object"
+      },
+      "DayTradePatternOverlayView": {
+        "properties": {
+          "breakoutLevel": {
+            "title": "Breakoutlevel",
+            "type": "number"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradePatternSegmentView"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stopLevel": {
+            "title": "Stoplevel",
+            "type": "number"
+          },
+          "targetLevel": {
+            "title": "Targetlevel",
+            "type": "number"
+          },
+          "tone": {
+            "title": "Tone",
+            "type": "string"
+          },
+          "visibleByDefault": {
+            "default": true,
+            "title": "Visiblebydefault",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "direction",
+          "status",
+          "tone",
+          "confidence",
+          "detail",
+          "breakoutLevel",
+          "stopLevel",
+          "targetLevel"
+        ],
+        "title": "DayTradePatternOverlayView",
+        "type": "object"
+      },
+      "DayTradePatternSegmentView": {
+        "properties": {
+          "fromPrice": {
+            "title": "Fromprice",
+            "type": "number"
+          },
+          "fromTimestamp": {
+            "title": "Fromtimestamp",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "toPrice": {
+            "title": "Toprice",
+            "type": "number"
+          },
+          "toTimestamp": {
+            "title": "Totimestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fromTimestamp",
+          "fromPrice",
+          "toTimestamp",
+          "toPrice",
+          "role"
+        ],
+        "title": "DayTradePatternSegmentView",
         "type": "object"
       },
       "DayTradeProfessionalDecisionView": {
@@ -3102,6 +3240,128 @@
           "status"
         ],
         "title": "DayTradeSetupLifecycleView",
+        "type": "object"
+      },
+      "DayTradeSigmaOverlayView": {
+        "properties": {
+          "affectsTradeFocusScale": {
+            "title": "Affectstradefocusscale",
+            "type": "boolean"
+          },
+          "anchorPolicy": {
+            "title": "Anchorpolicy",
+            "type": "string"
+          },
+          "exchangeTimeZone": {
+            "title": "Exchangetimezone",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/DayTradeSigmaPointView"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "sessionDate": {
+            "title": "Sessiondate",
+            "type": "string"
+          },
+          "visibleByDefault": {
+            "title": "Visiblebydefault",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "sessionDate",
+          "exchangeTimeZone",
+          "anchorPolicy",
+          "visibleByDefault",
+          "affectsTradeFocusScale"
+        ],
+        "title": "DayTradeSigmaOverlayView",
+        "type": "object"
+      },
+      "DayTradeSigmaPointView": {
+        "properties": {
+          "barStartUtc": {
+            "title": "Barstartutc",
+            "type": "string"
+          },
+          "minusOne": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minusone"
+          },
+          "minusTwo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minustwo"
+          },
+          "plusOne": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plusone"
+          },
+          "plusTwo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plustwo"
+          },
+          "quality": {
+            "title": "Quality",
+            "type": "string"
+          },
+          "sourceTimestampUtc": {
+            "title": "Sourcetimestamputc",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "barStartUtc",
+          "sourceTimestampUtc",
+          "state",
+          "quality"
+        ],
+        "title": "DayTradeSigmaPointView",
         "type": "object"
       },
       "DayTradeStructurePivotView": {
@@ -11864,6 +12124,7 @@
     },
     "/api/position-trade/session-chart": {
       "get": {
+        "description": "Return the Position Trading chart in the Swing Trade timeframe model.",
         "operationId": "position_trade_session_chart_api_position_trade_session_chart_get",
         "parameters": [
           {
@@ -11873,17 +12134,6 @@
             "schema": {
               "minLength": 1,
               "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "interval",
-            "required": false,
-            "schema": {
-              "default": "5m",
-              "pattern": "^(1m|5m|15m|1h)$",
-              "title": "Interval",
               "type": "string"
             }
           },

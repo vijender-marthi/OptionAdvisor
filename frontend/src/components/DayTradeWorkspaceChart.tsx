@@ -25,6 +25,15 @@ type VwapRenderPoint = {
   time: string
 }
 
+type SigmaBandKey = 'plusOne' | 'minusOne' | 'plusTwo' | 'minusTwo'
+
+const SIGMA_BANDS: Array<{ key: SigmaBandKey; label: string; stroke: string; dash: string; opacity: number }> = [
+  { key: 'plusOne', label: '+1 sigma', stroke: '#22c55e', dash: '6 4', opacity: 0.82 },
+  { key: 'minusOne', label: '-1 sigma', stroke: '#ef4444', dash: '6 4', opacity: 0.82 },
+  { key: 'plusTwo', label: '+2 sigma', stroke: '#14b8a6', dash: '2 5', opacity: 0.62 },
+  { key: 'minusTwo', label: '-2 sigma', stroke: '#f97316', dash: '2 5', opacity: 0.62 },
+]
+
 type PatternRenderSegment = {
   id: string
   role: string
@@ -178,6 +187,12 @@ export default function DayTradeWorkspaceChart({
           .filter(point => typeof point.value === 'number' && affectsTradeFocusScale(point.value))
           .map(point => point.value)
       : []
+    const scaleSigmaValues = chart.sigmaOverlay && visibleOverlayIds.has(chart.sigmaOverlay.id) && (chart.defaults.scaleMode === 'full_context' || chart.sigmaOverlay.affectsTradeFocusScale)
+      ? chart.sigmaOverlay.points
+          .filter(point => chart.defaults.scaleMode === 'full_context' || visibleTimeSet.has(point.barStartUtc))
+          .flatMap(point => SIGMA_BANDS.map(band => point[band.key]))
+          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && affectsTradeFocusScale(value))
+      : []
     const confirmedStructurePivots = (chart.marketStructure?.pivots || [])
       .filter(pivot => Boolean(pivot.label) && (
         (pivot.confirmed && String(pivot.status || 'CONFIRMED').toUpperCase() === 'CONFIRMED') ||
@@ -194,6 +209,7 @@ export default function DayTradeWorkspaceChart({
       ...visibleCandlePrices,
       ...scaleLevels.map(level => level.price),
       ...scaleVwapValues,
+      ...scaleSigmaValues,
       ...scaleStructureValues,
     ].filter(isFiniteNumber)
     const rawMin = prices.length ? Math.min(...prices) : 0
@@ -253,6 +269,21 @@ export default function DayTradeWorkspaceChart({
       })
     }
     if (currentSegment.length) vwapSegments.push(currentSegment)
+    const sigmaSegments = Object.fromEntries(SIGMA_BANDS.map(band => [band.key, [] as VwapRenderPoint[][]])) as Record<SigmaBandKey, VwapRenderPoint[][]>
+    for (const band of SIGMA_BANDS) {
+      let segment: VwapRenderPoint[] = []
+      for (const point of chart.sigmaOverlay?.points || []) {
+        const value = point[band.key]
+        const x = visibleTimes.get(point.barStartUtc)
+        if (typeof value !== 'number' || !Number.isFinite(value) || x == null || String(point.quality || '').toLowerCase() === 'unavailable') {
+          if (segment.length) sigmaSegments[band.key].push(segment)
+          segment = []
+          continue
+        }
+        segment.push({ x, y: yForPrice(value), value, time: point.barStartUtc })
+      }
+      if (segment.length) sigmaSegments[band.key].push(segment)
+    }
     const structurePoints = confirmedStructurePivots
       .map(pivot => {
         // Structure pivots are computed on 5m bars; on a 1m/other chart the pivot's
@@ -306,6 +337,7 @@ export default function DayTradeWorkspaceChart({
       visibleTimes,
       xAxisTicks,
       vwapSegments,
+      sigmaSegments,
       structurePoints,
       patternSegments,
       minPrice,
@@ -320,20 +352,22 @@ export default function DayTradeWorkspaceChart({
     for (const level of chart.levels) map.set(level.id, { id: level.id, label: level.label })
     for (const event of chart.events) map.set(event.id, { id: event.id, label: event.title })
     if (chart.vwapOverlay) map.set(chart.vwapOverlay.id, { id: chart.vwapOverlay.id, label: chart.vwapOverlay.label })
+    if (chart.sigmaOverlay) map.set(chart.sigmaOverlay.id, { id: chart.sigmaOverlay.id, label: chart.sigmaOverlay.label })
     if (chart.marketStructure) map.set(chart.marketStructure.id, { id: chart.marketStructure.id, label: 'HH / HL / LH / LL' })
     if (chart.patternOverlay) map.set(chart.patternOverlay.id, { id: chart.patternOverlay.id, label: `${chart.patternOverlay.label} pattern` })
     return [...map.values()]
-  }, [chart.events, chart.levels, chart.marketStructure, chart.patternOverlay, chart.vwapOverlay])
+  }, [chart.events, chart.levels, chart.marketStructure, chart.patternOverlay, chart.sigmaOverlay, chart.vwapOverlay])
 
   const activeChips = useMemo(() => {
     const chips: Array<{ id: string; label: string; removable: boolean }> = []
     if (chart.vwapOverlay) chips.push({ id: chart.vwapOverlay.id, label: 'VWAP', removable: true })
+    if (chart.sigmaOverlay) chips.push({ id: chart.sigmaOverlay.id, label: 'VWAP +/-1 / +/-2 sigma', removable: true })
     for (const level of chart.levels) chips.push({ id: level.id, label: level.label, removable: true })
     if (chart.marketStructure) chips.push({ id: chart.marketStructure.id, label: 'HH / HL / LH / LL', removable: true })
     if (chart.patternOverlay) chips.push({ id: chart.patternOverlay.id, label: chart.patternOverlay.label, removable: true })
     chips.push({ id: 'volume', label: 'Volume', removable: false })
     return chips
-  }, [chart.levels, chart.marketStructure, chart.patternOverlay, chart.vwapOverlay])
+  }, [chart.levels, chart.marketStructure, chart.patternOverlay, chart.sigmaOverlay, chart.vwapOverlay])
 
   const crosshairDetail = useMemo(() => {
     if (!crosshair || !model.visibleCandles.length) return null
@@ -397,6 +431,7 @@ export default function DayTradeWorkspaceChart({
   }
 
   const vwapVisible = Boolean(chart.vwapOverlay && visibleOverlayIds.has(chart.vwapOverlay.id))
+  const sigmaVisible = Boolean(chart.sigmaOverlay && visibleOverlayIds.has(chart.sigmaOverlay.id))
   const patternVisible = Boolean(chart.patternOverlay && visibleOverlayIds.has(chart.patternOverlay.id))
   const latestVwap = chart.vwapOverlay && typeof chart.vwapOverlay.latestValue === 'number' && Number.isFinite(chart.vwapOverlay.latestValue)
     ? chart.vwapOverlay.latestValue
@@ -404,6 +439,24 @@ export default function DayTradeWorkspaceChart({
   const latestVwapY = latestVwap == null ? null : model.yForPrice(latestVwap)
   const clampedLatestVwapY = latestVwapY == null ? null : clamp(latestVwapY, PRICE_TOP + 12, PRICE_BOTTOM - 12)
   const latestVwapOffscreen = latestVwapY != null && (latestVwapY < PRICE_TOP || latestVwapY > PRICE_BOTTOM)
+  const sigmaLabels = useMemo(() => {
+    if (!sigmaVisible || !chart.sigmaOverlay) return []
+    const latest = [...chart.sigmaOverlay.points].reverse().find(point => SIGMA_BANDS.some(band => typeof point[band.key] === 'number'))
+    if (!latest) return []
+    const labels = SIGMA_BANDS
+      .map(band => ({ ...band, value: latest[band.key] }))
+      .filter((band): band is typeof band & { value: number } => typeof band.value === 'number' && Number.isFinite(band.value))
+      .map(band => ({ ...band, y: clamp(model.yForPrice(band.value), PRICE_TOP + 10, PRICE_BOTTOM - 10) }))
+      .sort((a, b) => a.y - b.y)
+    let previousY = PRICE_TOP - 16
+    for (const label of labels) {
+      label.y = Math.max(label.y, previousY + 16)
+      previousY = label.y
+    }
+    const overflow = Math.max(0, previousY - (PRICE_BOTTOM - 10))
+    if (overflow) labels.forEach(label => { label.y -= overflow })
+    return labels
+  }, [chart.sigmaOverlay, model, sigmaVisible])
   const visibleLevels = chart.levels
     .filter(level => visibleOverlayIds.has(level.id))
     .sort((a, b) => a.priority - b.priority)
@@ -666,6 +719,23 @@ export default function DayTradeWorkspaceChart({
             />
           )
         })}
+        {sigmaVisible && SIGMA_BANDS.map(band => model.sigmaSegments[band.key].map((segment, index) => {
+          if (!segment.length) return null
+          const path = segment.map((point, pointIndex) => `${pointIndex === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
+          return (
+            <path
+              key={`sigma-${band.key}-${index}`}
+              d={path}
+              fill="none"
+              stroke={band.stroke}
+              strokeWidth={band.key === 'plusOne' || band.key === 'minusOne' ? '1.5' : '1.15'}
+              strokeDasharray={band.dash}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={band.opacity}
+            />
+          )
+        }))}
         {patternVisible && chart.patternOverlay && model.patternSegments.length > 0 && (() => {
           const color = toneStroke(chart.patternOverlay.tone)
           const anchor = model.patternSegments[model.patternSegments.length - 1]
@@ -783,6 +853,14 @@ export default function DayTradeWorkspaceChart({
             </text>
           </g>
         )}
+        {sigmaVisible && sigmaLabels.map(label => (
+          <g key={`sigma-label-${label.key}`} opacity={label.opacity}>
+            <line x1={WIDTH - 76} x2={WIDTH - 4} y1={label.y} y2={label.y} stroke={label.stroke} strokeWidth="1.4" strokeDasharray={label.dash} />
+            <text x={WIDTH - 8} y={label.y - 4} textAnchor="end" fill={label.stroke} className="text-[10px] font-bold">
+              {label.label.replace(' sigma', 's')} {formatUsd(label.value)}
+            </text>
+          </g>
+        ))}
         {model.xAxisTicks.length > 0 && (
           <g>
             <line x1="0" x2={WIDTH} y1={VOLUME_BOTTOM + 4} y2={VOLUME_BOTTOM + 4} className="stroke-slate-300/70 dark:stroke-white/10" />

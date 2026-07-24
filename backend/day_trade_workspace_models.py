@@ -331,6 +331,28 @@ class DayTradeVwapOverlayView(BaseModel):
     points: list[DayTradeVwapPointView] = Field(default_factory=list)
 
 
+class DayTradeSigmaPointView(BaseModel):
+    barStartUtc: str
+    plusOne: float | None = None
+    minusOne: float | None = None
+    plusTwo: float | None = None
+    minusTwo: float | None = None
+    sourceTimestampUtc: str
+    state: str
+    quality: str
+
+
+class DayTradeSigmaOverlayView(BaseModel):
+    id: str
+    label: str
+    sessionDate: str
+    exchangeTimeZone: str
+    anchorPolicy: str
+    visibleByDefault: bool
+    affectsTradeFocusScale: bool
+    points: list[DayTradeSigmaPointView] = Field(default_factory=list)
+
+
 class DayTradeStructurePivotView(BaseModel):
     id: str
     timestamp: str
@@ -418,6 +440,7 @@ class DayTradeChartView(BaseModel):
     levels: list[DayTradeChartLevelView] = Field(default_factory=list)
     events: list[DayTradeChartEventView] = Field(default_factory=list)
     vwapOverlay: DayTradeVwapOverlayView | None = None
+    sigmaOverlay: DayTradeSigmaOverlayView | None = None
     marketStructure: DayTradeMarketStructureView | None = None
     patternOverlay: DayTradePatternOverlayView | None = None
     defaults: DayTradeChartDefaultsView

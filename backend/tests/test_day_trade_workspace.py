@@ -31,8 +31,8 @@ def _scan(final_decision: str = "READY"):
             "vwap": 310.5,
             "data_quality_status": "OK",
             "chart_bars": [
-                {"t": "2026-07-09T09:30:00-04:00", "o": 309.0, "h": 310.0, "l": 308.5, "c": 309.5, "v": 1000, "vwap": 309.3333},
-                {"t": "2026-07-09T09:31:00-04:00", "o": 309.5, "h": 312.5, "l": 309.2, "c": 312.25, "v": 1500, "vwap": 310.4167},
+                {"t": "2026-07-09T09:30:00-04:00", "o": 309.0, "h": 310.0, "l": 308.5, "c": 309.5, "v": 1000, "vwap": 309.3333, "vwap_upper1": 309.7, "vwap_lower1": 308.9666, "vwap_upper2": 310.0667, "vwap_lower2": 308.6},
+                {"t": "2026-07-09T09:31:00-04:00", "o": 309.5, "h": 312.5, "l": 309.2, "c": 312.25, "v": 1500, "vwap": 310.4167, "vwap_upper1": 311.2, "vwap_lower1": 309.6334, "vwap_upper2": 311.9833, "vwap_lower2": 308.85},
             ],
             "timeframe_state": {"final_decision": final_decision},
         },
@@ -145,6 +145,22 @@ class DayTradeWorkspaceTests(unittest.TestCase):
         self.assertEqual(len(workspace["chart"]["vwapOverlay"]["points"]), 2)
         self.assertEqual(workspace["chart"]["vwapOverlay"]["latestValue"], 310.4167)
         self.assertIn("session-vwap", workspace["chart"]["defaults"]["visibleOverlayIds"])
+        self.assertEqual(workspace["chart"]["sigmaOverlay"]["id"], "session-vwap-sigma")
+        self.assertEqual(workspace["chart"]["sigmaOverlay"]["points"][-1]["plusOne"], 311.2)
+        self.assertIn("session-vwap-sigma", workspace["chart"]["defaults"]["visibleOverlayIds"])
+        five_minute_workspace = build_day_trade_workspace_response(scan=_scan("READY"), resolved=_resolved("READY"), interval="5m")
+        self.assertEqual(five_minute_workspace["chart"]["sigmaOverlay"]["points"], [
+            {
+                "barStartUtc": "2026-07-09T09:30:00-04:00",
+                "plusOne": 311.2,
+                "minusOne": 309.6334,
+                "plusTwo": 311.9833,
+                "minusTwo": 308.85,
+                "sourceTimestampUtc": "2026-07-09T09:31:00-04:00",
+                "state": "forming",
+                "quality": "good",
+            }
+        ])
         self.assertIn("entry", workspace["chart"]["tradeFocus"]["levelIdsAllowedToAffectScale"])
         self.assertNotIn("vwap", workspace["chart"]["tradeFocus"]["levelIdsAllowedToAffectScale"])
         self.assertFalse(workspace["chart"]["vwapOverlay"]["affectsTradeFocusScale"])

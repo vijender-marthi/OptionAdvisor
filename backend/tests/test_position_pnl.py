@@ -3,11 +3,16 @@
 import sys
 import os
 import unittest
+from datetime import date
+
+import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from command_center_router import (
+    _option_period_close_baselines,
     _position_option_period_pnl,
+    _position_period_cost_basis,
     _sanitize_iv,
     calculate_position_pnl,
 )
@@ -210,6 +215,22 @@ class TestCalculatePositionPnl(unittest.TestCase):
 
 
 class TestOptionPeriodPnl(unittest.TestCase):
+    def test_uses_previous_completed_session_and_prior_friday_baselines(self):
+        closes = pd.Series(
+            [4.0, 5.0, 6.0, 7.0],
+            index=pd.to_datetime(["2026-07-17", "2026-07-20", "2026-07-21", "2026-07-22"]),
+        )
+        # Before Friday's close, Day P&L compares a live mark with Thursday's
+        # close, and Week P&L includes Monday's move by starting at Friday.
+        self.assertEqual(
+            _option_period_close_baselines(closes, as_of_date=date(2026, 7, 23)),
+            (7.0, 4.0),
+        )
+
+    def test_returns_no_baseline_when_prior_week_close_is_unavailable(self):
+        closes = pd.Series([5.0, 6.0], index=pd.to_datetime(["2026-07-20", "2026-07-21"]))
+        self.assertIsNone(_option_period_close_baselines(closes, as_of_date=date(2026, 7, 22)))
+
     def test_uses_actual_option_marks_for_day_and_week(self):
         position = {
             "contracts": 2,
@@ -238,6 +259,20 @@ class TestOptionPeriodPnl(unittest.TestCase):
         history = {"CALL:100.0": (11.5, 9.0, 8.0)}
 
         self.assertIsNone(_position_option_period_pnl(position, current, history))
+
+
+class TestPositionPeriodCostBasis(unittest.TestCase):
+    def test_options_use_capital_at_risk_before_premium(self):
+        self.assertEqual(
+            _position_period_cost_basis({"contracts": 2, "capital_at_risk": 750, "max_loss": 4}),
+            750.0,
+        )
+
+    def test_stock_uses_entry_price_times_shares(self):
+        self.assertEqual(
+            _position_period_cost_basis({"strategy": "Stock", "entryPrice": 125, "shares": 20}),
+            2500.0,
+        )
 
 
 if __name__ == "__main__":

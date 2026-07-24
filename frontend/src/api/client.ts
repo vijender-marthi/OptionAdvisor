@@ -525,7 +525,7 @@ export type DayTradeWorkspaceAction = ApiSchemas['DayTradeWorkspaceAction']
 
 type DayTradeWorkspaceChart = Omit<
   ApiSchemas['DayTradeChartView'],
-  'candles' | 'defaults' | 'events' | 'levels' | 'marketStructure' | 'patternOverlay' | 'tradeFocus' | 'vwapOverlay'
+  'candles' | 'defaults' | 'events' | 'levels' | 'marketStructure' | 'patternOverlay' | 'sigmaOverlay' | 'tradeFocus' | 'vwapOverlay'
 > & {
   candles: ApiSchemas['DayTradeChartCandleView'][]
   levels: ApiSchemas['DayTradeChartLevelView'][]
@@ -605,6 +605,25 @@ type DayTradeWorkspaceChart = Omit<
   vwapOverlay?: (Omit<ApiSchemas['DayTradeVwapOverlayView'], 'points'> & {
     points: ApiSchemas['DayTradeVwapPointView'][]
   }) | null
+  sigmaOverlay?: {
+    id: string
+    label: string
+    sessionDate: string
+    exchangeTimeZone: string
+    anchorPolicy: string
+    visibleByDefault: boolean
+    affectsTradeFocusScale: boolean
+    points: Array<{
+      barStartUtc: string
+      plusOne?: number | null
+      minusOne?: number | null
+      plusTwo?: number | null
+      minusTwo?: number | null
+      sourceTimestampUtc: string
+      state: string
+      quality: string
+    }>
+  } | null
   defaults: Omit<ApiSchemas['DayTradeChartDefaultsView'], 'visibleOverlayIds'> & {
     visibleOverlayIds: string[]
   }
@@ -931,6 +950,13 @@ function validateDayTradeWorkspaceResponse(value: unknown): asserts value is Day
     requireWorkspaceString(value, 'chart.vwapOverlay.id', missing)
     requireWorkspaceString(value, 'chart.vwapOverlay.label', missing)
     requireWorkspaceArray(value, 'chart.vwapOverlay.points', missing)
+  }
+  const sigmaOverlay = readPath(value, 'chart.sigmaOverlay')
+  if (sigmaOverlay !== null && sigmaOverlay !== undefined) {
+    requireWorkspaceRecord(value, 'chart.sigmaOverlay', missing)
+    requireWorkspaceString(value, 'chart.sigmaOverlay.id', missing)
+    requireWorkspaceString(value, 'chart.sigmaOverlay.label', missing)
+    requireWorkspaceArray(value, 'chart.sigmaOverlay.points', missing)
   }
   requireWorkspaceString(value, 'chart.defaults.interval', missing)
   requireWorkspaceString(value, 'chart.defaults.visibleRange', missing)
