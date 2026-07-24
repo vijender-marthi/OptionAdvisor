@@ -446,6 +446,18 @@ function deriveExitRules(pos: PortfolioPosition): ExitRule[] {
   return rules
 }
 
+// Closed legacy records do not retain live exit rules. Preserve the original
+// option-premium objective so their compact cards remain useful for review.
+function deriveHistoricalPremiumTarget(pos: PortfolioPosition): number | null {
+  const entryPremium = Math.abs(pos.net_credit) > 0.01
+    ? Math.abs(pos.net_credit)
+    : (pos.entryPrice || 0)
+  if (!Number.isFinite(entryPremium) || entryPremium <= 0) return null
+
+  const isCredit = pos.net_credit > 0.01
+  return round2(isCredit ? entryPremium * 0.5 : entryPremium * 2)
+}
+
 function round2(x: number): number { return Math.round(x * 100) / 100 }
 
 function engineSourceLabel(source: 'day' | 'swing' | 'regular'): string {
@@ -1370,7 +1382,7 @@ function TradingPositionCard({
       : null
   const fallbackPremiumTarget = deriveExitRules(pos).find(rule =>
     rule.price != null && /target|gain|credit captured/i.test(rule.trigger),
-  )?.price ?? null
+  )?.price ?? (pos.status === 'closed' ? deriveHistoricalPremiumTarget(pos) : null)
   const listTarget = savedTarget ?? fallbackPremiumTarget
   const listTargetLabel = savedTarget != null ? 'Target' : 'Target premium'
 

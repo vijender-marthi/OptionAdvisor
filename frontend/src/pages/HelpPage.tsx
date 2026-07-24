@@ -23,6 +23,7 @@ const SEARCH_INDEX: { id: string; label: string; keywords: string[] }[] = [
   { id: 'engine-states',     label: 'Engine States',          keywords: ['state', 'ready', 'watch', 'wait', 'avoid', 'no edge', 'verdict', 'state 2', 'state 1', 'entry state'] },
   { id: 'execution-states',  label: 'Execution States',       keywords: ['execution', 'enter now', 'pending', 'hold', 'manage position', 'entry gate', 'confirmation'] },
   { id: 'day-trade',         label: 'Day Trade Engine',       keywords: ['day trade', 'intraday', 'rvol', 'vwap', 'or high', 'or low', 'opening range', 'breakout', 'scalp', 'momentum', 'extension', 'chasing', 'spy', 'qqq', 'nvda', 'large cap', 'volume', 'day trade setup', '0dte', '1dte', 'trend day', 'bear trend', 'bull trend', 'vix', 'entry window', 'atr limit', 'exhausted', 'extension override'] },
+  { id: 'day-trade-patterns', label: 'Day Trade Pattern Reference', keywords: ['patterns', 'bull flag', 'bear flag', 'pennant', 'opening range breakout', 'orbo', 'orbh', 'orbl', 'hammer', 'shooting star', 'double top', 'double bottom', 'vwap reclaim', 'vwap rejection', 'inside bar', 'compression'] },
   { id: 'swing-trade',       label: 'Swing Trade Engine',     keywords: ['swing', 'trend', 'ema', 'ma20', 'pullback', 'breakout swing', 'daily chart', 'multi day', 'swing verdict', 'swing setup', 'relative strength'] },
   { id: 'vix-reference',     label: 'VIX Reference',          keywords: ['vix', 'volatility index', 'fear index', 'market fear', 'vix spike', 'vix 35', 'avoid vix'] },
   { id: 'regular-engine',    label: 'Regular Engine',         keywords: ['regular', 'options engine', 'spread', 'iron condor', 'credit spread', 'debit spread', 'covered call', 'put spread', 'call spread', 'score', 'checklist', 'pop', 'ev', 'monthly', 'income'] },
@@ -51,6 +52,7 @@ const NAV_SECTIONS = [
   { id: 'engine-states',    label: 'Engine States',             icon: Gauge },
   { id: 'execution-states', label: 'Execution States',          icon: Target },
   { id: 'day-trade',        label: 'Day Trade Engine',          icon: Zap },
+  { id: 'day-trade-patterns', label: 'Day Trade Patterns',      icon: LineChart },
   { id: 'swing-trade',      label: 'Swing Trade Engine',        icon: TrendingUp },
   { id: 'vix-reference',    label: 'VIX Reference',             icon: Activity },
   { id: 'regular-engine',   label: 'Regular Engine',            icon: SlidersHorizontal },
@@ -577,6 +579,61 @@ function MacdHistogramVisuals() {
   )
 }
 
+type DayPattern = {
+  name: string
+  alias: string
+  direction: 'Bullish' | 'Bearish' | 'Neutral'
+  category: 'Continuation' | 'Breakout' | 'Reversal'
+  visual: 'flag' | 'pennant' | 'opening-range' | 'hammer' | 'shooting-star' | 'double-top' | 'double-bottom' | 'vwap-reclaim' | 'vwap-rejection' | 'inside-bar'
+  timeframe: string
+  context: string
+  rewardRisk: string
+  confirmation: string
+  typicalRange: string
+  summary: string
+  entry: string
+  stop: string
+  target: string
+}
+
+const DAY_TRADE_PATTERNS: DayPattern[] = [
+  { name: 'Bull Flag', alias: 'Pole and flag', direction: 'Bullish', category: 'Continuation', visual: 'flag', timeframe: '1m to 15m', context: 'Strong impulse, then orderly pullback', rewardRisk: '1:2 to 1:4', confirmation: 'Volume expansion on break', typicalRange: '65 to 72%', summary: 'A sharp advance pauses in a tight downward channel. The pullback should be controlled, not a hard selloff.', entry: 'Break and close above the upper flag rail.', stop: 'Below the lower flag rail.', target: 'Project the pole height from the breakout.' },
+  { name: 'Bear Flag', alias: 'Bearish pole and flag', direction: 'Bearish', category: 'Continuation', visual: 'flag', timeframe: '1m to 15m', context: 'Sharp decline, then weak upward retrace', rewardRisk: '1:2 to 1:4', confirmation: 'Heavy volume on the pole', typicalRange: '62 to 70%', summary: 'The bearish mirror of a bull flag: price drops hard, then drifts higher on lighter participation before rolling over.', entry: 'Break and close below the lower flag rail.', stop: 'Above the upper flag rail.', target: 'Project the pole height down from the breakdown.', },
+  { name: 'Bull Pennant', alias: 'Symmetrical triangle continuation', direction: 'Bullish', category: 'Continuation', visual: 'pennant', timeframe: '2m to 30m', context: 'Strong pole followed by contracting range', rewardRisk: '1:3 to 1:5', confirmation: 'Volume dries up, then expands', typicalRange: '66 to 74%', summary: 'Like a flag, but the pause compresses into a small converging triangle. The quiet volume inside the pennant is the tell.', entry: 'Break above the upper trendline with volume.', stop: 'Below the lower pennant line or apex.', target: 'Project the pole height from the breakout.' },
+  { name: 'Opening Range Breakout', alias: 'ORBO, ORBH, ORBL', direction: 'Neutral', category: 'Breakout', visual: 'opening-range', timeframe: '5m, 15m, or 30m', context: 'Clear premarket bias and a trending open', rewardRisk: '1:2 to 1:3', confirmation: 'Close outside the completed range', typicalRange: '55 to 65%', summary: 'Trade the first clean break of the high or low set during the opening range. Avoid forcing it during a choppy open.', entry: 'Long above OR High or short below OR Low after confirmation.', stop: 'Opposite opening-range extreme.', target: 'Prior-day level or measured move.' },
+  { name: 'Hammer', alias: 'Bullish pin bar', direction: 'Bullish', category: 'Reversal', visual: 'hammer', timeframe: 'Any', context: 'At support, VWAP, or a prior low', rewardRisk: '1:2 to 1:3', confirmation: 'Next candle breaks the high', typicalRange: '55 to 65%', summary: 'A small body with a lower wick at least twice the body size. Sellers pushed down but buyers absorbed the move.', entry: 'Break above the hammer high on the next candle.', stop: 'Below the wick low.', target: 'Next resistance or prior swing high.' },
+  { name: 'Shooting Star', alias: 'Bearish pin bar', direction: 'Bearish', category: 'Reversal', visual: 'shooting-star', timeframe: 'Any', context: 'At resistance, VWAP, or a round number', rewardRisk: '1:2 to 1:3', confirmation: 'Next candle breaks the low', typicalRange: '55 to 63%', summary: 'A small body with a long upper wick. Buyers failed to hold higher prices and sellers took control.', entry: 'Break below the shooting-star low.', stop: 'Above the wick high.', target: 'Next support or prior swing low.' },
+  { name: 'Double Top', alias: 'M-pattern', direction: 'Bearish', category: 'Reversal', visual: 'double-top', timeframe: '5m to 1h', context: 'Second peak forms at resistance', rewardRisk: '1:2 to 1:3', confirmation: 'Close below the neckline', typicalRange: '60 to 68%', summary: 'Two similar highs with a pullback between them. A weaker second push and a neckline break are the important parts.', entry: 'Break and close below the neckline.', stop: 'Above the second top.', target: 'Project the pattern height below the neckline.' },
+  { name: 'Double Bottom', alias: 'W-pattern', direction: 'Bullish', category: 'Reversal', visual: 'double-bottom', timeframe: '5m to 1h', context: 'Second low holds support', rewardRisk: '1:2 to 1:3', confirmation: 'Close above the neckline', typicalRange: '60 to 70%', summary: 'Two similar lows separated by a bounce. Sellers fail to extend the second decline; confirmation comes only at the neckline.', entry: 'Break and close above the neckline.', stop: 'Below the second bottom.', target: 'Project the pattern height above the neckline.' },
+  { name: 'VWAP Reclaim', alias: 'VWAP bounce long', direction: 'Bullish', category: 'Reversal', visual: 'vwap-reclaim', timeframe: '1m to 5m', context: 'Intraday uptrend after a controlled dip', rewardRisk: '1:2', confirmation: 'Close back above VWAP', typicalRange: '58 to 66%', summary: 'Price dips below VWAP, rejects lower prices, and closes back above it. Best when the broader intraday trend is still up.', entry: 'Use the reclaim candle close as confirmation.', stop: 'Below the reclaim candle low.', target: 'HOD or resistance above VWAP.' },
+  { name: 'VWAP Rejection', alias: 'VWAP fade short', direction: 'Bearish', category: 'Reversal', visual: 'vwap-rejection', timeframe: '1m to 5m', context: 'Downtrending day, price tests VWAP from below', rewardRisk: '1:2', confirmation: 'Wick touch and close back below VWAP', typicalRange: '57 to 64%', summary: 'Price pushes up into VWAP but cannot hold above it. VWAP acts as dynamic resistance on a red day.', entry: 'Bearish rejection candle at VWAP.', stop: 'Just above VWAP with a small buffer.', target: 'LOD or prior support.' },
+  { name: 'Inside Bar', alias: 'NR7 or compression play', direction: 'Neutral', category: 'Breakout', visual: 'inside-bar', timeframe: '5m to 1h', context: 'Trend-aligned compression', rewardRisk: '1:2 to 1:4', confirmation: 'Break of the mother-bar range', typicalRange: '55 to 62%', summary: 'A candle entirely inside the prior candle’s high-low range. It signals compression; the existing trend decides the preferred side.', entry: 'Break the mother-bar high for long or low for short.', stop: 'Opposite side of the mother bar.', target: 'Two to three times the mother-bar height.' },
+]
+
+function PatternSketch({ pattern }: { pattern: DayPattern }) {
+  const bull = '#34d399'
+  const bear = '#fb7185'
+  const amber = '#fbbf24'
+  const color = pattern.direction === 'Bearish' ? bear : bull
+  const common = { fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  const line = (points: string, stroke = color, width = 2) => <polyline points={points} stroke={stroke} strokeWidth={width} {...common} />
+  return (
+    <svg viewBox="0 0 240 72" className="h-[72px] w-full" role="img" aria-label={`${pattern.name} example`}>
+      <line x1="4" y1="59" x2="236" y2="59" stroke="currentColor" opacity="0.15" strokeDasharray="3 4" />
+      {pattern.visual === 'flag' && <>{line(pattern.direction === 'Bearish' ? '10,13 62,46 92,42 124,37 154,34 184,62 225,67' : '10,61 62,24 92,28 124,34 154,38 184,10 225,5')}<path d={pattern.direction === 'Bearish' ? 'M92 37 L154 28 M94 47 L157 38' : 'M92 25 L154 34 M94 35 L157 44'} stroke={amber} strokeWidth="1" strokeDasharray="4 3" fill="none" /></>}
+      {pattern.visual === 'pennant' && <>{line('8,58 64,17 95,34 139,35 181,34 228,7')}<path d="M94 21 L166 35 L94 49 L166 35" stroke={amber} strokeWidth="1" fill="none" /></>}
+      {pattern.visual === 'opening-range' && <><rect x="18" y="24" width="64" height="28" fill={amber} opacity="0.08" stroke={amber} strokeDasharray="4 3" /><text x="22" y="19" fill={amber} fontSize="9">OPENING RANGE</text>{line('82,24 127,24 169,9 224,6', bull)}{line('82,52 127,52 169,64 224,68', bear)}</>}
+      {pattern.visual === 'hammer' && <>{line('8,15 60,42 97,45', bear, 1.5)}{line('111,24 111,61', bull, 2)}<rect x="103" y="27" width="16" height="12" fill={bull} />{line('120,34 172,18 227,9')}</>}
+      {pattern.visual === 'shooting-star' && <>{line('8,58 60,34 97,30', bull, 1.5)}{line('111,12 111,49', bear, 2)}<rect x="103" y="37" width="16" height="12" fill={bear} />{line('120,42 172,55 227,66')}</>}
+      {pattern.visual === 'double-top' && <>{line('8,60 55,14 101,60 149,17 190,60 228,68', bear)}<line x1="8" y1="60" x2="228" y2="60" stroke={amber} strokeWidth="1" strokeDasharray="4 3" /></>}
+      {pattern.visual === 'double-bottom' && <>{line('8,12 55,58 101,13 149,57 190,12 228,5', bull)}<line x1="8" y1="13" x2="228" y2="13" stroke={amber} strokeWidth="1" strokeDasharray="4 3" /></>}
+      {pattern.visual === 'vwap-reclaim' && <><line x1="5" y1="37" x2="235" y2="37" stroke={amber} strokeWidth="1.5" strokeDasharray="5 3" /><text x="190" y="32" fill={amber} fontSize="9">VWAP</text>{line('8,21 54,30 94,53 130,57 165,35 228,12')}</>}
+      {pattern.visual === 'vwap-rejection' && <><line x1="5" y1="37" x2="235" y2="37" stroke={amber} strokeWidth="1.5" strokeDasharray="5 3" /><text x="190" y="32" fill={amber} fontSize="9">VWAP</text>{line('8,57 54,45 94,19 130,14 165,39 228,65')}</>}
+      {pattern.visual === 'inside-bar' && <><rect x="42" y="12" width="42" height="48" fill={amber} opacity="0.1" stroke={amber} /><rect x="107" y="25" width="26" height="23" fill="currentColor" opacity="0.28" stroke="currentColor" /><text x="38" y="69" fill={amber} fontSize="9">MOTHER</text><text x="103" y="69" fill="currentColor" fontSize="9">INSIDE</text>{line('137,25 183,8 226,5', bull)}{line('137,48 183,64 226,68', bear)}</>}
+    </svg>
+  )
+}
+
 // ─── Page ───────────────────────────────────────────────────────────
 
 export default function HelpPage({ embedded }: { embedded?: boolean }) {
@@ -586,13 +643,14 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const visibleNavSections = NAV_SECTIONS.filter(s =>
-    s.id !== 'day-trade' && s.id !== 'swing-trade'
-      ? true
-      : s.id === 'day-trade' ? canDay : canSwing
+    s.id === 'day-trade' || s.id === 'day-trade-patterns'
+      ? canDay
+      : s.id === 'swing-trade' ? canSwing : true
   )
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
+  const [patternFilter, setPatternFilter] = useState<'All' | DayPattern['direction'] | DayPattern['category']>('All')
   const mainRef = useRef<HTMLDivElement>(null)
   const tickingRef = useRef(false)
 
@@ -2360,6 +2418,84 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               </DocCard>
 
             </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             DAY TRADE PATTERN REFERENCE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="day-trade-patterns" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+              <LineChart size={18} className="text-violet-400" />
+              Day Trade Pattern Reference
+            </h2>
+            <p className="mb-4 text-xs leading-relaxed text-gray-400">
+              A visual field guide for reading the session chart. A pattern is context, not an order: wait for the stated confirmation, define the stop first, and let the Day Trade engine remain the source of the final decision.
+            </p>
+
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {(['All', 'Bullish', 'Bearish', 'Breakout', 'Reversal', 'Continuation'] as const).map(filter => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setPatternFilter(filter)}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                    patternFilter === filter
+                      ? 'border-violet-500 bg-violet-500/15 text-violet-200'
+                      : 'border-gray-700 bg-gray-900/50 text-gray-400 hover:border-gray-500 hover:text-gray-200'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              {DAY_TRADE_PATTERNS.filter(pattern => patternFilter === 'All' || pattern.direction === patternFilter || pattern.category === patternFilter).map(pattern => {
+                const isBull = pattern.direction === 'Bullish'
+                const isBear = pattern.direction === 'Bearish'
+                const directionClass = isBull ? 'border-emerald-700/50 bg-emerald-950/20 text-emerald-300' : isBear ? 'border-rose-700/50 bg-rose-950/20 text-rose-300' : 'border-amber-700/50 bg-amber-950/20 text-amber-300'
+                return (
+                  <article key={pattern.name} className="overflow-hidden rounded-xl border border-gray-800 bg-gray-900/70">
+                    <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-4 py-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-100">{pattern.name}</h3>
+                        <p className="mt-0.5 text-[10px] text-gray-500">{pattern.alias}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${directionClass}`}>{pattern.direction}</span>
+                        <span className="rounded-full border border-gray-700 bg-gray-800/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-300">{pattern.category}</span>
+                      </div>
+                    </div>
+
+                    <div className="border-b border-gray-800 bg-gray-950/50 px-4 py-2 text-gray-400">
+                      <PatternSketch pattern={pattern} />
+                    </div>
+
+                    <div className="space-y-3 p-4">
+                      <p className="text-[11px] leading-relaxed text-gray-400">{pattern.summary}</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
+                        <div><span className="block uppercase tracking-wide text-gray-600">Timeframe</span><span className="font-mono text-gray-200">{pattern.timeframe}</span></div>
+                        <div><span className="block uppercase tracking-wide text-gray-600">Typical R:R</span><span className="font-mono text-gray-200">{pattern.rewardRisk}</span></div>
+                        <div><span className="block uppercase tracking-wide text-gray-600">Best context</span><span className="text-gray-300">{pattern.context}</span></div>
+                        <div><span className="block uppercase tracking-wide text-gray-600">Confirm</span><span className="text-gray-300">{pattern.confirmation}</span></div>
+                      </div>
+                      <div className="grid gap-1.5 border-t border-gray-800 pt-3 text-[11px] leading-relaxed">
+                        <p><span className="mr-1.5 font-mono font-bold text-emerald-400">ENTRY</span><span className="text-gray-300">{pattern.entry}</span></p>
+                        <p><span className="mr-1.5 font-mono font-bold text-rose-400">STOP</span><span className="text-gray-300">{pattern.stop}</span></p>
+                        <p><span className="mr-1.5 font-mono font-bold text-amber-300">TARGET</span><span className="text-gray-300">{pattern.target}</span></p>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-gray-800 pt-2 text-[10px] text-gray-500">
+                        <span>Reference win-rate range</span>
+                        <span className="font-mono text-gray-300">{pattern.typicalRange}</span>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+            <p className="mt-3 text-[10px] leading-relaxed text-gray-600">
+              Reference ranges are educational estimates from the supplied guide, not a promise of outcome. Trade quality still depends on market context, volume, liquidity, risk sizing, and the engine’s backend decision.
+            </p>
           </section>
 
           {/* ═══════════════════════════════════════════════════════
