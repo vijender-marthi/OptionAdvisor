@@ -1363,11 +1363,16 @@ function TradingPositionCard({
   const guidance = deriveAiGuidance(pos)
   const isExpiringSoon = (safeDte(pos.dte, 99)) <= 7
   const dteForDisplay = safeDte(pos.dte, 0) > 0 ? String(safeDte(pos.dte, 99)) : '—'
-  const listTarget = pos.target1 != null && pos.target1 > 0
+  const savedTarget = pos.target1 != null && pos.target1 > 0
     ? pos.target1
     : pos.target2 != null && pos.target2 > 0
       ? pos.target2
       : null
+  const fallbackPremiumTarget = deriveExitRules(pos).find(rule =>
+    rule.price != null && /target|gain|credit captured/i.test(rule.trigger),
+  )?.price ?? null
+  const listTarget = savedTarget ?? fallbackPremiumTarget
+  const listTargetLabel = savedTarget != null ? 'Target' : 'Target premium'
 
   // For closed positions, always prefer the user-entered realized_pnl over the
   // server-calculated perPositionPnl (which uses the old pnlPct-based formula).
@@ -1471,7 +1476,7 @@ function TradingPositionCard({
             )}
             {listTarget != null && (
               <span className="font-mono font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                Target {fmtUsd(listTarget)}
+                {listTargetLabel} {fmtUsd(listTarget)}
               </span>
             )}
             {pos.status === 'open' && !hasInvalidPremium && creditTotal > 0 && (
