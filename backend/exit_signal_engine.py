@@ -46,7 +46,7 @@ class ExitSignal:
     current_price: float
     current_premium: float = 0.0
     pnl_estimate: float = 0.0
-    code: str = ""  # machine code: VWAP_BREAK, STOP_HIT, OR_BREAK, EOD, APPROACH_VWAP, TIME_STOP, TARGET
+    code: str = ""  # machine code: VWAP_BREAK, STOP_HIT, OR_BREAK, EOD, APPROACH_VWAP, TIME_STOP, TARGET, OVERNIGHT_HELD
 
     def to_dict(self) -> dict:
         return {
@@ -255,4 +255,16 @@ class ExitSignalEngine:
                                       f"Market closes in {int(mins)} min — day trade must be flat",
                                       "Close before the bell — do not hold overnight",
                                       float(price or 0), prem, pnl, "TIME_STOP"))
+
+        # CRITICAL: day trade carried past its entry session. The EOD time-stop is a
+        # last-15-minutes nudge; if it was ignored and the position is still open the
+        # next session, the no-overnight rule has already been broken — say so loudly
+        # at the open, before the gap does more damage.
+        if _is_day and pos.entry_time is not None:
+            session_date = data.get("session_date")
+            if session_date and pos.entry_time.date().isoformat() < str(session_date):
+                out.append(ExitSignal(pos.ticker, CRITICAL,
+                                      f"Day trade held overnight — opened {pos.entry_time.date().isoformat()}, still open",
+                                      "Flatten at the open — a day-trade thesis does not survive an overnight gap",
+                                      float(price or 0), prem, pnl, "OVERNIGHT_HELD"))
         return out

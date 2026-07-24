@@ -58,6 +58,20 @@ def _minutes_to_close(now: Optional[datetime] = None) -> float:
     return (close - now).total_seconds() / 60.0
 
 
+def _parse_added_at(value: Any) -> Optional[datetime]:
+    """Parse a portfolio position's `addedAt` (ISO, usually UTC) into an ET-aware
+    datetime. Used to detect a day trade that has been carried past its session."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_ET)
+    return dt.astimezone(_ET)
+
+
 def held_positions_for_user(email: str) -> list[HeldPosition]:
     """Open active_trades (opened today ET only) + open portfolio positions (day + swing) → HeldPosition list.
 
@@ -98,12 +112,17 @@ def held_positions_for_user(email: str) -> list[HeldPosition]:
     for p in portfolio:
         if str(p.get("status") or "").lower() != "open":
             continue
-        _src = str(p.get("source") or "").lower()
-        if _src not in ("day", "swing", ""):
-            continue
         ticker = str(p.get("ticker") or "").upper().strip()
         if not ticker:
             continue
+        # Every open position is monitored for the universal stop + target checks.
+        # `day` (and untagged) positions also get intraday checks (VWAP/OR/EOD) and
+        # the carried-overnight alert; `regular`/`swing`/any other tag are treated
+        # as multi-day holds that skip the intraday-only checks. Previously a
+        # `regular`-sourced position was skipped entirely and received no exit
+        # monitoring at all — including no stop-hit safety check.
+        _src = str(p.get("source") or "").lower()
+        _ptype = "day" if _src in ("day", "") else "swing"
         out.append(HeldPosition(
             ticker=ticker,
             direction=_direction_from_bias(str(p.get("bias") or ""), str(p.get("strategy") or "")),
@@ -112,7 +131,8 @@ def held_positions_for_user(email: str) -> list[HeldPosition]:
             stop_price=_num(p.get("stopLoss")),
             target_price=_num(p.get("target1")),
             contracts=int(_num(p.get("contracts")) or 1),
-            position_type=_src if _src in ("day", "swing") else "day",
+            entry_time=_parse_added_at(p.get("addedAt")),
+            position_type=_ptype,
         ))
 
     return out
@@ -133,6 +153,7 @@ def market_data_for_tickers(
     """Build the per-ticker market_data dict the ExitSignalEngine expects."""
     snapshot_fn = snapshot_fn or _default_snapshot
     mins = _minutes_to_close(now)
+    session_date = (now or datetime.now(_ET)).astimezone(_ET).date().isoformat()
     data: dict[str, dict] = {}
     for tk in {str(t).upper().strip() for t in tickers if t}:
         try:
@@ -147,6 +168,7 @@ def market_data_for_tickers(
             "orl": m.get("or_low"),
             "candles_5m": m.get("candles_5m_tail") or [],
             "minutes_to_close": mins,
+            "session_date": session_date,  # ET trading date; used to catch overnight-held day trades
             "premium": None,  # underlying-based monitoring; option premium not resolved here
         }
     return data

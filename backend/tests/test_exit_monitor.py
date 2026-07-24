@@ -76,6 +76,57 @@ class TestHeldPositions(unittest.TestCase):
         self.assertIn("VWAP_BREAK", codes)
         self.assertTrue(any(s.severity == "critical" for s in sigs))
 
+    def test_regular_position_is_monitored_as_swing_with_entry_time(self):
+        # A `regular`-sourced position used to be skipped entirely (no stop check).
+        # It must now be monitored as a non-day (swing-class) hold, and its
+        # addedAt must be parsed into entry_time for overnight detection.
+        storage.list_active_trades_open_opened_today_et = lambda e: []
+        storage.get_user_state = lambda e: {"portfolio": [
+            {"ticker": "TSLA", "status": "open", "source": "regular", "bias": "bullish",
+             "strategy": "Long Call", "entryPrice": 325.0, "stopLoss": 318.0, "contracts": 2,
+             "addedAt": "2026-07-23T14:30:00.000Z"},
+        ]}
+        held = exit_monitor.held_positions_for_user("a@b.com")
+        self.assertEqual(len(held), 1)
+        tsla = held[0]
+        self.assertEqual(tsla.position_type, "swing")   # not skipped; intraday-only checks off
+        self.assertEqual(tsla.stop_price, 318.0)         # universal stop check now applies
+        self.assertIsNotNone(tsla.entry_time)
+        self.assertEqual(tsla.entry_time.date().isoformat(), "2026-07-23")
+
+    def test_scan_fires_overnight_held_for_day_position(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        et = ZoneInfo("America/New_York")
+        storage.list_active_trades_open_opened_today_et = lambda e: []
+        storage.get_user_state = lambda e: {"portfolio": [
+            {"ticker": "GOOG", "status": "open", "source": "day", "bias": "bullish",
+             "strategy": "Long Call", "entryPrice": 322.5, "contracts": 2,
+             "addedAt": "2026-07-23T14:30:00.000Z"},
+        ]}
+        snap = lambda tk: {"metrics": {"last_price": 300.0}}
+        # "Now" is the next morning — the day trade has been carried overnight.
+        now = datetime(2026, 7, 24, 10, 0, tzinfo=et)
+        sigs = exit_monitor.scan_exit_signals_for_user("a@b.com", snapshot_fn=snap, now=now)
+        codes = {s.code for s in sigs}
+        self.assertIn("OVERNIGHT_HELD", codes)
+        self.assertTrue(any(s.code == "OVERNIGHT_HELD" and s.severity == "critical" for s in sigs))
+
+    def test_scan_no_overnight_signal_for_same_session_day_trade(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        et = ZoneInfo("America/New_York")
+        storage.list_active_trades_open_opened_today_et = lambda e: []
+        storage.get_user_state = lambda e: {"portfolio": [
+            {"ticker": "GOOG", "status": "open", "source": "day", "bias": "bullish",
+             "strategy": "Long Call", "entryPrice": 322.5, "contracts": 2,
+             "addedAt": "2026-07-24T14:30:00.000Z"},
+        ]}
+        snap = lambda tk: {"metrics": {"last_price": 320.0}}
+        now = datetime(2026, 7, 24, 15, 0, tzinfo=et)
+        sigs = exit_monitor.scan_exit_signals_for_user("a@b.com", snapshot_fn=snap, now=now)
+        self.assertNotIn("OVERNIGHT_HELD", {s.code for s in sigs})
+
     def test_scan_empty_when_no_positions(self):
         storage.list_active_trades_open_opened_today_et = lambda e: []
         storage.get_user_state = lambda e: {"portfolio": []}
