@@ -340,7 +340,10 @@ def _mkt_cache_ttl() -> float:
 def _get_market_context_cached() -> tuple[str, str, str]:
     """TTL-adaptive cached wrapper around _get_market_context (60s RTH, 300s off-hours)."""
     now = time.monotonic()
-    if _MKT_CACHE.get("ts", 0.0) + _mkt_cache_ttl() > now:
+    if (
+        "spy_bias" in _MKT_CACHE and "qqq_bias" in _MKT_CACHE and "context" in _MKT_CACHE
+        and _MKT_CACHE.get("ts", 0.0) + _mkt_cache_ttl() > now
+    ):
         return (
             _MKT_CACHE["spy_bias"],
             _MKT_CACHE["qqq_bias"],
