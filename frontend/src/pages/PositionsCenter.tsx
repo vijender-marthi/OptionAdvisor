@@ -44,7 +44,6 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'options', label: 'Options' },
   { id: 'stocks', label: 'Stocks' },
-  { id: 'performance', label: 'Performance' },
 ] as const
 
 type MainTabId = (typeof TABS)[number]['id']
@@ -2441,60 +2440,6 @@ export default function PositionsCenter() {
         </div>
       </header>
 
-      {tab === 'dashboard' && (
-      <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        {/* 1. Contract Results */}
-        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Contract Results</div>
-          {contractStats.totalContracts === 0 ? (
-            <div className="text-sm font-semibold text-muted">No closed trades</div>
-          ) : (
-            <>
-              <div className="flex items-center gap-1.5 text-sm font-bold tabular-nums">
-                <span className="text-emerald-400">{contractStats.winContracts}W</span>
-                <span className="text-muted text-xs">/</span>
-                <span className="text-rose-400">{contractStats.lossContracts}L</span>
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                {contractStats.winRate != null && (
-                  <span className={`text-[11px] font-semibold tabular-nums ${contractStats.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {contractStats.winRate.toFixed(0)}% win
-                  </span>
-                )}
-                {contractStats.returnOnCapital != null && (
-                  <span className={`text-[11px] font-semibold tabular-nums ${contractStats.returnOnCapital >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    · {contractStats.returnOnCapital >= 0 ? '+' : ''}{contractStats.returnOnCapital.toFixed(1)}% ROC
-                  </span>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        {/* 2. Open Positions */}
-        <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
-        {/* 3–5. Day / Week / Total P&L */}
-        {[
-          { key: 'day', label: 'Day P&L', value: dayPl, pct: dayPlPct },
-          { key: 'week', label: 'Week P&L', value: weekPl, pct: weekPlPct },
-          { key: 'total', label: 'Total Net P&L', value: totalPl, pct: totalPlPct },
-        ].map(m => (
-          <button key={m.key} type="button" onClick={() => setPlFilter(plFilter === m.key ? null : m.key as 'total' | 'week' | 'day')}
-            className={`rounded-lg border px-3 py-2 text-left transition-all ${
-              plFilter === m.key
-                ? 'border-violet-500 ring-2 ring-violet-500/30 bg-white dark:bg-slate-900'
-                : 'border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900'
-            }`}
-          >
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{m.label}</div>
-            <div className={`text-base font-bold tabular-nums mt-0.5 ${getProfitLossTextClass(num(m.value))}`}>{fmtUsd(m.value)}</div>
-            {m.pct != null && <div className={`text-[11px] mt-0.5 tabular-nums ${getProfitLossTextClass(num(m.pct))}`}>{fmtPct(m.pct)}</div>}
-          </button>
-        ))}
-        {/* 6–7. Buying Power / Capital in Use */}
-        <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
-        <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
-      </section>
-      )}
 
       {notice && (
         <div className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-sm font-medium ${
@@ -2526,7 +2471,7 @@ export default function PositionsCenter() {
               </button>
             ))}
           </div>
-          {tab !== 'dashboard' && tab !== 'performance' && (
+          {tab !== 'dashboard' && (
           <div className="flex items-center gap-2 flex-wrap">
             {/* Ticker / strategy / expiry / close-date search */}
             <label className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-3 py-1.5 text-sm min-w-[180px]">
@@ -2583,7 +2528,7 @@ export default function PositionsCenter() {
           )}
         </div>
 
-        {filterOpen && tab !== 'dashboard' && tab !== 'performance' && (
+        {filterOpen && tab !== 'dashboard' && (
           <div className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
@@ -2648,15 +2593,71 @@ export default function PositionsCenter() {
       </div>
 
       {tab === 'dashboard' ? (
-        <PositionsDashboardTab
-          portfolio={displayPortfolio}
-          sectorPnl={(d.sector_pnl ?? []) as any[]}
-          pnlByPeriod={(d.pnl_by_period ?? []) as any[]}
-          pnlByStrategy={(d.pnl_by_strategy ?? []) as any[]}
-          risk={(d.risk ?? null) as any}
-          summary={summary as any}
-          isDark={isDark}
-        />
+        <div className="flex flex-col gap-4">
+          {/* Dashboard metrics — inside the page, below the tab bar */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+            {/* 1. Contract Results */}
+            <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Contract Results</div>
+              {contractStats.totalContracts === 0 ? (
+                <div className="text-sm font-semibold text-muted">No closed trades</div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5 text-sm font-bold tabular-nums">
+                    <span className="text-emerald-400">{contractStats.winContracts}W</span>
+                    <span className="text-muted text-xs">/</span>
+                    <span className="text-rose-400">{contractStats.lossContracts}L</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {contractStats.winRate != null && (
+                      <span className={`text-[11px] font-semibold tabular-nums ${contractStats.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {contractStats.winRate.toFixed(0)}% win
+                      </span>
+                    )}
+                    {contractStats.returnOnCapital != null && (
+                      <span className={`text-[11px] font-semibold tabular-nums ${contractStats.returnOnCapital >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        · {contractStats.returnOnCapital >= 0 ? '+' : ''}{contractStats.returnOnCapital.toFixed(1)}% ROC
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            {/* 2. Open Positions */}
+            <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
+            {/* 3–5. Day / Week / Total P&L */}
+            {[
+              { key: 'day', label: 'Day P&L', value: dayPl, pct: dayPlPct },
+              { key: 'week', label: 'Week P&L', value: weekPl, pct: weekPlPct },
+              { key: 'total', label: 'Total Net P&L', value: totalPl, pct: totalPlPct },
+            ].map(m => (
+              <button key={m.key} type="button" onClick={() => setPlFilter(plFilter === m.key ? null : m.key as 'total' | 'week' | 'day')}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                  plFilter === m.key
+                    ? 'border-violet-500 ring-2 ring-violet-500/30 bg-white dark:bg-slate-900'
+                    : 'border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900'
+                }`}
+              >
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{m.label}</div>
+                <div className={`text-base font-bold tabular-nums mt-0.5 ${getProfitLossTextClass(num(m.value))}`}>{fmtUsd(m.value)}</div>
+                {m.pct != null && <div className={`text-[11px] mt-0.5 tabular-nums ${getProfitLossTextClass(num(m.pct))}`}>{fmtPct(m.pct)}</div>}
+              </button>
+            ))}
+            {/* 6–7. Buying Power / Capital in Use */}
+            <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
+            <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
+          </section>
+          <PositionsDashboardTab
+            portfolio={displayPortfolio}
+            sectorPnl={(d.sector_pnl ?? []) as any[]}
+            pnlByPeriod={(d.pnl_by_period ?? []) as any[]}
+            pnlByStrategy={(d.pnl_by_strategy ?? []) as any[]}
+            risk={(d.risk ?? null) as any}
+            summary={summary as any}
+            isDark={isDark}
+          />
+          <PerformanceCoachingTab refreshKey={portfolioRefreshKey} />
+        </div>
       ) : tab === 'options' ? (
         <PositionCategoryWorkspace
           category="options"
@@ -2699,8 +2700,6 @@ export default function PositionsCenter() {
           onDelete={handleDeletePosition}
           onAdd={() => setShowAddModal(true)}
         />
-      ) : tab === 'performance' ? (
-        <PerformanceCoachingTab refreshKey={portfolioRefreshKey} />
       ) : (
         null
       )}

@@ -157,8 +157,8 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-500">Retrospective review &amp; coaching</div>
-        <p className="mt-0.5 text-sm text-muted">How the closed book actually performed over time — the Dashboard tab covers current positions &amp; risk.</p>
+        <div className="mt-2 border-t border-slate-200 pt-4 text-[11px] font-semibold uppercase tracking-wide text-violet-500 dark:border-white/[0.07]">Retrospective review &amp; coaching</div>
+        <p className="mt-0.5 text-sm text-muted">How the closed book performed over time, and where the recurring leaks are.</p>
       </div>
 
       {/* This-week banner */}
