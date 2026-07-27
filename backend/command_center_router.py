@@ -29,6 +29,8 @@ from pydantic import BaseModel, Field
 
 from alerts.alert_service import build_alert_center_payload
 from auth_routes import require_access_email
+from performance_analyzer import analyze_performance
+from coaching_engine import analyze_coaching
 import bar_cache
 import yfinance as yf
 from storage import (
@@ -1841,6 +1843,18 @@ def get_positions_center(auth_email: str = Depends(require_access_email)):
     state = get_user_state(email)
     ensure_demo_alert_center_rows(email)
     return api_envelope(_positions_center_payload(state, email=email), stale=False)
+
+
+@command_center_router.get("/positions-center/performance")
+def get_positions_center_performance(auth_email: str = Depends(require_access_email)):
+    """Retrospective performance analytics + process-coaching over the realized book."""
+    email = normalize_email(auth_email)
+    state = get_user_state(email)
+    portfolio = state.get("portfolio") or []
+    return api_envelope(
+        {"performance": analyze_performance(portfolio), "coaching": analyze_coaching(portfolio)},
+        stale=False,
+    )
 
 
 @command_center_router.get("/premarket-bias")

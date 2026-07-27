@@ -360,6 +360,20 @@ export async function fetchPositionsCenter(): Promise<ApiEnvelope<Record<string,
   return normalizeCommandCenterEnvelope(data)
 }
 
+// Retrospective performance analytics + process coaching over the realized book.
+// Raw path (baseURL is /api) so it needs no generated-manifest entry.
+export async function fetchPositionsPerformance(): Promise<{
+  performance: Record<string, unknown>
+  coaching: Record<string, unknown>
+}> {
+  if (USE_MOCK) {
+    return { performance: {}, coaching: {} }
+  }
+  const { data } = await api.get<unknown>('/positions-center/performance')
+  const env = normalizeCommandCenterEnvelope(data)
+  return env.data as unknown as { performance: Record<string, unknown>; coaching: Record<string, unknown> }
+}
+
 export async function fetchSignalFeed(params: {
   search?: string
   source?: string
