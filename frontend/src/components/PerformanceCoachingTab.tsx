@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Gauge,
-  Percent, Target, TrendingDown, TrendingUp,
+  Target, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -156,6 +156,11 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
 
   return (
     <div className="flex flex-col gap-5">
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-500">Retrospective review &amp; coaching</div>
+        <p className="mt-0.5 text-sm text-muted">How the closed book actually performed over time — the Dashboard tab covers current positions &amp; risk.</p>
+      </div>
+
       {/* This-week banner */}
       <div className="rounded-2xl border border-violet-300 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/5 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -176,14 +181,17 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
         </div>
       </div>
 
-      {/* KPI grid */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Kpi icon={<Activity size={12} />} label="Realized" value={money(s.realized)} cls={pnlClass(s.realized)} hint={`${s.n} trades`} />
-        <Kpi icon={<Percent size={12} />} label="Win rate" value={`${s.win_rate}%`} hint={`${s.wins}W · ${s.losses}L`} />
-        <Kpi icon={<Gauge size={12} />} label="Profit factor" value={s.profit_factor?.toFixed(2) ?? '—'} cls={(s.profit_factor ?? 0) >= 1 ? 'text-emerald-500' : 'text-rose-500'} hint="win ÷ loss" />
-        <Kpi icon={<Target size={12} />} label="Expectancy" value={money(s.expectancy)} cls={pnlClass(s.expectancy)} hint="per trade" />
-        <Kpi icon={<TrendingUp size={12} />} label="Avg W / L" value={`${money(s.avg_win, false)} / ${money(s.avg_loss)}`} hint="reward vs risk" />
-        <Kpi icon={<TrendingDown size={12} />} label="Max drawdown" value={money(s.max_drawdown)} cls="text-rose-500" hint={`${s.trading_days} trading days`} />
+      {/* Retrospective stats — only what the Dashboard tab does NOT already show
+          (win rate / profit factor / P&L snapshot live on the Dashboard tab). */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+        <Kpi icon={<Target size={12} />} label="Expectancy" value={money(s.expectancy)} cls={pnlClass(s.expectancy)} hint="avg per closed trade" />
+        <Kpi icon={<TrendingDown size={12} />} label="Max drawdown" value={money(s.max_drawdown)} cls="text-rose-500" hint={`over ${s.trading_days} trading days`} />
+        <Kpi icon={<TrendingUp size={12} />} label="Best trade" value={money(s.best)} cls="text-emerald-500" />
+        <Kpi icon={<Activity size={12} />} label="Worst trade" value={money(s.worst)} cls="text-rose-500" />
+        <Kpi icon={<Gauge size={12} />} label="Day streak"
+          value={`${s.day_streak > 0 ? '+' : ''}${s.day_streak}d`}
+          cls={s.day_streak > 0 ? 'text-emerald-500' : s.day_streak < 0 ? 'text-rose-500' : 'text-muted'}
+          hint={s.day_streak >= 0 ? 'winning days' : 'losing days'} />
       </div>
 
       {/* Equity curve */}
@@ -224,10 +232,9 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
         </ResponsiveContainer>
       </div>
 
-      {/* Breakdowns */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <MiniBreakdown title="By structure" rows={perf.by_structure} />
-        <MiniBreakdown title="By hold" rows={perf.by_hold} />
+      {/* Breakdowns unique to the retrospective view — structure/strategy lives on the Dashboard tab */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <MiniBreakdown title="By hold — same-day vs overnight" rows={perf.by_hold} />
         <MiniBreakdown title="By broker" rows={perf.by_source} />
       </div>
 
