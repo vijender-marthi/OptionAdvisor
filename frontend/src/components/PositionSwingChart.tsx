@@ -56,7 +56,7 @@ const INDICATOR_CHIPS = [
   { key: 'sma', label: 'SMA', color: '#f59e0b' },
   { key: 'ema', label: 'EMA', color: '#0ea5e9' },
   { key: 'fib', label: 'FIB', color: '#a78bfa' },
-  { key: 'volProfile', label: 'VOL PROFILE', color: '#10b981' },
+  { key: 'volProfile', label: 'VOL PROFILE', color: '#2dd4bf' },
   { key: 'macd', label: 'MACD', color: '#ef4444' },
 ] as const
 type IndicatorKey = (typeof INDICATOR_CHIPS)[number]['key']
@@ -218,7 +218,7 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
             const yTop = yFor(minimum + ((bin + 1) / VP_BINS) * range)
             const yBottom = yFor(minimum + (bin / VP_BINS) * range)
             const barWidth = (vol / vpMax) * 170
-            return <rect key={`vp-${bin}`} x="0" y={yTop} width={barWidth} height={Math.max(1, yBottom - yTop - 1)} fill="#10b981" opacity="0.16" />
+            return <rect key={`vp-${bin}`} x="0" y={yTop} width={barWidth} height={Math.max(1, yBottom - yTop - 1)} fill="#2dd4bf" opacity="0.42" rx="1" />
           })}
           {indicators.sma && seriesPath('ma20') && <path d={seriesPath('ma20')} fill="none" stroke="#f59e0b" strokeWidth="1.8" />}
           {indicators.sma && seriesPath('ma50') && <path d={seriesPath('ma50')} fill="none" stroke="#8b5cf6" strokeWidth="1.8" />}
