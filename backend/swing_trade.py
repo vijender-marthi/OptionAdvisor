@@ -2042,6 +2042,28 @@ def build_swing_chart_timeframe_series(
     return {"timeframe": timeframe, **payload, "pattern_overlay": _swing_flag_pattern_overlay(payload["points"], timeframe)}
 
 
+def _derive_bos_choch(pivots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive Break of Structure and Change of Character from the confirmed
+    HH/HL/LH/LL label sequence. BOS = most recent trend continuation (same
+    character as the prior pivot); CHoCH = most recent character flip (potential
+    reversal). Backend-owned so React never infers structure."""
+    labels = [str(p.get("label") or "").upper().replace("?", "") for p in pivots]
+    labels = [l for l in labels if l in ("HH", "HL", "LH", "LL")]
+    out: dict[str, Any] = {"bos": None, "choch": None, "sequence": labels[-6:]}
+    if len(labels) < 2:
+        return out
+    is_up = lambda label: label in ("HH", "HL")
+    for i in range(len(labels) - 1, 0, -1):
+        cur, prev = is_up(labels[i]), is_up(labels[i - 1])
+        if cur == prev and out["bos"] is None:
+            out["bos"] = "Bullish BOS" if cur else "Bearish BOS"
+        if cur != prev and out["choch"] is None:
+            out["choch"] = "Bullish CHoCH" if cur else "Bearish CHoCH"
+        if out["bos"] and out["choch"]:
+            break
+    return out
+
+
 def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> dict[str, Any]:
     """
     Backend-owned daily market-structure labels for the Swing chart.
@@ -2116,6 +2138,10 @@ def build_swing_market_structure(raw: pd.DataFrame, *, max_pivots: int = 8) -> d
           chart_pivots.append(trailing_pivot)
       structure["chart_pivots"] = chart_pivots[-max_pivots:]
       structure["all_pivots"] = add_dates(list(structure.get("all_pivots") or []))[-max_pivots:]
+      derived = _derive_bos_choch(list(structure.get("pivots") or []))
+      structure["bos"] = derived["bos"]
+      structure["choch"] = derived["choch"]
+      structure.setdefault("sequence", derived["sequence"])
       return structure
     except Exception as exc:
       log.warning("build_swing_market_structure failed: %s", exc)

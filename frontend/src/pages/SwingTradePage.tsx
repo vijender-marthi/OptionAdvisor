@@ -478,8 +478,8 @@ function buildIndicatorFramework(
     { id: 'swing_pivots', name: 'Swing High / Swing Low', category: 'levels', panel: 'structure', ...available(hasFibAnchors), currentValue: fibAnchorLabel, formula: 'Backend-confirmed swing pivots', inputs: 'Stock-targets fib anchors', interpretation: 'Labels are limited to backend-selected anchors.', source: 'Stock Targets API' },
     { id: 'structure', name: 'HH / HL / LH / LL Structure', category: 'levels', panel: 'structure', ...available(hasBackendValue(marketStructure?.display, result?.metrics && text((result.metrics as Record<string, unknown>).trend_direction), unified?.structure)), currentValue: compactLabel(text(marketStructure?.display) || text(metrics?.trend_direction) || unified?.structure), formula: 'Backend confirmed daily pivot structure', inputs: 'Swing metrics market_structure.pivots', interpretation: compactLabel(text(marketStructure?.story) || result?.playbook_hint || result?.decision_message || 'Structure context returned by backend'), source: 'Swing Trade API' },
     { id: 'continuation_pattern', name: 'Bull / Bear Flag', category: 'levels', panel: 'price', ...available(hasContinuationPattern), currentValue: hasContinuationPattern ? 'Backend pattern present' : undefined, formula: 'Backend pole and contained counter-trend flag detection', inputs: 'Backend OHLC + volume series', interpretation: 'Shown only when the backend finds a conservative daily or weekly continuation pattern.', source: 'Swing Trade API' },
-    { id: 'bos', name: 'BOS', category: 'levels', panel: 'structure', ...available(false) },
-    { id: 'choch', name: 'CHoCH', category: 'levels', panel: 'structure', ...available(false) },
+    { id: 'bos', name: 'BOS', category: 'levels', panel: 'structure', ...available(hasBackendValue(marketStructure?.bos)), currentValue: compactLabel(text(marketStructure?.bos)), formula: 'Break of structure from confirmed pivots', inputs: 'Swing metrics market_structure.bos', interpretation: 'Most recent trend-continuation break in the HH/HL/LH/LL sequence.', source: 'Swing Trade API' },
+    { id: 'choch', name: 'CHoCH', category: 'levels', panel: 'structure', ...available(hasBackendValue(marketStructure?.choch)), currentValue: compactLabel(text(marketStructure?.choch)), formula: 'Change of character from confirmed pivots', inputs: 'Swing metrics market_structure.choch', interpretation: 'Most recent character flip (potential reversal) in the pivot sequence.', source: 'Swing Trade API' },
     { id: 'entry', name: 'Entry', category: 'levels', panel: 'price', ...available(hasEntry), currentValue: money(exec.breakout ?? unified?.entry_price), formula: 'Backend execution entry', inputs: 'exec_levels.breakout / unified entry_price', interpretation: 'Entry level supplied by the backend decision snapshot.', source: 'Swing Trade API' },
     { id: 'stop', name: 'Stop', category: 'levels', panel: 'price', ...available(hasStop), currentValue: money(exec.stop ?? unified?.stop_price), formula: 'Backend execution stop', inputs: 'exec_levels.stop / unified stop_price', interpretation: 'Invalidation or risk-control level supplied by backend.', source: 'Swing Trade API' },
     { id: 'target1', name: 'Target 1', category: 'levels', panel: 'price', ...available(hasBackendValue(exec.target1)), currentValue: money(exec.target1), formula: 'Backend target 1', inputs: 'exec_levels.target1', interpretation: 'First profit objective returned by backend.', source: 'Swing Trade API' },
@@ -1567,6 +1567,7 @@ function SwingRightRail({
   const marketStructureSequence = Array.isArray(marketStructure?.sequence)
     ? marketStructure.sequence.map(item => String(item)).filter(Boolean).join(' -> ')
     : ''
+  const structurePivots = backendStructurePivots(metrics)
   const signalQuality = unified?.verdict_presentation?.signal_quality?.label || result?.setup_quality || result?.entry_quality || '—'
   const confidence = unified?.confidence ?? result?.confidence ?? null
   const professional = result?.professional_decision
@@ -1604,7 +1605,32 @@ function SwingRightRail({
       {shouldRenderWidget('Market Structure') && <RailCard title="Market Structure" {...cardProps}>
         <div className="grid gap-2">
           <Value label="Trend" value={compactLabel(text(metrics?.trend_direction) || result?.swing_bias || result?.bias)} />
-          <Value label="Sequence" value={compactLabel(text(marketStructure?.display) || marketStructureSequence)} muted={!text(marketStructure?.display) && !marketStructureSequence} />
+          <div>
+            <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-tertiary">Sequence</div>
+            {structurePivots.length ? (
+              <div className="flex flex-wrap items-center gap-1">
+                {structurePivots.slice(-6).map((pivot, index, arr) => {
+                  const label = String(pivot.label ?? '')
+                  const up = /^(HH|HL)/i.test(label)
+                  const down = /^(LH|LL)/i.test(label)
+                  const last = index === arr.length - 1
+                  return (
+                    <span key={`${pivot.label}-${index}`} className="flex items-center gap-1">
+                      <span className={`rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-bold ${last ? 'ring-2 ring-violet-400' : ''} ${up ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-300' : down ? 'border-rose-500/40 text-rose-600 dark:text-rose-300' : 'border-slate-300 text-tertiary dark:border-white/10'}`}>{pivot.label}</span>
+                      {!last && <span className="text-tertiary">→</span>}
+                    </span>
+                  )
+                })}
+                <span className="ml-1 rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">Current</span>
+              </div>
+            ) : (
+              <div className="text-xs text-tertiary">{compactLabel(text(marketStructure?.display) || marketStructureSequence) || 'No confirmed pivots yet'}</div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Value label="BOS" value={compactLabel(text(marketStructure?.bos)) || '—'} />
+            <Value label="CHoCH" value={compactLabel(text(marketStructure?.choch)) || '—'} />
+          </div>
           <Value label="Current" value={compactLabel(unified?.structure || text(metrics?.trend_stage))} />
           <Value label="Expected Next" value={compactLabel(text(metrics?.preferred_entry_trigger) || text(metrics?.entry_quality_label) || result?.entry_quality)} />
           <Value label="Invalidation" value={money(exec.stop ?? unified?.stop_price)} />
