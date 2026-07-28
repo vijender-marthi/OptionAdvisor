@@ -91,16 +91,20 @@ function pivotIndices(values: number[], w = 2): { highs: number[]; lows: number[
 // RSI makes a lower high (bearish), or price a lower low while RSI a higher low (bullish).
 function rsiDivergences(prices: number[], rsi: number[]): { kind: 'bear' | 'bull'; i1: number; i2: number }[] {
   const out: { kind: 'bear' | 'bull'; i1: number; i2: number }[] = []
-  const piv = pivotIndices(prices, 2)
-  const lastTwo = (arr: number[]) => (arr.length >= 2 ? [arr[arr.length - 2], arr[arr.length - 1]] : null)
-  const h = lastTwo(piv.highs)
-  if (h && Number.isFinite(rsi[h[0]]) && Number.isFinite(rsi[h[1]]) && prices[h[1]] > prices[h[0]] && rsi[h[1]] < rsi[h[0]]) {
-    out.push({ kind: 'bear', i1: h[0], i2: h[1] })
+  const piv = pivotIndices(prices, 1)
+  const scan = (idxs: number[], kind: 'bear' | 'bull') => {
+    if (idxs.length < 2) return
+    const last = idxs[idxs.length - 1]
+    if (!Number.isFinite(rsi[last])) return
+    for (let k = idxs.length - 2; k >= Math.max(0, idxs.length - 4); k--) {
+      const prev = idxs[k]
+      if (!Number.isFinite(rsi[prev])) continue
+      if (kind === 'bear' && prices[last] > prices[prev] && rsi[last] < rsi[prev]) { out.push({ kind, i1: prev, i2: last }); break }
+      if (kind === 'bull' && prices[last] < prices[prev] && rsi[last] > rsi[prev]) { out.push({ kind, i1: prev, i2: last }); break }
+    }
   }
-  const l = lastTwo(piv.lows)
-  if (l && Number.isFinite(rsi[l[0]]) && Number.isFinite(rsi[l[1]]) && prices[l[1]] < prices[l[0]] && rsi[l[1]] > rsi[l[0]]) {
-    out.push({ kind: 'bull', i1: l[0], i2: l[1] })
-  }
+  scan(piv.highs, 'bear')
+  scan(piv.lows, 'bull')
   return out
 }
 
