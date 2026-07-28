@@ -28,6 +28,27 @@ import type {
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
 import PositionSwingChart from '../components/PositionSwingChart'
 
+// Apply the sidebar "Scan Filters" to the recommendation list. Strategy/bias use a
+// normalized contains-match so e.g. the "Calendar Spread" filter also matches a
+// "Call Calendar Spread" recommendation. 'all' passes everything through.
+function filterRecommendations(recs: Recommendation[], filters: FilterState): Recommendation[] {
+  const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z]/g, '')
+  const strat = filters.strategy && filters.strategy !== 'all' ? norm(filters.strategy) : ''
+  const bias = filters.bias && filters.bias !== 'all' ? norm(filters.bias) : ''
+  if (!strat && !bias) return recs
+  return recs.filter(rec => {
+    if (strat) {
+      const rs = norm(rec.strategy)
+      if (rs && !rs.includes(strat) && !strat.includes(rs)) return false
+    }
+    if (bias) {
+      const rb = norm(rec.bias)
+      if (rb && !rb.includes(bias) && !bias.includes(rb)) return false
+    }
+    return true
+  })
+}
+
 const stateStatus = (rec: { status?: string }): RecommendationState =>
   (['GO', 'WAIT', 'CAUTION', 'AVOID'] as RecommendationState[]).includes(rec.status as RecommendationState)
     ? rec.status as RecommendationState
@@ -1323,6 +1344,10 @@ export default function TickerPage() {
   // ── Selected recommendation ──────────────────────────────────────────────
 
   const currentRecs = analysis?.recommendations ?? []
+  const visibleRecs = useMemo(
+    () => filterRecommendations(analysis?.recommendations ?? [], filters),
+    [analysis, filters],
+  )
   const currentSelectedRec = currentRecs.find(r => r.rank === selectedRank) ?? null
 
   // ── Derived ──────────────────────────────────────────────────────────────
@@ -1459,7 +1484,7 @@ export default function TickerPage() {
               </div>
               {analysis && (
                 <span className="rounded-full border border-border bg-surface-canvas px-2 py-1 font-mono text-[10px] font-bold text-text-secondary">
-                  {analysis.recommendations.length} ranked
+                  {visibleRecs.length} ranked
                 </span>
               )}
             </div>
@@ -1468,7 +1493,7 @@ export default function TickerPage() {
                 <RecListSkeleton />
               ) : analysis ? (
                 <RecommendationsTable
-                  recommendations={analysis.recommendations}
+                  recommendations={visibleRecs}
                   signals={analysis.signals}
                   selectedRank={selectedRank}
                   showAll={showAllRecs}

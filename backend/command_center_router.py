@@ -2104,9 +2104,121 @@ def _broker_single_leg_metrics(action: str, option_type: str, strike: float, pre
     }
 
 
+_ETRADE_LEG_RE = re.compile(
+    r"([A-Z]{1,6})\s+([A-Za-z]{3,9})\s+(\d{1,2})\s+'?(\d{2,4})\s+\$?(\d+(?:\.\d+)?)\s+(Call|Put)",
+    re.IGNORECASE,
+)
+
+
+def _parse_etrade_multi_leg(text: str) -> Optional[dict[str, Any]]:
+    """Detect a two-leg calendar spread from an E*TRADE order log, e.g.
+    'Sell Open Buy Open 1 1 AAPL Jul 24 \\'26 $325 Call AAPL Aug 07 \\'26 $325 Call Net Debit Day 5.63'.
+    Only same-strike / same-type / different-expiry (a calendar) is supported here."""
+    legs_found = _ETRADE_LEG_RE.findall(text)
+    actions = re.findall(r"\b(Buy|Sell)\s+Open\b", text, flags=re.IGNORECASE)
+    if len(legs_found) != 2 or len(actions) != 2:
+        return None
+    net_match = (
+        re.search(r"\bNet\s+(Debit|Credit)\b[^\d]*(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
+        or re.search(r"\b(Debit|Credit)\b\s*\$?(\d+(?:\.\d+)?)", text, flags=re.IGNORECASE)
+    )
+    if not net_match:
+        return None
+    parsed_legs: list[dict[str, Any]] = []
+    for i, (tk, mon, day, yr, strike, otype) in enumerate(legs_found):
+        month = _BROKER_MONTHS.get(mon.lower())
+        if not month:
+            return None
+        year = f"20{yr}" if len(yr) == 2 else yr
+        parsed_legs.append({
+            "action": actions[i].upper(),
+            "ticker": tk.upper(),
+            "expiry": f"{year}-{month}-{day.zfill(2)}",
+            "strike": float(strike),
+            "option_type": otype.upper().rstrip("S"),
+        })
+    a, b = parsed_legs
+    if (a["ticker"] != b["ticker"] or a["option_type"] != b["option_type"]
+            or a["strike"] != b["strike"] or a["expiry"] == b["expiry"]):
+        return None  # not a same-strike calendar (vertical/diagonal not supported here)
+    qty_match = re.search(r"(?:Buy|Sell)\s+Open\s+(\d+)", text, flags=re.IGNORECASE)
+    contracts = int(qty_match.group(1)) if qty_match else 1
+    front, back = sorted(parsed_legs, key=lambda leg: leg["expiry"])
+    return {
+        "multi_leg": True,
+        "structure": "calendar",
+        "strategy": "Call Calendar Spread" if a["option_type"] == "CALL" else "Put Calendar Spread",
+        "ticker": a["ticker"],
+        "option_type": a["option_type"],
+        "strike": a["strike"],
+        "front_expiry": front["expiry"],
+        "back_expiry": back["expiry"],
+        "net_kind": net_match.group(1).upper(),
+        "net_value": float(net_match.group(2)),
+        "contracts": max(1, contracts),
+    }
+
+
+def _build_calendar_parse_response(parsed: dict[str, Any], body: "BrokerContractParseBody") -> dict[str, Any]:
+    """Build the {position, form} response for a parsed calendar spread. Per-leg
+    premiums are absent from the broker log, so the net debit/credit is attributed
+    to the long (back) leg — the net cost is exact, the leg split is nominal."""
+    ticker = str(parsed["ticker"])
+    otype = str(parsed["option_type"])
+    strike = float(parsed["strike"])
+    front_expiry = str(parsed["front_expiry"])
+    back_expiry = str(parsed["back_expiry"])
+    net_kind = str(parsed["net_kind"])
+    net_value = float(parsed["net_value"])
+    contracts = int(parsed.get("contracts", 1))
+    strategy = str(parsed["strategy"])
+    source = body.trade_source if body.trade_source in {"day", "swing", "regular", "manual"} else "regular"
+    net_credit = round(-net_value if net_kind == "DEBIT" else net_value, 2)
+    front_prem, back_prem = 0.0, net_value
+    try:
+        dte = (date.fromisoformat(back_expiry) - date.today()).days
+    except ValueError:
+        dte = 0
+
+    def _leg(action: str, expiry: str, prem: float) -> dict[str, Any]:
+        return {"action": action, "option_type": otype, "strike": strike, "expiry": expiry,
+                "delta": 0, "mid_price": prem, "bid": prem, "ask": prem, "iv": 0, "oi": 0,
+                "volume": 0, "bid_ask_spread_pct": 0}
+
+    legs = [_leg("SELL", front_expiry, front_prem), _leg("BUY", back_expiry, back_prem)]
+    notes = (f"Imported broker calendar spread:\n{body.text.strip()}\n"
+             f"(Net {net_kind.title()} {net_value:g}; per-leg premiums not in the broker log.)")
+    capital = round(net_value * 100 * contracts) if net_kind == "DEBIT" else round(strike * 100 * contracts)
+    position = {
+        "ticker": ticker, "companyName": ticker, "strategy": strategy, "bias": "Neutral",
+        "legs": legs, "expiry": back_expiry, "dte": dte, "prob_of_profit": 0, "expected_value": 0,
+        "scores_total": 0, "contracts": contracts, "entryPrice": 0, "source": source,
+        "net_credit": net_credit, "max_loss": round(net_value, 2) if net_kind == "DEBIT" else 0,
+        "max_profit": 0, "capital_at_risk": capital, "notes": notes,
+    }
+    form = {
+        "ticker": ticker,
+        "tradeSource": source if source in {"day", "swing", "regular"} else "regular",
+        "strategy": strategy, "expiry": front_expiry, "backExpiry": back_expiry,
+        "contractCount": str(contracts), "entryStockPrice": str(strike),
+        "legStrikes": [str(strike), str(strike), "", ""],
+        "legPremiums": [str(front_prem), str(back_prem), "", ""],
+        "notes": notes,
+    }
+    return api_envelope({
+        "ok": True, "position": position, "form": form,
+        "parsed": {"structure": "calendar", "ticker": ticker, "strategy": strategy, "strike": strike,
+                   "front_expiry": front_expiry, "back_expiry": back_expiry, "net_kind": net_kind,
+                   "net_value": net_value, "contracts": contracts},
+    })
+
+
 def _parse_broker_contract_text(raw_text: str) -> dict[str, Any]:
     """Parse the supported single-leg order-ticket and broker-export formats."""
     text = re.sub(r"\s+", " ", raw_text).strip()
+    multi = _parse_etrade_multi_leg(text)
+    if multi:
+        return multi
     order_match = re.search(
         r"\b(?P<action>Buy|Sell)\s+to\s+Open\s+(?P<contracts>\d+)\s+Contracts?\s+"
         r"(?P<ticker>[A-Z]{1,6})\s+(?P<month>[A-Za-z]{3,9})\s+(?P<day>\d{1,2})\s+"
@@ -2171,6 +2283,9 @@ def _parse_broker_contract_text(raw_text: str) -> dict[str, Any]:
 @command_center_router.post("/portfolio/parse-contract")
 def post_portfolio_parse_contract(body: BrokerContractParseBody, auth_email: str = Depends(require_access_email)):
     parsed_contract = _parse_broker_contract_text(body.text)
+
+    if parsed_contract.get("multi_leg"):
+        return _build_calendar_parse_response(parsed_contract, body)
 
     try:
         contracts_value = float(parsed_contract["contracts"])
