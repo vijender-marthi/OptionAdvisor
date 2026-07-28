@@ -218,7 +218,7 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
             const yTop = yFor(minimum + ((bin + 1) / VP_BINS) * range)
             const yBottom = yFor(minimum + (bin / VP_BINS) * range)
             const barWidth = (vol / vpMax) * 170
-            return <rect key={`vp-${bin}`} x="0" y={yTop} width={barWidth} height={Math.max(1, yBottom - yTop - 1)} fill="#2dd4bf" opacity="0.42" rx="1" />
+            return <rect key={`vp-${bin}`} x="0" y={yTop} width={barWidth} height={Math.max(1, yBottom - yTop - 1)} fill="#2dd4bf" opacity="0.6" rx="1" stroke="#5eead4" strokeWidth="0.5" strokeOpacity="0.5" />
           })}
           {indicators.sma && seriesPath('ma20') && <path d={seriesPath('ma20')} fill="none" stroke="#f59e0b" strokeWidth="1.8" />}
           {indicators.sma && seriesPath('ma50') && <path d={seriesPath('ma50')} fill="none" stroke="#8b5cf6" strokeWidth="1.8" />}
@@ -226,8 +226,8 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
           {indicators.ema && emaPathFor(ema50All) && <path d={emaPathFor(ema50All)} fill="none" stroke="#6366f1" strokeWidth="1.6" strokeDasharray="5 3" />}
           {indicators.fib && fibLevels.map(level => (
             <g key={level.ratio}>
-              <line x1="0" x2={width} y1={yFor(level.price)} y2={yFor(level.price)} stroke="#a78bfa" strokeWidth="1" strokeDasharray="2 4" opacity="0.75" />
-              <text x="6" y={yFor(level.price) - 3} className="fill-violet-500 text-[9px] font-mono">{(level.ratio * 100).toFixed(1)}% · ${level.price.toFixed(2)}</text>
+              <line x1="0" x2={width} y1={yFor(level.price)} y2={yFor(level.price)} stroke="#c4b5fd" strokeWidth="1.2" strokeDasharray="2 4" opacity="0.9" />
+              <text x="6" y={yFor(level.price) - 3} className="fill-violet-700 text-[10px] font-mono font-bold dark:fill-violet-200">{(level.ratio * 100).toFixed(1)}% · ${level.price.toFixed(2)}</text>
             </g>
           ))}
           {segments.map((segment, index) => <line key={`${segment.role}-${index}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} stroke={segment.role === 'pole' ? '#8b5cf6' : '#a78bfa'} strokeWidth={segment.role === 'pole' ? '2.5' : '1.8'} strokeDasharray={segment.role === 'pole' ? undefined : '6 5'} />)}
