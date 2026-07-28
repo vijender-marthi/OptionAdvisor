@@ -809,6 +809,25 @@ export default function DayTradeIntradayChart({
             fill="var(--chart-axis)" fontSize={9} fontWeight={600} opacity={0.75}>OR mid</text>
 
           <g clipPath={`url(#${clipId})`}>
+            {(() => {
+              const vis = bars.slice(viewStart, viewEnd + 1)
+              const VP_BINS = 24
+              const buckets = new Array<number>(VP_BINS).fill(0)
+              const span = (yMax - yMin) || 1
+              vis.forEach(b => {
+                if (b.c == null || !Number.isFinite(b.c)) return
+                const bin = Math.max(0, Math.min(VP_BINS - 1, Math.floor(((b.c - yMin) / span) * VP_BINS)))
+                buckets[bin] += b.v || 0
+              })
+              const vpMax = Math.max(1, ...buckets)
+              const maxW = Math.min(120, innerW * 0.22)
+              return buckets.map((vol, bin) => {
+                const yTop = yAt(yMin + ((bin + 1) / VP_BINS) * span)
+                const yBottom = yAt(yMin + (bin / VP_BINS) * span)
+                const w = (vol / vpMax) * maxW
+                return <rect key={`vp-${bin}`} x={PAD.l} y={yTop} width={w} height={Math.max(1, yBottom - yTop - 1)} fill="#2dd4bf" opacity="0.5" rx="1" stroke="#5eead4" strokeWidth="0.4" strokeOpacity="0.5" />
+              })
+            })()}
             {bars.map((b, i) => {
               const cx = xAt(times[i]!)
               const yL = yAt(b.l), yH = yAt(b.h)

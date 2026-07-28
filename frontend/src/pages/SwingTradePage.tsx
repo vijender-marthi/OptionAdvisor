@@ -471,7 +471,7 @@ function buildIndicatorFramework(
     { id: 'avg_volume20', name: 'Average Volume 20', category: 'volume', panel: 'volume', parameters: { period: 20 }, ...available(false) },
     { id: 'relative_volume', name: 'Relative Volume', category: 'volume', panel: 'volume', ...available(hasBackendValue(metrics?.volume_ratio)), currentValue: indicatorValue(metrics?.volume_ratio, 2), formula: 'Backend relative volume ratio', inputs: 'Backend volume_ratio', interpretation: compactLabel(text(metrics?.volume_label) || 'Relative volume returned by backend'), source: 'Swing Trade API' },
     { id: 'obv', name: 'OBV', category: 'volume', panel: 'oscillator', ...available(false) },
-    { id: 'volume_profile', name: 'Volume Profile', category: 'volume', panel: 'price', ...available(false, 'Volume Profile is hidden because backend support was not detected.') },
+    { id: 'volume_profile', name: 'Volume Profile', category: 'volume', panel: 'price', ...available(hasVolumeSeries), currentValue: hasVolumeSeries ? 'Volume-by-price histogram' : undefined, formula: 'Volume-by-price buckets over the visible window', inputs: 'Backend chart_series close + volume', interpretation: 'Horizontal histogram showing where volume concentrated by price.', source: 'Swing Trade API' },
     { id: 'fibonacci_retracement', name: 'Fibonacci Retracement', category: 'levels', panel: 'price', ...available(hasFibAnchors && hasFibLevels), currentValue: fibAnchorLabel, formula: 'Backend-confirmed swing anchors and retracement prices', inputs: 'Stock-targets fib_retracement_levels', interpretation: fibTargets?.fib_classification || 'Retracement overlay uses only backend-selected anchors.', source: 'Stock Targets API' },
     { id: 'fibonacci_extension', name: 'Fibonacci Extension', category: 'levels', panel: 'price', ...available(Boolean(fibTargets?.fib_extension_levels?.length) || hasTargets), currentValue: hasTargets ? `${money(exec.target1)} / ${money(exec.target2)}` : undefined, formula: 'Backend extension prices when supplied', inputs: 'Stock-targets fib_extension_levels and execution targets', interpretation: 'Disabled by default unless selected or target evidence is returned.', source: 'Stock Targets API' },
     { id: 'support_resistance', name: 'Support and Resistance', category: 'levels', panel: 'price', ...available(hasBackendValue(fibTargets?.suggested_stop_loss, fibTargets?.suggested_target1, exec.stop, exec.target1)), currentValue: `${money(fibTargets?.suggested_stop_loss ?? exec.stop)} / ${money(fibTargets?.suggested_target1 ?? exec.target1)}`, formula: 'Backend support/resistance levels', inputs: 'Stock-targets and execution levels', interpretation: 'Nearby levels returned by backend APIs.', source: 'Stock Targets API' },
@@ -2072,6 +2072,23 @@ function SwingPrimaryChart({
               </g>
             )
           })}
+          {activeIds.has('volume_profile') && (() => {
+            const VP_BINS = 26
+            const buckets = new Array<number>(VP_BINS).fill(0)
+            visible.forEach(p => {
+              const price = num(p.c)
+              if (price == null) return
+              const bin = Math.max(0, Math.min(VP_BINS - 1, Math.floor(((price - minPrice) / priceRange) * VP_BINS)))
+              buckets[bin] += p.v || 0
+            })
+            const vpMax = Math.max(1, ...buckets)
+            return buckets.map((vol, bin) => {
+              const yTop = yFor(minPrice + ((bin + 1) / VP_BINS) * priceRange)
+              const yBottom = yFor(minPrice + (bin / VP_BINS) * priceRange)
+              const w = (vol / vpMax) * 170
+              return <rect key={`vp-${bin}`} x="0" y={yTop} width={w} height={Math.max(1, yBottom - yTop - 1)} fill="#2dd4bf" opacity="0.55" rx="1" stroke="#5eead4" strokeWidth="0.5" strokeOpacity="0.5" />
+            })
+          })()}
           {visible.map((point, index) => {
             const prev = visible[index - 1]?.c ?? point.c
             const up = point.c >= prev
