@@ -51,6 +51,59 @@ function macdSeries(values: number[]): { macd: number[]; signal: number[]; hist:
   return { macd, signal, hist }
 }
 
+// Wilder's RSI over the closes.
+function rsiSeries(values: number[], period = 14): number[] {
+  const out = new Array<number>(values.length).fill(NaN)
+  if (values.length < period + 1) return out
+  let gain = 0, loss = 0
+  for (let i = 1; i <= period; i++) {
+    const d = values[i] - values[i - 1]
+    if (d >= 0) gain += d; else loss -= d
+  }
+  let avgG = gain / period, avgL = loss / period
+  out[period] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL)
+  for (let i = period + 1; i < values.length; i++) {
+    const d = values[i] - values[i - 1]
+    avgG = (avgG * (period - 1) + (d > 0 ? d : 0)) / period
+    avgL = (avgL * (period - 1) + (d < 0 ? -d : 0)) / period
+    out[i] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL)
+  }
+  return out
+}
+
+// Local swing pivots (index positions) where value is a strict high/low over ±w neighbours.
+function pivotIndices(values: number[], w = 2): { highs: number[]; lows: number[] } {
+  const highs: number[] = [], lows: number[] = []
+  for (let i = w; i < values.length - w; i++) {
+    if (!Number.isFinite(values[i])) continue
+    let isH = true, isL = true
+    for (let j = 1; j <= w; j++) {
+      if (values[i] < values[i - j] || values[i] < values[i + j]) isH = false
+      if (values[i] > values[i - j] || values[i] > values[i + j]) isL = false
+    }
+    if (isH) highs.push(i)
+    if (isL) lows.push(i)
+  }
+  return { highs, lows }
+}
+
+// Regular RSI divergence over the visible window: price makes a higher high while
+// RSI makes a lower high (bearish), or price a lower low while RSI a higher low (bullish).
+function rsiDivergences(prices: number[], rsi: number[]): { kind: 'bear' | 'bull'; i1: number; i2: number }[] {
+  const out: { kind: 'bear' | 'bull'; i1: number; i2: number }[] = []
+  const piv = pivotIndices(prices, 2)
+  const lastTwo = (arr: number[]) => (arr.length >= 2 ? [arr[arr.length - 2], arr[arr.length - 1]] : null)
+  const h = lastTwo(piv.highs)
+  if (h && Number.isFinite(rsi[h[0]]) && Number.isFinite(rsi[h[1]]) && prices[h[1]] > prices[h[0]] && rsi[h[1]] < rsi[h[0]]) {
+    out.push({ kind: 'bear', i1: h[0], i2: h[1] })
+  }
+  const l = lastTwo(piv.lows)
+  if (l && Number.isFinite(rsi[l[0]]) && Number.isFinite(rsi[l[1]]) && prices[l[1]] < prices[l[0]] && rsi[l[1]] > rsi[l[0]]) {
+    out.push({ kind: 'bull', i1: l[0], i2: l[1] })
+  }
+  return out
+}
+
 const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
 const INDICATOR_CHIPS = [
   { key: 'sma', label: 'SMA', color: '#f59e0b' },
@@ -58,6 +111,8 @@ const INDICATOR_CHIPS = [
   { key: 'fib', label: 'FIB', color: '#a78bfa' },
   { key: 'volProfile', label: 'VOL PROFILE', color: '#2dd4bf' },
   { key: 'macd', label: 'MACD', color: '#ef4444' },
+  { key: 'rsi', label: 'RSI', color: '#e879f9' },
+  { key: 'rsidiv', label: 'RSI DIV', color: '#f43f5e' },
 ] as const
 type IndicatorKey = (typeof INDICATOR_CHIPS)[number]['key']
 
@@ -68,7 +123,7 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [indicators, setIndicators] = useState<Record<IndicatorKey, boolean>>({
-    sma: true, ema: false, fib: false, volProfile: false, macd: false,
+    sma: true, ema: false, fib: false, volProfile: false, macd: false, rsi: false, rsidiv: false,
   })
   const toggleIndicator = (key: IndicatorKey) => setIndicators(prev => ({ ...prev, [key]: !prev[key] }))
   const dragRef = useRef<{ pointerId: number; startX: number } | null>(null)
@@ -77,6 +132,7 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
   const ema20All = useMemo(() => emaSeries(closes, 20), [closes])
   const ema50All = useMemo(() => emaSeries(closes, 50), [closes])
   const macdAll = useMemo(() => macdSeries(closes), [closes])
+  const rsiAll = useMemo(() => rsiSeries(closes, 14), [closes])
 
   useEffect(() => {
     setEndIndex(points.length)
@@ -133,6 +189,8 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
     vpBuckets[bin] += point.v || 0
   })
   const vpMax = Math.max(1, ...vpBuckets)
+  const visRsi = visible.map((_point, index) => rsiAll[visibleStart + index])
+  const rsiDivs = indicators.rsidiv ? rsiDivergences(visible.map(point => point.c), visRsi) : []
   const tickCount = Math.min(7, visible.length)
   const tickIndexes: number[] = Array.from({ length: tickCount }, (_, index) => Math.round(index * (visible.length - 1) / Math.max(1, tickCount - 1)))
   const indexByDate = new Map(visible.map((point, index) => [dateKey(point.d), index]))
@@ -230,6 +288,19 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
               <text x="6" y={yFor(level.price) - 3} className="fill-violet-700 text-[10px] font-mono font-bold dark:fill-violet-200">{(level.ratio * 100).toFixed(1)}% · ${level.price.toFixed(2)}</text>
             </g>
           ))}
+          {rsiDivs.map((div, k) => {
+            const p1 = visible[div.i1]?.c, p2 = visible[div.i2]?.c
+            if (p1 == null || p2 == null) return null
+            const color = div.kind === 'bear' ? '#f43f5e' : '#10b981'
+            return (
+              <g key={`div-${k}`}>
+                <line x1={xFor(div.i1)} y1={yFor(p1)} x2={xFor(div.i2)} y2={yFor(p2)} stroke={color} strokeWidth="2" strokeDasharray="4 3" />
+                <circle cx={xFor(div.i1)} cy={yFor(p1)} r="3" fill={color} />
+                <circle cx={xFor(div.i2)} cy={yFor(p2)} r="3" fill={color} />
+                <text x={(xFor(div.i1) + xFor(div.i2)) / 2} y={Math.min(yFor(p1), yFor(p2)) - 6} textAnchor="middle" fill={color} className="text-[9px] font-mono font-bold">{div.kind === 'bear' ? 'Bear Div' : 'Bull Div'}</text>
+              </g>
+            )
+          })}
           {segments.map((segment, index) => <line key={`${segment.role}-${index}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} stroke={segment.role === 'pole' ? '#8b5cf6' : '#a78bfa'} strokeWidth={segment.role === 'pole' ? '2.5' : '1.8'} strokeDasharray={segment.role === 'pole' ? undefined : '6 5'} />)}
           {pivots.map((pivot, index) => <g key={`${pivot.label}-${index}`}><circle cx={pivot.x} cy={pivot.y} r="4" fill={pivot.provisional ? 'var(--surface-card)' : '#10b981'} stroke="#10b981" strokeWidth="1.5" /><rect x={pivot.x - 18} y={pivot.y + (pivot.label.includes('H') ? -24 : 8)} width="36" height="16" rx="5" fill="var(--surface-card)" stroke="#10b981" /><text x={pivot.x} y={pivot.y + (pivot.label.includes('H') ? -13 : 20)} textAnchor="middle" className="fill-emerald-600 text-[9px] font-black dark:fill-emerald-300">{pivot.label}</text></g>)}
           <line x1="0" x2={width} y1={volumeTop - 8} y2={volumeTop - 8} stroke="var(--border-subtle)" />
@@ -256,6 +327,26 @@ export default function PositionSwingChart({ chart }: { chart: PositionSwingChar
               {vHist.map((v, i) => (validNumber(v) ? <rect key={`h-${i}`} x={xFor(i) - candleWidth / 2} y={Math.min(mH / 2, yM(v))} width={candleWidth} height={Math.abs(yM(v) - mH / 2)} fill={v >= 0 ? BULLISH_CANDLE_COLOR : BEARISH_CANDLE_COLOR} opacity="0.55" /> : null))}
               {line(vMacd) && <path d={line(vMacd)} fill="none" stroke="#3b82f6" strokeWidth="1.6" />}
               {line(vSignal) && <path d={line(vSignal)} fill="none" stroke="#f59e0b" strokeWidth="1.6" />}
+            </svg>
+          </div>
+        )
+      })()}
+      {indicators.rsi && (() => {
+        const rH = 110
+        const yR = (v: number) => 14 + ((100 - v) / 100) * (rH - 24)
+        const path = visRsi.reduce((p, v, i) => (validNumber(v) ? `${p}${p ? 'L' : 'M'}${xFor(i).toFixed(1)},${yR(v).toFixed(1)}` : p), '')
+        return (
+          <div className="shrink-0 border-t border-border">
+            <svg viewBox={`0 0 ${width} ${rH}`} className="h-[90px] w-full">
+              <rect width={width} height={rH} fill="var(--surface-canvas)" />
+              <text x="10" y="14" className="fill-slate-500 text-[10px] font-black uppercase tracking-widest">RSI 14</text>
+              {[30, 50, 70].map(lvl => (
+                <g key={lvl}>
+                  <line x1="0" x2={width} y1={yR(lvl)} y2={yR(lvl)} stroke="var(--border-subtle)" strokeDasharray={lvl === 50 ? '2 4' : undefined} opacity={lvl === 50 ? 0.5 : 0.85} />
+                  <text x={width - 6} y={yR(lvl) - 2} textAnchor="end" className="fill-slate-500 text-[9px] font-mono">{lvl}</text>
+                </g>
+              ))}
+              {path && <path d={path} fill="none" stroke="#e879f9" strokeWidth="1.6" />}
             </svg>
           </div>
         )

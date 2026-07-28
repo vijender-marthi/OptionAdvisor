@@ -375,6 +375,38 @@ function hasBackendValue(...values: unknown[]): boolean {
   return values.some(value => num(value) != null || text(value) !== '')
 }
 
+// Local swing pivots and regular RSI divergence (price vs RSI), computed over the
+// visible window from the backend close + rsi series.
+function swingPivotIndices(values: number[], w = 2): { highs: number[]; lows: number[] } {
+  const highs: number[] = [], lows: number[] = []
+  for (let i = w; i < values.length - w; i++) {
+    if (!Number.isFinite(values[i])) continue
+    let isH = true, isL = true
+    for (let j = 1; j <= w; j++) {
+      if (values[i] < values[i - j] || values[i] < values[i + j]) isH = false
+      if (values[i] > values[i - j] || values[i] > values[i + j]) isL = false
+    }
+    if (isH) highs.push(i)
+    if (isL) lows.push(i)
+  }
+  return { highs, lows }
+}
+
+function swingRsiDivergences(prices: number[], rsi: number[]): { kind: 'bear' | 'bull'; i1: number; i2: number }[] {
+  const out: { kind: 'bear' | 'bull'; i1: number; i2: number }[] = []
+  const piv = swingPivotIndices(prices, 2)
+  const lastTwo = (arr: number[]) => (arr.length >= 2 ? [arr[arr.length - 2], arr[arr.length - 1]] : null)
+  const h = lastTwo(piv.highs)
+  if (h && Number.isFinite(rsi[h[0]]) && Number.isFinite(rsi[h[1]]) && prices[h[1]] > prices[h[0]] && rsi[h[1]] < rsi[h[0]]) {
+    out.push({ kind: 'bear', i1: h[0], i2: h[1] })
+  }
+  const l = lastTwo(piv.lows)
+  if (l && Number.isFinite(rsi[l[0]]) && Number.isFinite(rsi[l[1]]) && prices[l[1]] < prices[l[0]] && rsi[l[1]] > rsi[l[0]]) {
+    out.push({ kind: 'bull', i1: l[0], i2: l[1] })
+  }
+  return out
+}
+
 function backendStructurePivots(metrics: Record<string, unknown> | undefined): SwingStructurePivot[] {
   const structure = isRecord(metrics?.market_structure) ? metrics.market_structure : null
   const raw = Array.isArray(structure?.chart_pivots)
@@ -462,6 +494,7 @@ function buildIndicatorFramework(
     { id: 'sma200', name: 'SMA 200', category: 'trend', panel: 'price', parameters: { period: 200 }, ...available(false) },
     { id: 'rsi14', name: 'RSI 14', category: 'momentum', panel: 'oscillator', parameters: { period: 14 }, ...available(hasRsiSeries || hasBackendValue(metrics?.rsi, fibTargets?.rsi)), currentValue: indicatorValue(fibTargets?.rsi ?? metrics?.rsi), formula: 'Backend RSI(14)', inputs: 'Backend swing chart_series rsi', interpretation: compactLabel(text(metrics?.rsi_label) || 'Momentum context returned by backend'), source: 'Swing Trade API' },
     { id: 'macd', name: 'MACD 12/26/9', category: 'momentum', panel: 'oscillator', parameters: { fast: 12, slow: 26, signal: 9 }, ...available(hasBackendValue(metrics?.macd, metrics?.macd_signal, metrics?.macd_histogram)), currentValue: `MACD ${moneyless(metrics?.macd)} / Signal ${moneyless(metrics?.macd_signal)}`, formula: 'Backend MACD(12,26,9)', inputs: 'Backend swing metrics macd, macd_signal, macd_histogram', interpretation: compactLabel(text(metrics?.macd_label) || 'Momentum alignment from backend'), source: 'Swing Trade API' },
+    { id: 'rsi_divergence', name: 'RSI Divergence', category: 'momentum', panel: 'price', ...available(hasRsiSeries), currentValue: hasRsiSeries ? 'Price vs RSI pivots' : undefined, formula: 'Regular bullish/bearish divergence between price and RSI swing pivots', inputs: 'Backend swing chart_series close + rsi', interpretation: 'Higher price high with lower RSI high is bearish; lower price low with higher RSI low is bullish.', source: 'Swing Trade API' },
     { id: 'stoch_rsi', name: 'Stochastic RSI', category: 'momentum', panel: 'oscillator', ...available(false) },
     { id: 'roc', name: 'Rate of Change', category: 'momentum', panel: 'oscillator', ...available(hasBackendValue(metrics?.mom_5d_pct, fibTargets?.mom_5d)), currentValue: pct(metrics?.mom_5d_pct ?? fibTargets?.mom_5d), formula: 'Backend momentum percentage', inputs: 'Backend mom_5d_pct / stock-targets mom_5d', interpretation: 'Recent swing momentum returned by backend.', source: 'Swing Trade API' },
     { id: 'atr14', name: 'ATR 14', category: 'volatility', panel: 'oscillator', parameters: { period: 14 }, ...available(false) },
@@ -1816,6 +1849,9 @@ function SwingPrimaryChart({
   const xStep = width / Math.max(1, visible.length)
   const candleWidth = Math.max(3, Math.min(18, xStep * 0.58))
   const yFor = (price: number) => priceBottom - ((price - minPrice) / priceRange) * (priceBottom - priceTop)
+  const swingRsiDivs = activeIds.has('rsi_divergence')
+    ? swingRsiDivergences(visible.map(p => p.c), visible.map(p => num(p.rsi) ?? NaN))
+    : []
   const xFor = (index: number) => index * xStep + xStep * 0.5
   const visibleIndexByDate = new Map(visible.map((point, index) => [swingDateKey(point.d), index]))
   const axisY = height - 22
@@ -2109,6 +2145,19 @@ function SwingPrimaryChart({
                 <line x1={x} x2={x} y1={highY} y2={lowY} stroke={candleColor} strokeWidth="1.5" opacity="0.9" />
                 <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="1.5" fill={candleColor} opacity="0.9" />
                 {activeIds.has('volume') && <rect x={x - candleWidth / 2} y={volumeBottom - volHeight} width={candleWidth} height={volHeight} fill={candleColor} opacity="0.28" />}
+              </g>
+            )
+          })}
+          {swingRsiDivs.map((div, k) => {
+            const p1 = visible[div.i1]?.c, p2 = visible[div.i2]?.c
+            if (p1 == null || p2 == null) return null
+            const color = div.kind === 'bear' ? '#f43f5e' : '#10b981'
+            return (
+              <g key={`rsidiv-${k}`}>
+                <line x1={xFor(div.i1)} y1={yFor(p1)} x2={xFor(div.i2)} y2={yFor(p2)} stroke={color} strokeWidth="2" strokeDasharray="4 3" />
+                <circle cx={xFor(div.i1)} cy={yFor(p1)} r="3" fill={color} />
+                <circle cx={xFor(div.i2)} cy={yFor(p2)} r="3" fill={color} />
+                <text x={(xFor(div.i1) + xFor(div.i2)) / 2} y={Math.min(yFor(p1), yFor(p2)) - 6} textAnchor="middle" fill={color} className="text-[9px] font-mono font-bold">{div.kind === 'bear' ? 'Bear Div' : 'Bull Div'}</text>
               </g>
             )
           })}
