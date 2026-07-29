@@ -1154,12 +1154,16 @@ def _professional_factors(metrics: dict[str, Any], market_structure: dict[str, A
     if or_low is not None and last is not None and bias == "Bearish":
         (positive if last <= or_low else neutral).append(_factor("ORL accepted" if last <= or_low else "ORL not lost", f"ORL is {_display_money(or_low)['display']}.", conf_pct))
 
-    if bias == "Bullish" and {"HH", "HL"}.intersection(sequence):
-        positive.append(_factor("HH/HL structure", "Backend-confirmed bullish pivot sequence supports the stock bias.", conf_pct))
-    elif bias == "Bearish" and {"LH", "LL"}.intersection(sequence):
-        positive.append(_factor("LH/LL structure", "Backend-confirmed bearish pivot sequence supports the stock bias.", conf_pct))
+    # Judge structure by the CURRENT (latest) pivot, not merely whether an HH/HL
+    # appeared anywhere earlier — a sequence that has since rolled to a lower high
+    # (LH) is no longer bullish structure.
+    current_pivot = str(sequence[-1]).upper() if sequence else ""
+    if bias == "Bullish" and current_pivot in ("HH", "HL"):
+        positive.append(_factor("HH/HL structure", f"Latest confirmed pivot ({current_pivot}) keeps the bullish sequence intact.", conf_pct))
+    elif bias == "Bearish" and current_pivot in ("LH", "LL"):
+        positive.append(_factor("LH/LL structure", f"Latest confirmed pivot ({current_pivot}) keeps the bearish sequence intact.", conf_pct))
     elif sequence:
-        neutral.append(_factor("Mixed structure", f"Recent sequence: {' -> '.join(sequence[-5:])}.", conf_pct))
+        neutral.append(_factor("Structure in transition", f"Latest pivot is {current_pivot or 'unclear'}; recent sequence {' -> '.join(sequence[-5:])}.", conf_pct))
 
     volume_ratio = _num(metrics.get("volume_ratio") or metrics.get("relative_volume") or metrics.get("rvol"))
     if volume_ratio is not None:
@@ -1257,8 +1261,21 @@ def _professional_decision(
         _metric(value="Invalidation", display=f"Lost {_display_money(invalidation)['display']}", reason="Setup invalidates if structural stop or VWAP thesis level is lost.", timestamp=generated_at, source="day_trade_workspace"),
     ]
 
+    # A "Pending" phase next to "ORH accepted" reads as a contradiction; spell out
+    # that the price crossed the level but the trigger has not confirmed (usually
+    # because volume — RVOL — has not backed the breakout).
+    phase_status = str(setup["status"])
+    if phase_status == "Pending":
+        _vr = _num(metrics.get("volume_ratio") or metrics.get("relative_volume") or metrics.get("rvol"))
+        if _vr is not None and _vr < 0.7:
+            phase_display = f"Pending — breakout unconfirmed (RVOL {_vr:.2f}x; awaiting volume)"
+        else:
+            phase_display = "Pending — breakout unconfirmed (awaiting trigger)"
+    else:
+        phase_display = phase_status
+
     coach_lines = [
-        f"What happened: {stock_bias} stock bias with {setup['setupType']} in {setup['status']} phase.",
+        f"What happened: {stock_bias} stock bias; {str(setup['setupType']).replace('_', ' ').title()} is {phase_display}.",
         f"Why: " + "; ".join(item["display"] for item in positive[:3]),
         f"What to watch: {next_name} near {next_opportunity.get('trigger') or 'backend reference'}.",
         f"What invalidates: lose {_display_money(invalidation)['display']} or backend structure flips.",
@@ -1270,7 +1287,7 @@ def _professional_decision(
             "marketContext": _metric(value=market_context, display=market_context, formula="SPY/QQQ/sector/VIX/breadth context where available", inputs=["market_bias", "market_context"], reason="Broad market state affects confidence.", timestamp=generated_at, confidence=overall_score),
             "stockBias": _metric(value=stock_bias, display=stock_bias, formula="5m structure + VWAP + OR + relative strength", inputs=["market_structure", "vwap", "opening_range"], reason=market_structure.get("explanation"), timestamp=generated_at, confidence=overall_score),
             "setup": _metric(value=setup["setupType"], display=str(setup["setupType"]).replace("_", " ").title(), formula="Backend trigger setup classifier", inputs=["trigger_setup", "opening_playbook"], reason="Setup type is independent from action and phase.", timestamp=generated_at, confidence=overall_score),
-            "currentPhase": _metric(value=setup["status"], display=str(setup["status"]), formula="Universal setup lifecycle", inputs=["trigger_time", "latest_bar"], reason="Phase is derived from trigger timing and lifecycle state.", timestamp=generated_at, confidence=overall_score),
+            "currentPhase": _metric(value=setup["status"], display=phase_display, formula="Universal setup lifecycle", inputs=["trigger_time", "latest_bar"], reason="Phase tracks the confirmed trigger, not merely price crossing the level; a breakout only leaves Pending once volume/candle confirmation fires.", timestamp=generated_at, confidence=overall_score),
             "nextOpportunity": _metric(value=next_name, display=next_name, formula="Current phase + structure + VWAP + reward/risk", inputs=["current_state", "vwap", "reward_risk"], reason=next_opportunity.get("explanation"), timestamp=generated_at, confidence=next_opportunity.get("probability")),
             "originalEntry": _metric(value=entry, display="Completed" if setup.get("triggerTime") else "Pending", formula="Trigger entry state", inputs=["triggerTime", "entry"], reason="Shows whether the original entry window already happened.", timestamp=generated_at, confidence=overall_score),
             "currentAction": _metric(value=action_label, display=action_label, formula="Permission + reward/risk + lifecycle", inputs=["permission", "rewardRisk", "setupLifecycle"], reason=current_action.get("reason"), timestamp=generated_at, confidence=current_action.get("confidence")),
