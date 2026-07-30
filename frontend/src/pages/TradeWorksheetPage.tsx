@@ -262,6 +262,7 @@ export default function TradeWorksheetPage() {
   const [priceMove, setPriceMove] = useState(5)
   const [ivMove, setIvMove] = useState(0)
   const [daysPassed, setDaysPassed] = useState(3)
+  const [payoffView, setPayoffView] = useState<'graph' | 'table'>('graph')
   const [evaluation, setEvaluation] = useState<TradeWorksheetEvaluation | null>(null)
   const [evaluationError, setEvaluationError] = useState('')
   const [checklist, setChecklist] = useState<Record<string, boolean>>({})
@@ -442,6 +443,12 @@ export default function TradeWorksheetPage() {
   const backDte = evaluation?.summary.backDte ?? 0
   const summaryMaxRisk = evaluation?.summary.maxRisk ?? 0
   const breakevenPrice = evaluation?.summary.breakeven ?? form.stockPrice
+  const payoffMaxAbs = Math.max(1, ...payoff.map(p => Math.abs(p.pnl)))
+  const payoffRiskDenom = Math.abs(summaryMaxRisk) || Math.abs(Math.min(0, ...payoff.map(p => p.pnl))) || 1
+  const payoffCurrentPrice = payoff.reduce<{ price: number; d: number }>((best, p) => {
+    const d = Math.abs(p.price - form.stockPrice)
+    return d < best.d ? { price: p.price, d } : best
+  }, { price: NaN, d: Infinity }).price
   const metricDefinitions = useMemo(() => {
     const pairs = (evaluation?.metricDefinitions?.metrics ?? []).map(def => [def.metricId, def] as const)
     return new Map<string, MetricDefinition>(pairs)
@@ -857,6 +864,15 @@ export default function TradeWorksheetPage() {
 
       <section className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Panel title="Visual Payoff Diagram" icon={<LineChartIcon size={18} />} sub="Expiration payoff by stock price plus time-decay projection before expiration.">
+          <div className="mb-3 inline-flex rounded-lg border border-slate-200 p-0.5 dark:border-white/10">
+            {(['graph', 'table'] as const).map(v => (
+              <button key={v} type="button" onClick={() => setPayoffView(v)}
+                className={`rounded-md px-3 py-1 text-xs font-bold capitalize transition-colors ${payoffView === v ? 'bg-violet-600 text-white' : 'text-muted hover:text-secondary'}`}>
+                {v}
+              </button>
+            ))}
+          </div>
+          {payoffView === 'graph' ? (
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={payoff}>
@@ -872,6 +888,38 @@ export default function TradeWorksheetPage() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          ) : (
+          <div className="max-h-96 overflow-auto rounded-lg border border-slate-200 dark:border-white/10">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 z-10 bg-surface-card text-[10px] uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-3 py-2 text-left font-black">Stock @ Exp</th>
+                  <th className="px-3 py-2 text-right font-black">Move</th>
+                  <th className="px-3 py-2 text-right font-black">P/L $</th>
+                  <th className="px-3 py-2 text-right font-black">P/L %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...payoff].reverse().map((p, i) => {
+                  const move = form.stockPrice ? (p.price / form.stockPrice - 1) * 100 : 0
+                  const plPct = (p.pnl / payoffRiskDenom) * 100
+                  const profit = p.pnl >= 0
+                  const intensity = 0.10 + 0.55 * Math.min(1, Math.abs(p.pnl) / payoffMaxAbs)
+                  const bg = profit ? `rgba(34,197,94,${intensity})` : `rgba(244,63,94,${intensity})`
+                  const isCurrent = p.price === payoffCurrentPrice
+                  return (
+                    <tr key={i} style={{ background: bg }} className={isCurrent ? 'outline outline-2 -outline-offset-2 outline-sky-400' : ''}>
+                      <td className="px-3 py-1.5 font-mono font-semibold text-text-primary">{fmtUsd(p.price)}{isCurrent ? ' •' : ''}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-text-secondary">{move >= 0 ? '+' : ''}{move.toFixed(1)}%</td>
+                      <td className="px-3 py-1.5 text-right font-mono font-bold text-text-primary">{profit ? '+' : '−'}{fmtUsd(Math.abs(p.pnl))}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-text-primary">{profit ? '+' : '−'}{Math.abs(plPct).toFixed(0)}%</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
           <div className="mt-4 border-t border-slate-200 pt-4 dark:border-white/[0.07]">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
