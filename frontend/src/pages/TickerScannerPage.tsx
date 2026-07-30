@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  RefreshCw, TrendingUp, TrendingDown, ScanLine, ArrowUpRight, CheckCircle, XCircle, MinusCircle,
+  RefreshCw, TrendingUp, TrendingDown, ScanLine, ArrowUpRight, CheckCircle, XCircle, MinusCircle, HelpCircle,
 } from 'lucide-react'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { SignalFeedRow, SignalFeedMetrics } from '../types/commandCenter'
@@ -494,6 +494,53 @@ function toneTextClass(tone: string): string {
   if (tone === 'amber') return 'text-amber-600 dark:text-amber-400'
   if (tone === 'blue') return 'text-blue-600 dark:text-blue-400'
   return 'text-gray-600 dark:text-gray-400'
+}
+
+const SCANNER_GLOSSARY: { abbr: string; name: string; desc: string; example: string }[] = [
+  { abbr: 'RS', name: 'Relative Strength', desc: 'How the stock is moving versus the market (SPY/QQQ) today.', example: '+1.8% RS = up 1.8% more than the market — leadership. Negative = laggard.' },
+  { abbr: 'RVOL', name: 'Relative Volume', desc: "Today's volume vs the stock's average for this time of day.", example: '1.5x = 50% more volume than normal (conviction). Under 0.7x = thin — do not trust breakouts.' },
+  { abbr: 'ATR', name: 'Average True Range', desc: 'Typical daily price range in dollars — a volatility gauge.', example: 'ATR $3.20 → the stock usually travels ~$3.20/day; size stops around it.' },
+  { abbr: 'ATR consumed', name: 'ATR used so far', desc: 'How much of the expected daily range the move has already used.', example: '80% consumed = little range left today — do not chase the entry.' },
+  { abbr: 'VWAP', name: 'Volume-Weighted Average Price', desc: 'The volume-weighted average price — the intraday fair-value line.', example: 'Above VWAP = buyers in control; below = sellers. Reclaiming VWAP flips bias.' },
+  { abbr: 'RSI', name: 'Relative Strength Index', desc: 'Momentum oscillator from 0 to 100.', example: 'Above 70 overbought, below 30 oversold, ~50 neutral.' },
+  { abbr: 'ORH / ORL', name: 'Opening Range High / Low', desc: 'High and low of the opening range (first minutes of the session).', example: '5-minute close above ORH = long breakout trigger; below ORL = short.' },
+  { abbr: '5m Struct', name: '5-minute market structure', desc: 'Swing structure read from 5-minute pivots.', example: 'HH/HL = uptrend, LH/LL = downtrend, mixed = transition.' },
+  { abbr: 'MA20 / MA50', name: 'Moving Averages', desc: '20- and 50-period moving averages — trend reference lines.', example: 'Price above a rising MA20 > MA50 = healthy uptrend.' },
+]
+
+function ScannerHelpButton() {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="relative inline-block normal-case">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-label="Scanner abbreviations help"
+        className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-0.5 text-[10px] font-bold text-gray-500 hover:text-gray-800 dark:border-gray-700 dark:hover:text-gray-200">
+        <HelpCircle size={12} /> Abbreviations
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 z-50 mt-2 max-h-[70vh] w-[340px] max-w-[85vw] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3 text-left shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wide text-gray-700 dark:text-gray-200">Scanner Abbreviations</span>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close"><XCircle size={14} /></button>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              {SCANNER_GLOSSARY.map(g => (
+                <div key={g.abbr} className="border-b border-gray-100 pb-2 last:border-none dark:border-gray-800">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] font-black text-emerald-600 dark:text-emerald-300">{g.abbr}</span>
+                    <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">{g.name}</span>
+                  </div>
+                  <div className="mt-0.5 text-[11px] leading-snug text-gray-600 dark:text-gray-400">{g.desc}</div>
+                  <div className="mt-0.5 text-[10.5px] italic leading-snug text-gray-500">e.g. {g.example}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  )
 }
 
 function ScannerTableCell({ label, value, tone = 'gray' }: { label: string; value: string; tone?: string }) {
@@ -1025,8 +1072,9 @@ export default function TickerScannerPage() {
           {/* ── Watchlist table ── */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Watchlist — relative strength
+                <ScannerHelpButton />
               </span>
               <span className="text-[10px] text-gray-400 uppercase tracking-wide">Sorted by intraday momentum</span>
             </div>
