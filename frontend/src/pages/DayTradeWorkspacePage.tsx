@@ -1038,40 +1038,45 @@ export default function DayTradeWorkspacePage() {
     }
 
     if (action.type === 'alpaca') {
-      if (!strike || strike <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
-        setNotice('Unable to create Alpaca draft: option strike or expiry is missing.')
-        return
-      }
+      // Always take the user to the Alpaca trading page. When a live option
+      // quote resolves we enrich the leg with real pricing; otherwise we still
+      // navigate with a best-effort draft (labeled as estimated) so the button
+      // never dead-ends — the user reviews and confirms on the Alpaca page.
       let alpacaLeg = optionLeg
       let alpacaExpiry = expiry
-      try {
-        setNotice(`Loading ${workspace.symbol.ticker} option quote for Alpaca...`)
-        const quote = await resolveDayTradeOptionQuote({
-          ticker: workspace.symbol.ticker,
-          optionType,
-          strike,
-          expiry,
-        })
-        if (!quote || optionRowMid(quote.row) <= 0) {
-          setNotice('Unable to create Alpaca draft: option quote pricing is missing.')
-          return
+      let pricingNote = ''
+      const canQuote = !!strike && strike > 0 && /^\d{4}-\d{2}-\d{2}$/.test(expiry)
+      if (canQuote) {
+        try {
+          setNotice(`Loading ${workspace.symbol.ticker} option quote for Alpaca...`)
+          const quote = await resolveDayTradeOptionQuote({
+            ticker: workspace.symbol.ticker,
+            optionType,
+            strike,
+            expiry,
+          })
+          if (quote && optionRowMid(quote.row) > 0) {
+            alpacaExpiry = quote.expiry
+            alpacaLeg = {
+              ...optionLeg,
+              strike: Number(quote.row.strike),
+              expiry: alpacaExpiry,
+              mid_price: optionRowMid(quote.row),
+              bid: Number(quote.row.bid) || 0,
+              ask: Number(quote.row.ask) || 0,
+              iv: Number(quote.row.iv) || 0,
+              oi: Number(quote.row.open_interest) || 0,
+              volume: Number(quote.row.volume) || 0,
+              bid_ask_spread_pct: Number(quote.row.spread_pct) || 0,
+            }
+          } else {
+            pricingNote = ' — estimated pricing (live option quote unavailable)'
+          }
+        } catch {
+          pricingNote = ' — estimated pricing (option quote lookup failed)'
         }
-        alpacaExpiry = quote.expiry
-        alpacaLeg = {
-          ...optionLeg,
-          strike: Number(quote.row.strike),
-          expiry: alpacaExpiry,
-          mid_price: optionRowMid(quote.row),
-          bid: Number(quote.row.bid) || 0,
-          ask: Number(quote.row.ask) || 0,
-          iv: Number(quote.row.iv) || 0,
-          oi: Number(quote.row.open_interest) || 0,
-          volume: Number(quote.row.volume) || 0,
-          bid_ask_spread_pct: Number(quote.row.spread_pct) || 0,
-        }
-      } catch {
-        setNotice('Unable to create Alpaca draft: option quote lookup failed.')
-        return
+      } else {
+        pricingNote = ' — estimated pricing (no option contract selected)'
       }
       try {
         window.sessionStorage.setItem(ALPACA_TRADE_DRAFT_KEY, JSON.stringify({
@@ -1094,6 +1099,7 @@ export default function DayTradeWorkspacePage() {
         setNotice('Unable to create Alpaca draft in this browser session.')
         return
       }
+      setNotice(`Opening Alpaca for ${workspace.symbol.ticker}${pricingNote}...`)
       navigate(`${ROUTES.autoTrade}?ticker=${encodeURIComponent(workspace.symbol.ticker)}&source=day`)
       return
     }
