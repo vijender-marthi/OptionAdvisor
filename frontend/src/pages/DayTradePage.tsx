@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronLeft, ChevronRight,
   Clock, Flame, Layers, Loader2, MessageSquare, RefreshCw, Search, ShieldAlert, X, Zap,
-  PlusCircle, Activity, Check, Gauge,
+  PlusCircle, Activity, Check, Gauge, Menu,
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal, deriveUnifiedFromDayResult } from '../api/client'
 import type { DayTradeScanResult, DayTradeWorkspaceAction, DeskAlertCreate, UnifiedAnalysis } from '../api/client'
@@ -110,6 +110,8 @@ function DayTradeLeftSidebar({
   onAlerts,
   onPositions,
   onJournal,
+  embedded = false,
+  onClose,
 }: {
   ticker: string
   resultTicker: string
@@ -125,6 +127,8 @@ function DayTradeLeftSidebar({
   onAlerts: () => void
   onPositions: () => void
   onJournal: () => void
+  embedded?: boolean
+  onClose?: () => void
 }) {
   const selectedTicker = resultTicker.trim().toUpperCase()
   const [activeFilter, setActiveFilter] = useState<SidebarTickerFilterKey>(() => {
@@ -180,20 +184,26 @@ function DayTradeLeftSidebar({
 
   return (
     <aside
-      className="sticky top-3 flex h-[calc(100vh-1.5rem)] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950"
-      style={{ width, minWidth: 240, maxWidth: 380 }}
+      className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950 ${embedded ? 'h-full w-full' : 'sticky top-3 h-[calc(100vh-1.5rem)] shrink-0'}`}
+      style={embedded ? undefined : { width, minWidth: 240, maxWidth: 380 }}
     >
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Day Workstation</div>
-          <div className="mt-1 flex items-center gap-2">
+          {!embedded && <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Day Workstation</div>}
+          <div className={`flex items-center gap-2 ${embedded ? '' : 'mt-1'}`}>
             <Activity size={16} className="text-violet-500" />
             <span className="text-lg font-black text-heading">Day Trade</span>
           </div>
         </div>
-        <div className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
-          My Tickers
-        </div>
+        {onClose ? (
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-tertiary transition-colors hover:bg-slate-100 hover:text-heading dark:hover:bg-slate-900" aria-label="Close navigation">
+            <X size={17} />
+          </button>
+        ) : (
+          <div className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
+            My Tickers
+          </div>
+        )}
       </div>
 
       <section className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
@@ -1283,6 +1293,7 @@ export default function DayTradePage() {
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false)
   const [watchlistScrollTop, setWatchlistScrollTop] = useState(() => {
     try {
       const saved = Number(localStorage.getItem('day_trade_watchlist_scroll_top'))
@@ -1481,24 +1492,36 @@ export default function DayTradePage() {
     return (
       <div className="day-trade-page min-h-screen bg-surface-page p-3 text-primary">
         <div className="mx-auto flex max-w-[1920px] gap-3">
-          <DayTradeLeftSidebar
-            ticker={ticker}
-            resultTicker={workspaceState.data?.symbol?.ticker || workspaceSymbol}
-            loading={workspaceState.loading}
-            width={watchlistWidth}
-            groups={sidebarTickerGroups}
-            onTickerChange={value => setUi(cur => ({ ...cur, ticker: value.toUpperCase() }))}
-            onRun={sym => handleWorkspaceTickerAnalyze(sym)}
-            onListScroll={setWatchlistScrollTop}
-            initialListScrollTop={watchlistScrollTop}
-            onManage={() => routerNavigate(ROUTES.myTickers)}
-            onScanner={() => routerNavigate(ROUTES.signals)}
-            onAlerts={() => routerNavigate(ROUTES.alerts)}
-            onPositions={() => routerNavigate(ROUTES.positions)}
-            onJournal={() => routerNavigate(ROUTES.journal)}
-          />
+          <div className="hidden xl:block">
+            <DayTradeLeftSidebar
+              ticker={ticker}
+              resultTicker={workspaceState.data?.symbol?.ticker || workspaceSymbol}
+              loading={workspaceState.loading}
+              width={watchlistWidth}
+              groups={sidebarTickerGroups}
+              onTickerChange={value => setUi(cur => ({ ...cur, ticker: value.toUpperCase() }))}
+              onRun={sym => handleWorkspaceTickerAnalyze(sym)}
+              onListScroll={setWatchlistScrollTop}
+              initialListScrollTop={watchlistScrollTop}
+              onManage={() => routerNavigate(ROUTES.myTickers)}
+              onScanner={() => routerNavigate(ROUTES.signals)}
+              onAlerts={() => routerNavigate(ROUTES.alerts)}
+              onPositions={() => routerNavigate(ROUTES.positions)}
+              onJournal={() => routerNavigate(ROUTES.journal)}
+            />
+          </div>
 
           <main className="min-w-0 flex-1">
+            {/* Mobile/tablet nav toggle — sidebar becomes an overlay drawer below xl */}
+            <button
+              type="button"
+              onClick={() => setNavDrawerOpen(true)}
+              className="mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-secondary transition-colors hover:text-heading dark:border-white/[0.07] dark:bg-slate-900 xl:hidden"
+              aria-label="Open tickers and navigation"
+            >
+              <Menu size={16} />
+              Tickers &amp; navigation
+            </button>
             {notice && (
               <div className="mb-3 rounded-xl border border-semantic-info-border bg-semantic-info-bg px-4 py-3 text-sm text-semantic-info">
                 {notice.message}
@@ -1540,10 +1563,35 @@ export default function DayTradePage() {
             )}
           </main>
         </div>
+        {navDrawerOpen && (
+          <div className="fixed inset-0 z-50 xl:hidden">
+            <button type="button" className="absolute inset-0 cursor-default bg-slate-950/45 backdrop-blur-[1px]" onClick={() => setNavDrawerOpen(false)} aria-label="Close navigation" />
+            <div className="absolute inset-y-0 left-0 w-80 max-w-[calc(100vw-2rem)] p-2">
+              <DayTradeLeftSidebar
+                ticker={ticker}
+                resultTicker={workspaceState.data?.symbol?.ticker || workspaceSymbol}
+                loading={workspaceState.loading}
+                width={watchlistWidth}
+                groups={sidebarTickerGroups}
+                onTickerChange={value => setUi(cur => ({ ...cur, ticker: value.toUpperCase() }))}
+                onRun={sym => { setNavDrawerOpen(false); handleWorkspaceTickerAnalyze(sym) }}
+                onListScroll={setWatchlistScrollTop}
+                initialListScrollTop={watchlistScrollTop}
+                onManage={() => routerNavigate(ROUTES.myTickers)}
+                onScanner={() => routerNavigate(ROUTES.signals)}
+                onAlerts={() => routerNavigate(ROUTES.alerts)}
+                onPositions={() => routerNavigate(ROUTES.positions)}
+                onJournal={() => routerNavigate(ROUTES.journal)}
+                embedded
+                onClose={() => setNavDrawerOpen(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
     )
   }
- 
+
   return (
     <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'clip', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">

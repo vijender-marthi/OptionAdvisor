@@ -1230,18 +1230,20 @@ function SwingLeftSidebar({
     }>
       <div className="mb-3 flex shrink-0 items-start justify-between">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Swing Workstation</div>
-          <div className="mt-1 flex items-center gap-2">
+          {!mobileOverlay && <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Swing Workstation</div>}
+          <div className={`flex items-center gap-2 ${mobileOverlay ? '' : 'mt-1'}`}>
             <TrendingUp size={16} className="text-violet-500" />
             <span className="text-lg font-black text-heading">Swing Trade</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
-            My Tickers
-          </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Collapse sidebar">
-            <ChevronLeft size={16} />
+          {!mobileOverlay && (
+            <div className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-200">
+              My Tickers
+            </div>
+          )}
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-secondary hover:bg-slate-100 dark:hover:bg-slate-900" aria-label={mobileOverlay ? 'Close navigation' : 'Collapse sidebar'}>
+            {mobileOverlay ? <X size={17} /> : <ChevronLeft size={16} />}
           </button>
         </div>
       </div>
@@ -1272,6 +1274,9 @@ function SwingLeftSidebar({
         </div>
       </section>
 
+      {/* The mobile overlay already has an Analyze bar (SwingMobileSearchBar) above
+          the drawer, so hide this duplicate there and let the ticker list lead. */}
+      {!mobileOverlay && (
       <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
         <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Analyze</div>
         <div className="flex gap-2">
@@ -1302,6 +1307,7 @@ function SwingLeftSidebar({
           </div>
         )}
       </section>
+      )}
 
       <section className="flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between">
