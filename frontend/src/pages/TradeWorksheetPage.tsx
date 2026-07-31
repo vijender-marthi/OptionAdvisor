@@ -888,6 +888,64 @@ export default function TradeWorksheetPage() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          ) : evaluation?.payoffMatrix && evaluation.payoffMatrix.columns.length > 0 ? (
+          (() => {
+            const mtx = evaluation.payoffMatrix!
+            const rows = mtx.prices.map((price, i) => ({ price, cells: mtx.grid[i] })).reverse()
+            const matrixMaxAbs = Math.max(1, ...mtx.grid.flat().map(v => Math.abs(v)))
+            return (
+              <div>
+                <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted">
+                  <span>Price × time P/L — each cell Black-Scholes priced</span>
+                  <span className="flex items-center gap-2 normal-case tracking-normal">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: 'rgba(34,197,94,0.65)' }} /> Profit
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: 'rgba(244,63,94,0.65)' }} /> Loss
+                  </span>
+                </div>
+                <div className="max-h-96 overflow-auto rounded-lg border border-slate-200 dark:border-white/10">
+                  <table className="w-full border-collapse text-xs">
+                    <thead className="sticky top-0 z-10 bg-surface-card text-[10px] uppercase tracking-wide text-muted">
+                      <tr>
+                        <th className="sticky left-0 z-20 bg-surface-card px-3 py-2 text-left font-black">Stock</th>
+                        {mtx.columns.map((col, ci) => (
+                          <th key={ci} className="px-2 py-2 text-right font-black">
+                            <div className={col.isExpiration ? 'text-violet-500' : ''}>{col.isExpiration ? 'Exp' : col.date}</div>
+                            <div className="font-mono text-[9px] font-semibold text-tertiary">{col.daysRemaining}d</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, ri) => {
+                        const move = form.stockPrice ? (row.price / form.stockPrice - 1) * 100 : 0
+                        const isCurrent = Math.abs(row.price - payoffCurrentPrice) < 1e-6
+                        return (
+                          <tr key={ri} className={isCurrent ? 'outline outline-2 -outline-offset-2 outline-sky-400' : ''}>
+                            <td className="sticky left-0 z-10 whitespace-nowrap bg-surface-card px-3 py-1.5 font-mono font-semibold text-text-primary">
+                              {fmtUsd(row.price)}
+                              <span className="ml-1 font-sans text-[9px] text-tertiary">{move >= 0 ? '+' : ''}{move.toFixed(0)}%</span>
+                              {isCurrent ? <span className="ml-1 text-sky-400">•</span> : null}
+                            </td>
+                            {row.cells.map((pnl, ci) => {
+                              const profit = pnl >= 0
+                              const intensity = 0.08 + 0.6 * Math.min(1, Math.abs(pnl) / matrixMaxAbs)
+                              const bg = profit ? `rgba(34,197,94,${intensity})` : `rgba(244,63,94,${intensity})`
+                              return (
+                                <td key={ci} style={{ background: bg }} className="px-2 py-1.5 text-right font-mono font-semibold text-text-primary">
+                                  {profit ? '+' : '−'}{fmtUsd(Math.abs(pnl))}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-2 text-[10px] text-tertiary">Rows = stock price; columns = dates from today to expiration. Cells show estimated P/L using Black-Scholes at each date; the final column is expiration (intrinsic value).</div>
+              </div>
+            )
+          })()
           ) : (
           <div className="max-h-96 overflow-auto rounded-lg border border-slate-200 dark:border-white/10">
             <table className="w-full text-xs">

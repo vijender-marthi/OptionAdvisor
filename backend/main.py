@@ -6033,6 +6033,81 @@ def _tw_payoff(req: TradeWorksheetEvaluateRequest, price: float) -> float:
     return max(0, price - _tw_primary_strike(req)) * 100 * c - debit_paid
 
 
+def _tw_payoff_at(req: TradeWorksheetEvaluateRequest, price: float, t_years: float, sigma: float, r: float = 0.045) -> float:
+    """P&L at underlying `price` with `t_years` remaining to expiration, option legs
+    priced via Black-Scholes. At t_years<=0 the BS value collapses to intrinsic, so this
+    matches `_tw_payoff` at expiration (validated in tests)."""
+    from backtest import bs_price
+    c = max(1, safe_int(req.contracts))
+    net_premium = _tw_net_premium(req)
+    debit_paid = max(0.0, -net_premium) * 100 * c
+    credit_received = max(0.0, net_premium) * 100 * c
+    strategy = req.strategy
+    width = _tw_spread_width(req)
+    S = max(0.01, float(price))
+    T = max(0.0, float(t_years))
+    sig = max(0.01, float(sigma))
+
+    def _bs(strike: float, opt: str) -> float:
+        return bs_price(S, max(0.01, float(strike)), T, r, sig, opt)
+
+    if strategy == "Shares":
+        return (price - safe_float(req.stockPrice)) * c
+    if strategy == "Bear Put Spread":
+        long_k = safe_float(req.longStrike)
+        return (_bs(long_k, "PUT") - _bs(long_k - width, "PUT")) * 100 * c - debit_paid
+    if strategy == "Bull Call Spread":
+        long_k = safe_float(req.longStrike)
+        return (_bs(long_k, "CALL") - _bs(long_k + width, "CALL")) * 100 * c - debit_paid
+    if strategy == "Bull Put Spread":
+        short_k = safe_float(req.shortStrike)
+        return credit_received - (_bs(short_k, "PUT") - _bs(short_k - width, "PUT")) * 100 * c
+    if strategy == "Bear Call Spread":
+        short_k = safe_float(req.shortStrike)
+        return credit_received - (_bs(short_k, "CALL") - _bs(short_k + width, "CALL")) * 100 * c
+    if strategy == "Long Put" or (_tw_is_calendar_like(strategy) and _tw_uses_put_chain(req.direction, strategy)):
+        return _bs(_tw_primary_strike(req), "PUT") * 100 * c - debit_paid
+    if strategy == "Cash Secured Put":
+        return credit_received - _bs(_tw_primary_strike(req), "PUT") * 100 * c
+    if strategy == "Covered Call":
+        stock_pnl = (price - safe_float(req.stockPrice)) * 100 * c
+        return stock_pnl + credit_received - _bs(_tw_primary_strike(req), "CALL") * 100 * c
+    if strategy == "Iron Condor":
+        put_spread = _bs(safe_float(req.shortPutStrike), "PUT") - _bs(safe_float(req.shortPutStrike) - width, "PUT")
+        call_spread = _bs(safe_float(req.shortCallStrike), "CALL") - _bs(safe_float(req.shortCallStrike) + width, "CALL")
+        return credit_received - (put_spread + call_spread) * 100 * c
+    return _bs(_tw_primary_strike(req), "CALL") * 100 * c - debit_paid
+
+
+def _tw_payoff_matrix(req: TradeWorksheetEvaluateRequest, sigma: float, front_dte: int) -> dict[str, Any]:
+    """Dated price x time P&L matrix (OptionStrat-style). Rows = underlying prices,
+    columns = calendar dates from today through expiration, each cell BS-priced."""
+    base = max(0.01, safe_float(req.stockPrice))
+    prices = [round(base * (1 + i / 100), 2) for i in range(-30, 31, 3)]
+    n_cols = 6
+    dte = max(0, int(front_dte))
+    today = datetime.now()
+    columns: list[dict[str, Any]] = []
+    seen_elapsed: set[int] = set()
+    for j in range(n_cols):
+        elapsed = round(dte * j / (n_cols - 1)) if dte > 0 and n_cols > 1 else 0
+        if elapsed in seen_elapsed:
+            continue
+        seen_elapsed.add(elapsed)
+        remaining = max(0, dte - elapsed)
+        columns.append({
+            "daysElapsed": int(elapsed),
+            "daysRemaining": int(remaining),
+            "date": (today + timedelta(days=int(elapsed))).strftime("%b %d"),
+            "isExpiration": remaining <= 0,
+        })
+    grid = [
+        [round(_tw_payoff_at(req, price, col["daysRemaining"] / 365.0, sigma)) for col in columns]
+        for price in prices
+    ]
+    return {"prices": prices, "columns": columns, "grid": grid}
+
+
 def _tw_score(req: TradeWorksheetEvaluateRequest, greeks: dict[str, float], earnings: dict[str, Any] | None = None) -> dict[str, float]:
     dte = _tw_days_to_expiry(_tw_front_expiry(req))
     row = _tw_primary_row(req)
@@ -6151,6 +6226,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
     ]
     base = max(1, safe_float(req.stockPrice))
     payoff = [{"price": round(base * (1 + i / 100), 2), "pnl": round(_tw_payoff(req, base * (1 + i / 100)))} for i in range(-30, 31, 2)]
+    payoff_matrix = _tw_payoff_matrix(req, safe_float(greeks["iv"]) or 0.3, front_dte)
     response = {
         "summary": {
             "ticker": req.ticker.upper().strip(),
@@ -6185,6 +6261,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
         "greeks": greeks,
         "score": {**score, "label": _tw_score_label(score["total"])},
         "payoff": payoff,
+        "payoffMatrix": payoff_matrix,
         "scenario": {
             "estimatedValue": round(estimated_value, 2),
             "estimatedProfit": round(estimated_profit, 2),

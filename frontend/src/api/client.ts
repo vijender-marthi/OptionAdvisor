@@ -1095,6 +1095,11 @@ export interface TradeWorksheetEvaluation {
     label: string
   }
   payoff: Array<{ price: number; pnl: number }>
+  payoffMatrix?: {
+    prices: number[]
+    columns: Array<{ daysElapsed: number; daysRemaining: number; date: string; isExpiration: boolean }>
+    grid: number[][]
+  }
   scenario: {
     estimatedValue: number
     estimatedProfit: number
