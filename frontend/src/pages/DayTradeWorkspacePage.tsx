@@ -138,14 +138,16 @@ function DayTradeSidebarContent({
     <div className="flex h-full flex-col">
       <div className="mb-3 flex items-start justify-between shrink-0">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Day Workstation</div>
-          <div className="mt-1 flex items-center gap-2">
+          {!closeable && <div className="text-[11px] font-black uppercase tracking-widest text-tertiary">Day Workstation</div>}
+          <div className={`flex items-center gap-2 ${closeable ? '' : 'mt-1'}`}>
             <Activity size={16} className="text-violet-500" />
             <span className="text-lg font-black text-heading">Day Trade</span>
           </div>
-          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
-            Tickers refreshed {formatRefreshTimestamp(tickerListLastRefreshedAt)}
-          </div>
+          {!closeable && (
+            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
+              Tickers refreshed {formatRefreshTimestamp(tickerListLastRefreshedAt)}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {onCollapse && (
@@ -187,6 +189,10 @@ function DayTradeSidebarContent({
         </div>
       </section>
 
+      {/* The mobile overlay already has an Analyze bar (DayTradeMobileSearchBar)
+          above the drawer, so hide this duplicate there and let the ticker list
+          lead. */}
+      {!closeable && (
       <section className="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
         <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-tertiary">Analyze</div>
         <div className="flex gap-2">
@@ -211,6 +217,7 @@ function DayTradeSidebarContent({
           </button>
         </div>
       </section>
+      )}
 
       <section className="flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between shrink-0">
