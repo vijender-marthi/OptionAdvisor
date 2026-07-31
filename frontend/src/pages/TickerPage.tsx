@@ -237,6 +237,14 @@ function LeftSidebar({
   embedded?: boolean
 }) {
   const [tickerSearchError, setTickerSearchError] = useState('')
+  // Filters collapse by default in the mobile/tablet drawer so the ticker list —
+  // the primary thing you pick from — stays front-and-center. Expanded on desktop.
+  const [filtersOpen, setFiltersOpen] = useState(!embedded)
+  const activeFilterCount =
+    (filters.strategy !== 'all' ? 1 : 0) +
+    (filters.timeHorizon !== 'all' ? 1 : 0) +
+    (filters.bias !== 'all' ? 1 : 0) +
+    (filters.activeOnly ? 1 : 0)
   const filteredTickers = useMemo(() => {
     if (!searchQuery.trim()) return tickers
     const q = searchQuery.trim().toUpperCase()
@@ -271,12 +279,12 @@ function LeftSidebar({
     <aside className={`${embedded ? 'h-full' : 'sticky top-3 h-[calc(100vh-1.5rem)]'} flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.08] dark:bg-slate-950`}>
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <div className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">Position Workstation</div>
-          <div className="mt-1 flex items-center gap-2">
+          {!embedded && <div className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">Position Workstation</div>}
+          <div className={`flex items-center gap-2 ${embedded ? '' : 'mt-1'}`}>
             <Briefcase size={16} className="text-violet-600 dark:text-violet-300" />
             <span className="text-lg font-black text-text-primary">Position Trading</span>
           </div>
-          <div className="mt-1 text-[10px] leading-tight text-text-tertiary">Multi-week options strategies and risk review.</div>
+          {!embedded && <div className="mt-1 text-[10px] leading-tight text-text-tertiary">Multi-week options strategies and risk review.</div>}
         </div>
         {onClose ? (
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-surface-muted hover:text-text-primary" aria-label="Close navigation">
@@ -287,10 +295,10 @@ function LeftSidebar({
         )}
       </div>
 
-      <section className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
-        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-text-tertiary">Search &amp; Strategy</div>
+      {/* Search — the way you find or analyze a ticker; always visible on top */}
+      <section className="mb-2.5">
         <form className="relative" onSubmit={submitTickerSearch}>
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
           <input
             type="text"
             value={searchQuery}
@@ -298,8 +306,8 @@ function LeftSidebar({
               setTickerSearchError('')
               onSearchChange(e.target.value.toUpperCase())
             }}
-            placeholder="Search any ticker, e.g. TSLA"
-            className="w-full rounded-lg border border-border bg-surface-canvas py-1.5 pl-8 pr-8 text-[12px] text-text-primary placeholder-text-tertiary outline-none focus:border-semantic-accent"
+            placeholder="Search or analyze a ticker, e.g. TSLA"
+            className="w-full rounded-lg border border-border bg-surface-canvas py-2.5 pl-9 pr-16 text-[13px] text-text-primary placeholder-text-tertiary outline-none focus:border-semantic-accent"
           />
           {searchQuery && (
             <button
@@ -308,75 +316,95 @@ function LeftSidebar({
                 setTickerSearchError('')
                 onSearchChange('')
               }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+              className="absolute right-9 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
             >
-              <X size={14} />
+              <X size={15} />
             </button>
           )}
           <button
             type="button"
             onClick={onRefreshTickers}
-            className="absolute right-8 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
             title="Refresh tickers"
           >
-            <RefreshCw size={12} />
+            <RefreshCw size={13} />
           </button>
         </form>
-        <label className="mt-2 block text-[10px] font-bold uppercase tracking-wider text-text-tertiary">
-          Strategy
-          <select
-            value={filters.strategy}
-            onChange={e => onFilterChange({ ...filters, strategy: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-text-primary outline-none dark:border-white/[0.08] dark:bg-slate-950"
-          >
-            {STRATEGY_OPTIONS.map(option => <option key={option} value={option === 'All Strategies' ? 'all' : option}>{option}</option>)}
-          </select>
-        </label>
-        <div className={`mt-2 text-[10px] ${tickerSearchError ? 'text-semantic-warning' : 'text-text-tertiary'}`}>
-          {tickerSearchError || 'Press Enter to analyze any supported ticker. My Tickers stay listed below.'}
+        <div className={`mt-1.5 text-[10px] ${tickerSearchError ? 'text-semantic-warning' : 'text-text-tertiary'}`}>
+          {tickerSearchError || 'Press Enter to analyze any supported ticker.'}
         </div>
       </section>
 
-      <section className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-900/60">
-        <div className="mb-2 flex items-center gap-1.5">
-          <Filter size={11} className="text-tertiary" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">Scan Filters</span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <select
-            value={filters.timeHorizon}
-            onChange={e => onFilterChange({ ...filters, timeHorizon: e.target.value })}
-            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-semibold text-text-primary outline-none dark:border-white/[0.08] dark:bg-slate-950"
-          >
-            {TIME_HORIZON_OPTIONS.map(o => (
-              <option key={o} value={o === 'All Horizons' ? 'all' : o}>{o}</option>
-            ))}
-          </select>
-          <select
-            value={filters.bias}
-            onChange={e => onFilterChange({ ...filters, bias: e.target.value })}
-            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-semibold text-text-primary outline-none dark:border-white/[0.08] dark:bg-slate-950"
-          >
-            {BIAS_OPTIONS.map(o => (
-              <option key={o} value={o === 'All Biases' ? 'all' : o}>{o}</option>
-            ))}
-          </select>
-          <label className="col-span-2 flex items-center gap-2 text-[11px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={filters.activeOnly}
-              onChange={e => onFilterChange({ ...filters, activeOnly: e.target.checked })}
-              className="rounded border-border"
-            />
-            Active Only
-          </label>
-        </div>
+      {/* Strategy & scan filters — collapsed by default in the drawer so the
+          ticker list below stays the primary view on mobile/tablet. */}
+      <section className="mb-2.5 rounded-xl border border-slate-200 bg-slate-50 dark:border-white/[0.07] dark:bg-slate-900/60">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(open => !open)}
+          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+          aria-expanded={filtersOpen}
+        >
+          <span className="flex items-center gap-1.5">
+            <Filter size={12} className="text-tertiary" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">Strategy &amp; Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-semantic-accent px-1.5 py-0.5 text-[9px] font-black leading-none text-white">{activeFilterCount}</span>
+            )}
+          </span>
+          {filtersOpen ? <ChevronUp size={14} className="text-text-tertiary" /> : <ChevronDown size={14} className="text-text-tertiary" />}
+        </button>
+        {filtersOpen && (
+          <div className="border-t border-slate-200 p-3 dark:border-white/[0.07]">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-text-tertiary">
+              Strategy
+              <select
+                value={filters.strategy}
+                onChange={e => onFilterChange({ ...filters, strategy: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-text-primary outline-none dark:border-white/[0.08] dark:bg-slate-950"
+              >
+                {STRATEGY_OPTIONS.map(option => <option key={option} value={option === 'All Strategies' ? 'all' : option}>{option}</option>)}
+              </select>
+            </label>
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              <select
+                value={filters.timeHorizon}
+                onChange={e => onFilterChange({ ...filters, timeHorizon: e.target.value })}
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-semibold text-text-primary outline-none dark:border-white/[0.08] dark:bg-slate-950"
+              >
+                {TIME_HORIZON_OPTIONS.map(o => (
+                  <option key={o} value={o === 'All Horizons' ? 'all' : o}>{o}</option>
+                ))}
+              </select>
+              <select
+                value={filters.bias}
+                onChange={e => onFilterChange({ ...filters, bias: e.target.value })}
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-semibold text-text-primary outline-none dark:border-white/[0.08] dark:bg-slate-950"
+              >
+                {BIAS_OPTIONS.map(o => (
+                  <option key={o} value={o === 'All Biases' ? 'all' : o}>{o}</option>
+                ))}
+              </select>
+              <label className="col-span-2 flex items-center gap-2 text-[11px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={filters.activeOnly}
+                  onChange={e => onFilterChange({ ...filters, activeOnly: e.target.checked })}
+                  className="rounded border-border"
+                />
+                Active Only
+              </label>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Ticker list */}
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">My Tickers</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-text-secondary">
+            My Tickers
+            {tickers.length > 0 && <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[9px] font-black leading-none text-text-tertiary">{filteredTickers.length}</span>}
+          </span>
           <button type="button" onClick={onAddTicker} className="text-[10px] font-bold text-violet-700 dark:text-violet-300">Manage</button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
