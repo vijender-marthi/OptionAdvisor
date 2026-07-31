@@ -6086,6 +6086,14 @@ def _tw_payoff_matrix(req: TradeWorksheetEvaluateRequest, sigma: float, front_dt
     prices = [round(base * (1 + i / 100), 2) for i in range(-30, 31, 3)]
     n_cols = 6
     dte = max(0, int(front_dte))
+    # Anchor column dates to the expiration date (deterministic) rather than
+    # wall-clock now(); date = expiry - daysRemaining. Falls back to now()+elapsed
+    # only if the expiration can't be parsed.
+    expiry_date = None
+    try:
+        expiry_date = datetime.strptime(str(_tw_front_expiry(req))[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        expiry_date = None
     today = datetime.now()
     columns: list[dict[str, Any]] = []
     seen_elapsed: set[int] = set()
@@ -6095,10 +6103,11 @@ def _tw_payoff_matrix(req: TradeWorksheetEvaluateRequest, sigma: float, front_dt
             continue
         seen_elapsed.add(elapsed)
         remaining = max(0, dte - elapsed)
+        col_date = (expiry_date - timedelta(days=int(remaining))) if expiry_date else (today + timedelta(days=int(elapsed)))
         columns.append({
             "daysElapsed": int(elapsed),
             "daysRemaining": int(remaining),
-            "date": (today + timedelta(days=int(elapsed))).strftime("%b %d"),
+            "date": col_date.strftime("%b %d"),
             "isExpiration": remaining <= 0,
         })
     grid = [
