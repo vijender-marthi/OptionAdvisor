@@ -2149,10 +2149,7 @@ export default function PositionsCenter() {
   const weekPl = summary.week_pl
   const weekPlPct = summary.week_pl_pct
   const capitalUsed = num(summary.total_capital_used)
-  const buyingPower = num(summary.buying_power, accountSize)
-  const utilPct = capitalUsed > 0 && buyingPower > 0
-    ? (capitalUsed / (capitalUsed + buyingPower)) * 100
-    : num(summary.capital_utilization_pct)
+  const baseBuyingPower = num(summary.buying_power, accountSize)
   // Contract-level win/loss stats from closed positions
   const contractStats = useMemo(() => {
     let winContracts = 0, lossContracts = 0, totalRealizedPnl = 0, totalCapitalDeployed = 0
@@ -2173,6 +2170,13 @@ export default function PositionsCenter() {
     const returnOnCapital = totalCapitalDeployed > 0 ? (totalRealizedPnl / totalCapitalDeployed) * 100 : null
     return { winContracts, lossContracts, totalContracts, winRate, returnOnCapital, totalRealizedPnl }
   }, [closedPortfolio])
+
+  // Buying power auto-updates with realized results: available = base account
+  // size + total realized P&L (profit adds, losses subtract).
+  const buyingPower = baseBuyingPower + (contractStats.totalRealizedPnl || 0)
+  const utilPct = capitalUsed > 0 && buyingPower > 0
+    ? (capitalUsed / (capitalUsed + buyingPower)) * 100
+    : num(summary.capital_utilization_pct)
 
   const regime = String(market.regime ?? '').toLowerCase()
   const marketMood =
@@ -2644,7 +2648,11 @@ export default function PositionsCenter() {
               </button>
             ))}
             {/* 6–7. Buying Power / Capital in Use */}
-            <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
+            <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={
+              contractStats.totalRealizedPnl
+                ? <span className="text-tertiary">{fmtUsd(baseBuyingPower)} base {contractStats.totalRealizedPnl >= 0 ? '+' : '−'} {fmtUsd(Math.abs(contractStats.totalRealizedPnl))} realized</span>
+                : <span className="text-tertiary">Available</span>
+            } />
             <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
           </section>
           <PositionsDashboardTab
