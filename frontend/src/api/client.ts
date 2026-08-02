@@ -1081,6 +1081,7 @@ export interface TradeWorksheetEvaluation {
     iv: number
     probabilityItm: number
     probabilityOtm: number
+    probabilityProfit?: number
   }
   score: {
     total: number

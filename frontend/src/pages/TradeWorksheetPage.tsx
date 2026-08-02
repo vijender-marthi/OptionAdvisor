@@ -32,6 +32,7 @@ import {
   YAxis,
 } from 'recharts'
 import TradeExitPlanner from '../components/TradeExitPlanner'
+import TradeGuardrails from '../components/TradeGuardrails'
 import { evaluateTradeWorksheet, fetchCalculationRuns, fetchCalculationSnapshot, fetchCalculationSnapshotAuditLog, fetchCalculationSnapshotIntegrity, fetchOptionChainLiquidity, getJournal, saveToJournal, type CalculationRun, type CalculationSnapshot, type CalculationSnapshotAuditLog, type CalculationSnapshotIntegrity, type MetricDefinition, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 import { useApp } from '../contexts/AppContext'
@@ -430,7 +431,8 @@ export default function TradeWorksheetPage() {
     void loadCalculationHistory()
   }, [loadCalculationHistory])
 
-  const greeks = evaluation?.greeks ?? { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, probabilityItm: 0, probabilityOtm: 0 }
+  const greeks = evaluation?.greeks ?? { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, probabilityItm: 0, probabilityOtm: 0, probabilityProfit: 0 }
+  const popAtBreakeven = greeks.probabilityProfit ?? greeks.probabilityItm
   const score = evaluation?.score ?? { total: 0, trend: 0, optionPricing: 0, time: 0, liquidity: 0, probability: 0, riskReward: 0, volatility: 0, market: 0, label: 'WAIT' }
   const payoff = evaluation?.payoff ?? []
   const timeBuckets = evaluation?.scenario.timeBuckets ?? []
@@ -633,6 +635,27 @@ export default function TradeWorksheetPage() {
       {journalError && <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-300">{journalError}</div>}
       {evaluationError && <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">{evaluationError}</div>}
 
+      {/* Verdict-first: pre-trade guardrails catch contradictions before the score is trusted */}
+      <div className="mb-5">
+        <TradeGuardrails
+          direction={form.direction}
+          strategy={form.strategy}
+          premium={form.premium}
+          stockPrice={form.stockPrice}
+          targetPrice={form.targetPrice}
+          chainMid={selectedRow?.mid}
+          chainBid={selectedRow?.bid}
+          chainAsk={selectedRow?.ask}
+          openInterest={selectedRow?.open_interest}
+          expectedValue={evaluation?.scenario.expectedValue}
+          theta={greeks.theta}
+          delta={greeks.delta}
+          checklistDone={Object.values(checklist).filter(Boolean).length}
+          checklistTotal={checklistItems.length}
+          invalidatesFilled={journal.invalidates.trim().length > 0}
+        />
+      </div>
+
       <section className="mb-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/[0.07] dark:bg-slate-900">
           <div className="mb-1 text-xs font-bold uppercase tracking-[0.18em] text-muted">Trade Quality</div>
@@ -794,7 +817,7 @@ export default function TradeWorksheetPage() {
               <Metric label="Theta / Day" value={fmtUsd(greeks.theta * 100 * form.contracts)} tone="bad" definition={metricDef('theta_per_day')} />
               <Metric label="Delta" value={greeks.delta.toFixed(2)} definition={metricDef('delta')} />
               <Metric label="IV Rank" value={`${form.ivRank.toFixed(0)}%`} tone={form.ivRank <= 45 ? 'good' : form.ivRank <= 65 ? 'caution' : 'bad'} definition={metricDef('iv_rank')} />
-              <Metric label="POP / ITM" value={`${score.probability.toFixed(0)}% / ${greeks.probabilityItm.toFixed(0)}%`} tone={qualityTone(score.probability, 60, 45)} definition={metricDef('probability_of_profit')} />
+              <Metric label="POP (B/E) / ITM" value={`${popAtBreakeven.toFixed(0)}% / ${greeks.probabilityItm.toFixed(0)}%`} tone={qualityTone(popAtBreakeven, 55, 40)} definition={metricDef('probability_of_profit')} />
               <Metric label="Earnings" value={evaluation ? (evaluation.summary.earningsDate ? `${evaluation.summary.earningsDate} (${evaluation.summary.earningsRisk})` : evaluation.summary.earningsRisk ?? '—') : '—'} tone={evaluation?.summary.earningsRisk === 'High' ? 'bad' : evaluation?.summary.earningsRisk === 'Medium' ? 'caution' : evaluation?.summary.earningsRisk === 'Low' ? 'good' : undefined} />
             </div>
             {evaluation?.summary.earningsMessage && (
@@ -1117,8 +1140,8 @@ export default function TradeWorksheetPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Panel title="Probability Analysis" icon={<LineChartIcon size={18} />} sub="Estimates based on current inputs, IV, and simplified distribution math.">
           <div className="grid gap-2 sm:grid-cols-3">
-            <Metric label="Probability Profit" value={`${score.probability.toFixed(0)}%`} definition={metricDef('probability_of_profit')} />
-            <Metric label="Probability ITM" value={`${greeks.probabilityItm.toFixed(0)}%`} definition={metricDef('probability_itm')} />
+            <Metric label="Prob. Profit (at B/E)" value={`${popAtBreakeven.toFixed(0)}%`} tone={qualityTone(popAtBreakeven, 55, 40)} definition={metricDef('probability_of_profit')} />
+            <Metric label="Probability ITM (strike)" value={`${greeks.probabilityItm.toFixed(0)}%`} definition={metricDef('probability_itm')} />
             <Metric label="Probability OTM" value={`${greeks.probabilityOtm.toFixed(0)}%`} definition={metricDef('probability_otm')} />
             <Metric label="Expected Value" value={fmtUsd(evaluation?.scenario.expectedValue ?? 0)} definition={metricDef('expected_value')} />
             <Metric label="Expected Return" value={fmtPct(evaluation?.scenario.expectedReturn ?? 0)} definition={metricDef('expected_return')} />
@@ -1147,26 +1170,38 @@ export default function TradeWorksheetPage() {
               <Field label="Confidence"><input type="number" min={1} max={10} value={journal.confidence} onChange={e => setJournal(prev => ({ ...prev, confidence: Number(e.target.value) }))} className={smallInputCls} /></Field>
               <Field label="Emotion"><select value={journal.emotion} onChange={e => setJournal(prev => ({ ...prev, emotion: e.target.value as Emotion }))} className={smallInputCls}>{(['Calm', 'FOMO', 'Revenge', 'Speculative'] as Emotion[]).map(e => <option key={e}>{e}</option>)}</select></Field>
             </div>
-            <div className="mt-2 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => void handleSaveToJournal()}
-                disabled={savingJournal || !evaluation || !user?.email}
-                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors ${
-                  journalSaved
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40'
-                }`}
-              >
-                {journalSaved ? (
-                  <><CheckCircle2 size={16} /> Saved to Journal</>
-                ) : savingJournal ? (
-                  <><Loader2 size={16} className="animate-spin" /> Saving…</>
-                ) : (
-                  <><BookOpenCheck size={16} /> Save to Journal</>
-                )}
-              </button>
-            </div>
+            {(() => {
+              const blockReason = journal.invalidates.trim().length === 0
+                ? 'Fill in “What invalidates the trade?” before saving.'
+                : Object.values(checklist).filter(Boolean).length < checklistItems.length
+                  ? 'Complete the pre-buy checklist before saving.'
+                  : ''
+              return (
+                <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                  {blockReason && !journalSaved && (
+                    <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-300">{blockReason}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveToJournal()}
+                    disabled={savingJournal || !evaluation || !user?.email || !!blockReason}
+                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors ${
+                      journalSaved
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40'
+                    }`}
+                  >
+                    {journalSaved ? (
+                      <><CheckCircle2 size={16} /> Saved to Journal</>
+                    ) : savingJournal ? (
+                      <><Loader2 size={16} className="animate-spin" /> Saving…</>
+                    ) : (
+                      <><BookOpenCheck size={16} /> Save to Journal</>
+                    )}
+                  </button>
+                </div>
+              )
+            })()}
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-950/40">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>

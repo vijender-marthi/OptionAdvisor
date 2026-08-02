@@ -5983,6 +5983,31 @@ def _tw_norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + erf(x / sqrt(2.0)))
 
 
+def _tw_prob_profit(req: TradeWorksheetEvaluateRequest, s: float, iv: float, t_years: float) -> float | None:
+    """Probability of profit computed at the BREAKEVEN, not the strike (POP != Prob-ITM).
+    Zero-drift lognormal, consistent with the ITM probability above."""
+    if iv <= 0 or t_years <= 0 or s <= 0:
+        return None
+
+    def d2(strike: float) -> float:
+        strike = max(0.01, strike)
+        return (log(s / strike) - 0.5 * iv * iv * t_years) / (iv * sqrt(t_years))
+
+    strat = req.strategy
+    if strat == "Iron Condor":
+        credit = _tw_abs_premium(req)
+        lower = safe_float(req.shortPutStrike) - credit
+        upper = safe_float(req.shortCallStrike) + credit
+        # P(lower < S_T < upper)
+        return _tw_clamp((_tw_norm_cdf(-d2(upper)) - _tw_norm_cdf(-d2(lower))) * 100)
+    be = _tw_breakeven(req)
+    if not be or be <= 0:
+        return None
+    bearish_profit = strat in {"Long Put", "Bear Put Spread", "Bear Call Spread"}
+    prob = _tw_norm_cdf(-d2(be)) if bearish_profit else _tw_norm_cdf(d2(be))
+    return _tw_clamp(prob * 100)
+
+
 def _tw_greeks(req: TradeWorksheetEvaluateRequest) -> dict[str, float]:
     s = max(0.01, safe_float(req.stockPrice))
     k = max(0.01, _tw_primary_strike(req))
@@ -6008,6 +6033,7 @@ def _tw_greeks(req: TradeWorksheetEvaluateRequest) -> dict[str, float]:
         "iv": round(float(iv), 4),
         "probabilityItm": round(_tw_clamp(float(pop) * 100), 1),
         "probabilityOtm": round(_tw_clamp((1 - float(pop)) * 100), 1),
+        "probabilityProfit": round(_tw_prob_profit(req, s, iv, t_years) or _tw_clamp(float(pop) * 100), 1),
     }
 
 
