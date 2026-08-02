@@ -499,6 +499,18 @@ function fmtExpShort(expiry?: string | null): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+/** Option strike(s) for a position, e.g. "330" or "330/340" for spreads; null for stock. */
+function positionStrikeLabel(pos: PortfolioPosition): string | null {
+  if (pos.strategy === 'Stock' || isStockPos(pos)) return null
+  const legs = Array.isArray(pos.legs) ? pos.legs.filter(Boolean) : []
+  const strikes = legs
+    .map(l => (l as { strike?: number })?.strike)
+    .filter((s): s is number => s != null && Number.isFinite(s))
+  if (strikes.length === 0) return null
+  if (strikes.length === 1) return String(strikes[0])
+  return `${Math.min(...strikes)}/${Math.max(...strikes)}`
+}
+
 /** Cost-basis reference per share: debit strategies use |net_credit|, credit use max_profit. */
 function costBasisRefPerShare(pos: PortfolioPosition): number {
   return pos.net_credit < 0 ? Math.abs(pos.net_credit) : pos.max_profit
@@ -1572,20 +1584,23 @@ function TradingPositionCard({
       {/* ── Center hero: trade type · target · exp (big, always visible) ── */}
       {(() => {
         const actionLabel = positionActionLabel(pos)
+        const strikeLabel = positionStrikeLabel(pos)
         const expShort = pos.strategy === 'Stock' ? null : fmtExpShort(pos.expiry)
         return (
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-slate-100 px-3 py-2 dark:border-white/[0.06]">
-            <span className="text-lg font-black tracking-tight text-heading">{actionLabel}</span>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-slate-100 px-3 py-1.5 dark:border-white/[0.06]">
+            <span className="text-sm font-medium tracking-tight text-secondary">
+              {actionLabel}{strikeLabel ? <span className="font-mono text-text-primary"> {strikeLabel}</span> : null}
+            </span>
             {listTarget != null && Number.isFinite(listTarget) && (
               <span className="inline-flex items-baseline gap-1">
-                <span className="text-[10px] font-black uppercase tracking-wide text-muted">Target</span>
-                <span className="font-mono text-lg font-black tabular-nums text-emerald-600 dark:text-emerald-400">{fmtUsd(listTarget)}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Target</span>
+                <span className="font-mono text-sm font-medium tabular-nums text-emerald-600 dark:text-emerald-400">{fmtUsd(listTarget)}</span>
               </span>
             )}
             {expShort && (
               <span className="inline-flex items-baseline gap-1">
-                <span className="text-[10px] font-black uppercase tracking-wide text-muted">Exp</span>
-                <span className={`font-mono text-lg font-black tabular-nums ${isExpiringSoon ? 'text-amber-600 dark:text-amber-300' : 'text-heading'}`}>{expShort}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Exp</span>
+                <span className={`font-mono text-sm font-medium tabular-nums ${isExpiringSoon ? 'text-amber-600 dark:text-amber-300' : 'text-secondary'}`}>{expShort}</span>
               </span>
             )}
           </div>

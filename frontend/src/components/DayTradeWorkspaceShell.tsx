@@ -13,6 +13,7 @@ import type {
 import { workspaceToneBadgeClass, workspaceToneTextClass } from '../utils/workspaceTone'
 import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
 import AICoachWidget from './AICoachWidget'
+import SetupExitPlanner from './SetupExitPlanner'
 
 type Props = {
   workspace: DayTradeWorkspaceResponse
@@ -699,6 +700,17 @@ export function TradeDecisionPanel({
           <Value label="Reward Left" value={professional?.risk.rewardRemaining.display ?? moneyValue(reward)} />
           <Value label="Risk Left" value={professional?.risk.riskRemaining.display ?? moneyValue(risk)} />
           <Value label="Quality" value={professional?.risk.tradeQuality.display ?? '—'} />
+        </div>
+        <div className="mt-3">
+          <SetupExitPlanner
+            compact
+            entry={rawNumber(workspace.riskPlan.entry)}
+            stop={rawNumber(workspace.riskPlan.stop)}
+            target={rawNumber(workspace.riskPlan.target1) ?? rawNumber(workspace.riskPlan.target2)}
+            target2={rawNumber(workspace.riskPlan.target2)}
+            current={rawNumber(workspace.symbol.price)}
+            direction={(rawNumber(workspace.riskPlan.stop) ?? 0) < (rawNumber(workspace.riskPlan.entry) ?? 0) ? 'long' : 'short'}
+          />
         </div>
         <div className="mt-3 grid grid-cols-3 gap-1.5">
           <QuickTradeAction

@@ -52,6 +52,7 @@ import { ROUTES, getEngineRoute, getTradeWorksheetRoute } from '../routing/route
 import type { OptionLeg } from '../types'
 
 const OptionsEntryCheck = lazy(() => import('../components/OptionsEntryCheck'))
+import SetupExitPlanner from '../components/SetupExitPlanner'
 const BULLISH_CANDLE_COLOR = '#22c55e'
 const BEARISH_CANDLE_COLOR = '#ef4444'
 const ALPACA_TRADE_DRAFT_KEY = 'oa_alpaca_trade_draft'
@@ -2840,6 +2841,7 @@ function OptionsTab({ result, ocKey }: { result: SwingTradeScanResult | null; oc
 }
 
 function ExitTab({ result, unified }: { result: SwingTradeScanResult | null; unified: UnifiedAnalysis | null }) {
+  const exitExec = getExec(result)
   const exitRows = unified?.exit_rows || []
   const backendRules = (result?.metrics as Record<string, unknown> | undefined)?.exit_rules
   const unifiedRows = exitRows.map(row => ({
@@ -2867,6 +2869,13 @@ function ExitTab({ result, unified }: { result: SwingTradeScanResult | null; uni
         body={result?.decision_message || 'Use backend exit rows for the active swing plan.'}
         tone={result?.bias}
         badge={result?.ticker || 'Swing'}
+      />
+      <SetupExitPlanner
+        entry={num(exitExec.breakout ?? unified?.entry_price)}
+        stop={num(exitExec.stop ?? unified?.stop_price)}
+        target={num(exitExec.target1)}
+        target2={num(exitExec.target2)}
+        direction={result?.bias ?? undefined}
       />
       <InfoPanel title="Exit Steps">
       {displayRows.length ? (
