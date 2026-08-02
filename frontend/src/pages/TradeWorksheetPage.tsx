@@ -31,6 +31,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import TradeExitPlanner from '../components/TradeExitPlanner'
 import { evaluateTradeWorksheet, fetchCalculationRuns, fetchCalculationSnapshot, fetchCalculationSnapshotAuditLog, fetchCalculationSnapshotIntegrity, fetchOptionChainLiquidity, getJournal, saveToJournal, type CalculationRun, type CalculationSnapshot, type CalculationSnapshotAuditLog, type CalculationSnapshotIntegrity, type MetricDefinition, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 import { useApp } from '../contexts/AppContext'
@@ -1007,6 +1008,15 @@ export default function TradeWorksheetPage() {
             </div>
           </div>
         </Panel>
+
+        <TradeExitPlanner
+          matrix={evaluation?.payoffMatrix}
+          stockPrice={form.stockPrice}
+          targetPrice={form.targetPrice}
+          breakeven={breakevenPrice}
+          maxRisk={summaryMaxRisk}
+          direction={form.direction}
+        />
 
         <Panel title="Scenario Simulator" icon={<BarChart3 size={18} />} sub="Estimate price, IV, and time impact before buying.">
           <Slider label="Price Change" value={priceMove} min={-10} max={15} step={1} suffix="%" onChange={setPriceMove} />

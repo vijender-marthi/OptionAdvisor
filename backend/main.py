@@ -5757,8 +5757,12 @@ def _tw_net_premium(req: TradeWorksheetEvaluateRequest) -> float:
     legs = req.selectedLegRows or {}
     strategy = req.strategy
     if strategy in {"Long Call", "Long Put"}:
-        p = _tw_leg_mid(legs.get("long") or req.selectedRow)
-        return -p if p > 0 else -abs(safe_float(req.premium))
+        # The typed Premium is the source of truth for single-leg trades; the live
+        # chain mid is only a fallback when premium is blank. (Selecting a chain row
+        # updates the Premium field, so this stays in sync with the chain.)
+        typed = abs(safe_float(req.premium))
+        p = typed if typed > 0 else _tw_leg_mid(legs.get("long") or req.selectedRow)
+        return -p
     if strategy == "Bull Call Spread":
         debit = _tw_leg_mid(legs.get("long")) - _tw_leg_mid(legs.get("short"))
         return -debit if debit > 0 else -abs(safe_float(req.premium))
@@ -5781,11 +5785,13 @@ def _tw_net_premium(req: TradeWorksheetEvaluateRequest) -> float:
         )
         return credit if credit > 0 else abs(safe_float(req.premium))
     if strategy == "Covered Call":
-        p = _tw_leg_mid(legs.get("short") or req.selectedRow)
-        return p if p > 0 else abs(safe_float(req.premium))
+        typed = abs(safe_float(req.premium))
+        p = typed if typed > 0 else _tw_leg_mid(legs.get("short") or req.selectedRow)
+        return p
     if strategy == "Cash Secured Put":
-        p = _tw_leg_mid(legs.get("short") or req.selectedRow)
-        return p if p > 0 else abs(safe_float(req.premium))
+        typed = abs(safe_float(req.premium))
+        p = typed if typed > 0 else _tw_leg_mid(legs.get("short") or req.selectedRow)
+        return p
     return safe_float(req.premium)
 
 
