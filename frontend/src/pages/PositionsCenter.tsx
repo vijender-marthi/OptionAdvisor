@@ -2705,40 +2705,6 @@ export default function PositionsCenter() {
             } />
             <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
           </section>
-
-          {/* AI Coach — alerts on open items + weekly review of closed trades */}
-          <section className="grid gap-3 lg:grid-cols-2">
-            <AICoachWidget
-              mode="positions_open"
-              heading="AI Coach — Open Positions"
-              subtitle={`${openPortfolio.length} open · risk & management alerts`}
-              title="Open positions"
-              context={() => openPortfolio.map(p => ({
-                ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
-                entryPrice: p.entryPrice, expiry: p.expiry, dte: p.dte,
-                maxLoss: p.max_loss, target1: p.target1, stopLoss: p.stopLoss,
-                unrealizedPnlPct: p.pnlPct,
-              }))}
-            />
-            <AICoachWidget
-              mode="positions_closed_week"
-              heading="AI Coach — Weekly Review"
-              subtitle="Closed trades · mistakes & process fixes"
-              title="Closed trades — recent"
-              context={() => {
-                const monday = new Date(); monday.setHours(0, 0, 0, 0)
-                monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
-                const withDate = closedPortfolio.map(p => ({
-                  ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
-                  realizedPnl: p.realized_pnl, realizedPnlPct: p.realized_pnl_percent ?? p.pnlPct,
-                  exitDate: p.exitDate, source: p.source,
-                }))
-                const thisWeek = withDate.filter(p => p.exitDate && new Date(String(p.exitDate)) >= monday)
-                const rows = thisWeek.length > 0 ? thisWeek : withDate.slice(-15)
-                return { weekOf: monday.toISOString().slice(0, 10), trades: rows }
-              }}
-            />
-          </section>
           <PositionsDashboardTab
             portfolio={displayPortfolio}
             sectorPnl={(d.sector_pnl ?? []) as any[]}
@@ -3465,6 +3431,26 @@ function PositionCategoryWorkspace({
       : deriveActionAlert(pos, resolvePositionPnl(pos, allPositions, perPositionPnl), aiAnalyses[pos.id] ?? null),
     pnl: resolvePositionPnl(pos, allPositions, perPositionPnl),
   }))
+  const coachOpen = useMemo(
+    () => allPositions.filter(p => p.status === 'open' && (isStocks ? isStockPos(p) : isOptionPos(p))),
+    [allPositions, isStocks],
+  )
+  const coachClosed = useMemo(
+    () => allPositions.filter(p => p.status === 'closed' && (isStocks ? isStockPos(p) : isOptionPos(p))),
+    [allPositions, isStocks],
+  )
+  const weeklyReviewContext = () => {
+    const monday = new Date(); monday.setHours(0, 0, 0, 0)
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+    const withDate = coachClosed.map(p => ({
+      ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
+      realizedPnl: p.realized_pnl, realizedPnlPct: p.realized_pnl_percent ?? p.pnlPct,
+      exitDate: p.exitDate, source: p.source,
+    }))
+    const thisWeek = withDate.filter(p => p.exitDate && new Date(String(p.exitDate)) >= monday)
+    const rows = thisWeek.length > 0 ? thisWeek : withDate.slice(-15)
+    return { weekOf: monday.toISOString().slice(0, 10), trades: rows }
+  }
 
   return (
     <div className="space-y-4">
@@ -3475,6 +3461,19 @@ function PositionCategoryWorkspace({
           : 'Prioritized option positions that need attention: theta danger, profit-taking, rolls, and loss cuts.'}
         items={actionItems}
         onFocus={onToggle}
+      />
+
+      <AICoachWidget
+        mode="positions_open"
+        heading={`AI Coach — Open ${title}`}
+        subtitle={`${coachOpen.length} open · risk & management alerts`}
+        title="Open positions"
+        context={() => coachOpen.map(p => ({
+          ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
+          entryPrice: p.entryPrice, expiry: p.expiry, dte: p.dte,
+          maxLoss: p.max_loss, target1: p.target1, stopLoss: p.stopLoss,
+          unrealizedPnlPct: p.pnlPct,
+        }))}
       />
 
       <section className="space-y-3">
@@ -3527,6 +3526,14 @@ function PositionCategoryWorkspace({
           </div>
         )}
       </section>
+
+      <AICoachWidget
+        mode="positions_closed_week"
+        heading={`AI Coach — ${title} Weekly Review`}
+        subtitle={`${coachClosed.length} closed · mistakes & process fixes`}
+        title="Closed trades — recent"
+        context={weeklyReviewContext}
+      />
 
       <section className="rounded-xl border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-900">
         <button
