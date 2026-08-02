@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   AlertTriangle,
   BarChart3,
@@ -10,6 +10,7 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  X,
 } from 'lucide-react'
 import {
   Area,
@@ -85,6 +86,7 @@ type PeriodReportRow = {
   wins: number
   losses: number
   cumulative?: number
+  positions?: PortfolioPosition[]
 }
 
 const DTE_BUCKETS = [
@@ -195,6 +197,7 @@ function periodRows(
         wins,
         losses,
         cumulative,
+        positions: row.positions,
       })
       return acc
     }, [])
@@ -754,6 +757,86 @@ function MonthlyEquityStory({
   )
 }
 
+function tradeAction(pos: PortfolioPosition): string {
+  if (pos.strategy === 'Stock') return 'Shares'
+  const legs = Array.isArray(pos.legs) ? pos.legs.filter(Boolean) : []
+  if (legs.length === 1) {
+    const l = legs[0] as { action?: string; option_type?: string }
+    return `${String(l.action || '').toUpperCase() === 'SELL' ? 'Sell' : 'Buy'} ${String(l.option_type || '').toUpperCase() === 'PUT' ? 'Put' : 'Call'}`
+  }
+  if (legs.length >= 2) return pos.strategy
+  const s = (pos.strategy || '').toLowerCase()
+  if (s.includes('covered call') || s.includes('short call')) return 'Sell Call'
+  if (s.includes('cash') || s.includes('secured') || s.includes('short put')) return 'Sell Put'
+  if (s.includes('put')) return 'Buy Put'
+  if (s.includes('call')) return 'Buy Call'
+  return pos.strategy || '—'
+}
+
+function tradeStrike(pos: PortfolioPosition): string {
+  const legs = Array.isArray(pos.legs) ? pos.legs.filter(Boolean) : []
+  const strikes = legs.map(l => (l as { strike?: number })?.strike).filter((s): s is number => s != null && Number.isFinite(s))
+  if (strikes.length === 0) return '—'
+  if (strikes.length === 1) return `$${strikes[0].toFixed(0)}`
+  return `$${Math.min(...strikes).toFixed(0)}/${Math.max(...strikes).toFixed(0)}`
+}
+
+function tradeExp(pos: PortfolioPosition): string {
+  const raw = pos.expiry || (pos.legs?.[0] as { expiry?: string } | undefined)?.expiry
+  if (!raw) return '—'
+  const m = String(raw).match(/(\d{4})-(\d{2})-(\d{2})/)
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(raw)
+  return Number.isNaN(d.getTime()) ? String(raw) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function WeeklyTradesModal({ st, row, onClose }: { st: Record<string, string>; row: PeriodReportRow; onClose: () => void }) {
+  const trades = (row.positions ?? []).slice().sort((a, b) => realizedPnl(b) - realizedPnl(a))
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal onClick={onClose}>
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border shadow-2xl" style={{ borderColor: st.border, background: st.bg }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: st.border }}>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: st.muted }}>Week of {row.label} · {row.count} trades · {row.wins}W/{row.losses}L</div>
+            <div className="font-mono text-xl font-black tabular-nums" style={{ color: row.pnl >= 0 ? st.green : st.red }}>{money(row.pnl, 2)}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5" style={{ color: st.muted }}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 text-[10px] uppercase tracking-wide" style={{ background: st.bgSoft, color: st.muted }}>
+              <tr>
+                <th className="px-3 py-2 text-left font-black">Ticker</th>
+                <th className="px-3 py-2 text-left font-black">Action</th>
+                <th className="px-3 py-2 text-right font-black">Strike</th>
+                <th className="px-3 py-2 text-right font-black">Exp</th>
+                <th className="px-3 py-2 text-right font-black">Qty</th>
+                <th className="px-3 py-2 text-right font-black">P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.map((pos, i) => {
+                const pnl = realizedPnl(pos)
+                return (
+                  <tr key={pos.id ?? i} className="border-t" style={{ borderColor: st.border }}>
+                    <td className="px-3 py-2 font-mono font-bold" style={{ color: st.text }}>{pos.ticker}</td>
+                    <td className="px-3 py-2 font-semibold" style={{ color: st.text }}>{tradeAction(pos)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: st.text }}>{tradeStrike(pos)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: st.muted }}>{tradeExp(pos)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: st.muted }}>{pos.contracts ?? 1}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold tabular-nums" style={{ color: pnl >= 0 ? st.green : st.red }}>{pnl >= 0 ? '+' : ''}{money(pnl, 2)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function WeeklyPerformanceTape({
   st,
   rows,
@@ -763,6 +846,7 @@ function WeeklyPerformanceTape({
   rows: PeriodReportRow[]
   worstWeek?: PeriodReportRow
 }) {
+  const [openWeek, setOpenWeek] = useState<PeriodReportRow | null>(null)
   if (rows.length === 0) return <EmptyState st={st} />
   const max = Math.max(...rows.map(row => Math.abs(row.pnl)), 1)
   const net = rows.reduce((sum, row) => sum + row.pnl, 0)
@@ -829,7 +913,8 @@ function WeeklyPerformanceTape({
                   )
                 }}
               />
-              <Bar dataKey="pnl" radius={[5, 5, 5, 5]} maxBarSize={18}>
+              <Bar dataKey="pnl" radius={[5, 5, 5, 5]} maxBarSize={18} cursor="pointer"
+                onClick={(_: unknown, index: number) => { const r = rows[index]; if (r) setOpenWeek(r) }}>
                 {rows.map(row => (
                   <Cell key={row.key} fill={row.pnl >= 0 ? st.green : st.red} opacity={0.86} />
                 ))}
@@ -839,8 +924,9 @@ function WeeklyPerformanceTape({
         </div>
       </div>
       <div className="text-xs leading-5" style={{ color: st.muted }}>
-        Weekly chart uses a zero-centered P&L scale, so positive and negative weeks are easy to compare without bars covering labels.
+        Click any week to see its trades — buy/sell, strike, expiration, and P&amp;L. Zero-centered scale keeps positive and negative weeks comparable.
       </div>
+      {openWeek && <WeeklyTradesModal st={st} row={openWeek} onClose={() => setOpenWeek(null)} />}
     </div>
   )
 }
