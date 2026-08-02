@@ -473,6 +473,32 @@ function stratelabel(strat: string): string {
   return strat.replace(/_/g, ' ')
 }
 
+/** Big, human action label for a position: "Buy Call", "Sell Put", spread name, or "Shares". */
+function positionActionLabel(pos: PortfolioPosition): string {
+  if (pos.strategy === 'Stock' || isStockPos(pos)) return 'Shares'
+  const legs = Array.isArray(pos.legs) ? pos.legs.filter(Boolean) : []
+  const legLabel = (l: { action?: string; option_type?: string }) =>
+    `${String(l.action || '').toUpperCase() === 'SELL' ? 'Sell' : 'Buy'} ${String(l.option_type || '').toUpperCase() === 'PUT' ? 'Put' : 'Call'}`
+  if (legs.length === 1) return legLabel(legs[0])
+  if (legs.length >= 2) return stratelabel(pos.strategy)
+  // No structured legs — infer from the strategy name.
+  const s = (pos.strategy || '').toLowerCase()
+  if (s.includes('covered call') || s.includes('short call') || s.includes('sell call')) return 'Sell Call'
+  if (s.includes('cash') || s.includes('secured') || s.includes('csp') || s.includes('short put') || s.includes('sell put')) return 'Sell Put'
+  if (s.includes('put')) return 'Buy Put'
+  if (s.includes('call')) return 'Buy Call'
+  return stratelabel(pos.strategy)
+}
+
+/** Compact expiry like "Aug 21" from a YYYY-MM-DD string (parsed as local, no TZ shift). */
+function fmtExpShort(expiry?: string | null): string | null {
+  if (!expiry) return null
+  const m = String(expiry).match(/(\d{4})-(\d{2})-(\d{2})/)
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(expiry)
+  if (Number.isNaN(d.getTime())) return String(expiry)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 /** Cost-basis reference per share: debit strategies use |net_credit|, credit use max_profit. */
 function costBasisRefPerShare(pos: PortfolioPosition): number {
   return pos.net_credit < 0 ? Math.abs(pos.net_credit) : pos.max_profit
@@ -1542,6 +1568,29 @@ function TradingPositionCard({
           ) : null}
         </div>
       </div>
+
+      {/* ── Center hero: trade type · target · exp (big, always visible) ── */}
+      {(() => {
+        const actionLabel = positionActionLabel(pos)
+        const expShort = pos.strategy === 'Stock' ? null : fmtExpShort(pos.expiry)
+        return (
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-slate-100 px-3 py-2 dark:border-white/[0.06]">
+            <span className="text-lg font-black tracking-tight text-heading">{actionLabel}</span>
+            {listTarget != null && Number.isFinite(listTarget) && (
+              <span className="inline-flex items-baseline gap-1">
+                <span className="text-[10px] font-black uppercase tracking-wide text-muted">Target</span>
+                <span className="font-mono text-lg font-black tabular-nums text-emerald-600 dark:text-emerald-400">{fmtUsd(listTarget)}</span>
+              </span>
+            )}
+            {expShort && (
+              <span className="inline-flex items-baseline gap-1">
+                <span className="text-[10px] font-black uppercase tracking-wide text-muted">Exp</span>
+                <span className={`font-mono text-lg font-black tabular-nums ${isExpiringSoon ? 'text-amber-600 dark:text-amber-300' : 'text-heading'}`}>{expShort}</span>
+              </span>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── Action Strip (always visible) ── */}
       {pos.status === 'open' && (() => {
