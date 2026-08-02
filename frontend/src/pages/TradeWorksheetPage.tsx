@@ -650,6 +650,8 @@ export default function TradeWorksheetPage() {
           expectedValue={evaluation?.scenario.expectedValue}
           theta={greeks.theta}
           delta={greeks.delta}
+          ivFraction={greeks.iv}
+          ticker={form.ticker}
           checklistDone={Object.values(checklist).filter(Boolean).length}
           checklistTotal={checklistItems.length}
           invalidatesFilled={journal.invalidates.trim().length > 0}

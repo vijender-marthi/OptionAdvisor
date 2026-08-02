@@ -19,9 +19,29 @@ export interface GuardrailInputs {
   expectedValue?: number
   theta?: number
   delta?: number
+  /** Annualized implied volatility as a fraction (e.g. 0.30 for 30%). */
+  ivFraction?: number
+  ticker?: string
   checklistDone: number
   checklistTotal: number
   invalidatesFilled: boolean
+}
+
+/** U.S. market-closed note (weekend or outside 9:30–16:00 ET), else null. */
+function marketClosedNote(): string | null {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date())
+  const wd = parts.find(p => p.type === 'weekday')?.value
+  const hh = Number(parts.find(p => p.type === 'hour')?.value ?? '0')
+  const mm = Number(parts.find(p => p.type === 'minute')?.value ?? '0')
+  const minutes = (hh % 24) * 60 + mm
+  const weekend = wd === 'Sat' || wd === 'Sun'
+  const closed = weekend || minutes < 9 * 60 + 30 || minutes >= 16 * 60
+  if (!closed) return null
+  return weekend
+    ? 'U.S. market is closed for the weekend — the quote and Greeks are from the last session. DTE drops and the chain reprices at the next open.'
+    : 'U.S. market is closed right now — the quote is from the last session and will reprice at the next open.'
 }
 
 export function buildGuardrails(x: GuardrailInputs): Check[] {
@@ -87,6 +107,23 @@ export function buildGuardrails(x: GuardrailInputs): Check[] {
   if (x.checklistDone < x.checklistTotal) {
     checks.push({ sev: 'warn', title: `Checklist ${x.checklistDone}/${x.checklistTotal} complete`, detail: 'An unchecked worksheet is not a completed worksheet — including stop defined, size acceptable, and emotional-decision avoided.' })
   }
+
+  // Rule 6 — theta drag high relative to the stock's typical daily move
+  if (x.theta && x.delta && x.ivFraction && x.stockPrice > 0 && Math.abs(x.delta) > 1e-6) {
+    const drift = Math.abs(x.theta) / Math.abs(x.delta) // underlying $ move/day needed to offset theta
+    const dailyMove = (x.stockPrice * x.ivFraction) / Math.sqrt(252) // ~1σ close-to-close daily move
+    if (dailyMove > 0 && drift > 0.4 * dailyMove) {
+      checks.push({
+        sev: 'warn',
+        title: 'Theta drag is high vs. the stock’s typical daily move',
+        detail: `You need ~$${drift.toFixed(2)}/day just to offset decay, against a ~$${dailyMove.toFixed(2)}/day typical move (${((drift / dailyMove) * 100).toFixed(0)}% of it). You’re paying more decay than ${x.ticker || 'the underlying'} usually moves — buy more time or use a spread.`,
+      })
+    }
+  }
+
+  // Stale-quote / weekend — the numbers are from the last session
+  const mc = marketClosedNote()
+  if (mc) checks.push({ sev: 'warn', title: 'Quote may be stale — U.S. market closed', detail: mc })
 
   return checks
 }
