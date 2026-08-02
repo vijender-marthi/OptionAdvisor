@@ -9,6 +9,7 @@ import {
   loadSwingToolSettings, saveFibLookback, saveShowEma9, saveConfluenceTightness,
   type ConfluenceTightness,
 } from '../utils/fibConfluence'
+import AICoachSettingsCard from '../components/AICoachSettingsCard'
 
 const SETTINGS_OPERATION_IDS = {
   health: 'health_check_api_health_get',
@@ -188,6 +189,9 @@ export default function SettingsPage() {
         </h1>
         <p className="text-sm text-gray-500 mt-1">Configure how OptionAdvisor notifies you and manages alerts.</p>
       </div>
+
+      {/* AI Coach — user-supplied API key */}
+      <AICoachSettingsCard />
 
       {/* Alert Notifications */}
       <SettingsCard title="Alert Notifications">

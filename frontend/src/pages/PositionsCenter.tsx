@@ -39,6 +39,7 @@ import {
 import * as XLSX from 'xlsx'
 import PositionsDashboardTab from '../components/PositionsDashboardTab'
 import PerformanceCoachingTab from '../components/PerformanceCoachingTab'
+import AICoachWidget from '../components/AICoachWidget'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -2654,6 +2655,40 @@ export default function PositionsCenter() {
                 : <span className="text-tertiary">Available</span>
             } />
             <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
+          </section>
+
+          {/* AI Coach — alerts on open items + weekly review of closed trades */}
+          <section className="grid gap-3 lg:grid-cols-2">
+            <AICoachWidget
+              mode="positions_open"
+              heading="AI Coach — Open Positions"
+              subtitle={`${openPortfolio.length} open · risk & management alerts`}
+              title="Open positions"
+              context={() => openPortfolio.map(p => ({
+                ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
+                entryPrice: p.entryPrice, expiry: p.expiry, dte: p.dte,
+                maxLoss: p.max_loss, target1: p.target1, stopLoss: p.stopLoss,
+                unrealizedPnlPct: p.pnlPct,
+              }))}
+            />
+            <AICoachWidget
+              mode="positions_closed_week"
+              heading="AI Coach — Weekly Review"
+              subtitle="Closed trades · mistakes & process fixes"
+              title="Closed trades — recent"
+              context={() => {
+                const monday = new Date(); monday.setHours(0, 0, 0, 0)
+                monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+                const withDate = closedPortfolio.map(p => ({
+                  ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
+                  realizedPnl: p.realized_pnl, realizedPnlPct: p.realized_pnl_percent ?? p.pnlPct,
+                  exitDate: p.exitDate, source: p.source,
+                }))
+                const thisWeek = withDate.filter(p => p.exitDate && new Date(String(p.exitDate)) >= monday)
+                const rows = thisWeek.length > 0 ? thisWeek : withDate.slice(-15)
+                return { weekOf: monday.toISOString().slice(0, 10), trades: rows }
+              }}
+            />
           </section>
           <PositionsDashboardTab
             portfolio={displayPortfolio}

@@ -12,6 +12,7 @@ import type {
 } from '../api/client'
 import { workspaceToneBadgeClass, workspaceToneTextClass } from '../utils/workspaceTone'
 import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
+import AICoachWidget from './AICoachWidget'
 
 type Props = {
   workspace: DayTradeWorkspaceResponse
@@ -1222,6 +1223,33 @@ export function WorkspaceDetailTabs({ workspace }: { workspace: DayTradeWorkspac
         <span className="self-center text-[11px] text-tertiary">Collapsed by default. One section opens at a time.</span>
       </div>
       {activeTab && <WorkspaceTabPanel name={activeTab} payload={active} />}
+      <div className="px-3 pb-3">
+        <AICoachWidget
+          mode="day_trade"
+          compact
+          heading="AI Coach — Day Trade Setup"
+          title={`${workspace.symbol.ticker} day trade`}
+          context={{
+            ticker: workspace.symbol.ticker,
+            price: workspace.symbol.price?.display,
+            change: workspace.symbol.change?.display,
+            decision: workspace.decision.headline,
+            action: workspace.decision.primaryAction?.label,
+            setup: workspace.decision.setupName,
+            context: workspace.decision.context?.label,
+            permission: workspace.decision.permission?.label,
+            marketStructure: workspace.chart?.marketStructure
+              ? `${workspace.chart.marketStructure.display} · ${workspace.chart.marketStructure.trend}` : undefined,
+            risk: {
+              entry: workspace.riskPlan.entry?.display,
+              stop: workspace.riskPlan.stop?.display,
+              target1: workspace.riskPlan.target1?.display,
+              target2: workspace.riskPlan.target2?.display,
+              riskReward: workspace.riskPlan.riskReward?.display,
+            },
+          }}
+        />
+      </div>
     </section>
   )
 }
