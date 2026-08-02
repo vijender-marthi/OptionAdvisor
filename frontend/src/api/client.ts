@@ -1928,6 +1928,44 @@ export const deleteTradeIdea = async (email: string, id: string): Promise<void> 
   await api.delete(generatedApiPath(CLIENT_OPERATION_IDS.tradeIdeaDelete, { email, idea_id: id }))
 }
 
+// ─── AI Coach (user-supplied key: Claude / OpenAI / Gemini) ─────────────────
+
+export type AICoachProvider = 'claude' | 'openai' | 'gemini'
+
+export interface AICoachSettings {
+  configured: boolean
+  provider: AICoachProvider | null
+  model: string | null
+  hasKey?: boolean
+  defaultModels?: Record<string, string>
+}
+
+export const getAICoachSettings = async (): Promise<AICoachSettings> => {
+  const { data } = await api.get<AICoachSettings>('/ai-coach/settings')
+  return data
+}
+
+export const saveAICoachSettings = async (
+  body: { provider: AICoachProvider; apiKey: string; model?: string },
+): Promise<{ configured: boolean; provider: string; model: string }> => {
+  const { data } = await api.post('/ai-coach/settings', body)
+  return data
+}
+
+export const deleteAICoachSettings = async (): Promise<void> => {
+  await api.delete('/ai-coach/settings')
+}
+
+export type AICoachMode =
+  | 'positions_open' | 'positions_closed_week' | 'recommendation' | 'day_trade' | 'swing_trade'
+
+export const analyzeAICoach = async (
+  body: { mode: AICoachMode; title?: string; context: unknown },
+): Promise<{ markdown: string; provider: string; model: string }> => {
+  const { data } = await api.post('/ai-coach/analyze', body)
+  return data
+}
+
 // ─── Alpaca Paper Trading (admin only) ──────────────────────────────────────
 
 export interface AlpacaAccount {

@@ -43,6 +43,7 @@ import { analyzeSwingTrade, analyzeV2, deskApi, saveToJournal } from '../api/cli
 import type { DeskAlertCreate, ProfessionalDecisionPayload, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers, fetchStockTargets, type MyTickerEntry, type StockTargetData } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
+import AICoachWidget from '../components/AICoachWidget'
 import MacdHistogramChart from '../components/MacdHistogramChart'
 import { parseChartPayload } from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
@@ -982,6 +983,32 @@ export default function SwingTradePage() {
             <div className="m-1 flex gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-200">
               <ShieldAlert className="mt-0.5 shrink-0" size={16} />
               {error}
+            </div>
+          )}
+
+          {result && (
+            <div className="m-1 shrink-0">
+              <AICoachWidget
+                mode="swing_trade"
+                compact
+                heading="AI Coach — Swing Setup"
+                title={`${result.ticker} swing trade`}
+                context={() => {
+                  const exec = getExec(result)
+                  return {
+                    ticker: result.ticker,
+                    company: result.company_name,
+                    bias: result.bias,
+                    strategy: result.suggested_strategy,
+                    decision: result.final_action || result.decision_message,
+                    reason: result.reason,
+                    levels: {
+                      entry: num(exec.breakout), stop: num(exec.stop),
+                      target1: num(exec.target1), target2: num(exec.target2),
+                    },
+                  }
+                }}
+              />
             </div>
           )}
 

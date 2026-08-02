@@ -339,6 +339,9 @@ app.include_router(command_center_router, prefix="/api")
 from tradedesk_routes import desk_router
 app.include_router(desk_router, prefix="/api")
 
+from user_ai_coach import user_ai_coach_router
+app.include_router(user_ai_coach_router, prefix="/api")
+
 
 def safe_float(val, default=0.0) -> float:
     try:
