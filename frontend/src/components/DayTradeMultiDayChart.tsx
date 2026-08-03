@@ -9,7 +9,7 @@ export interface MultiDayBar {
 }
 
 const W = 760, H = 300, PAD_L = 6, PAD_R = 56, TOP = 26, BOT = 250
-const UP = '#16a34a', DOWN = '#dc2626', VWAP = '#8b5cf6', EMA9 = '#14b8a6', EMA20 = '#2563eb', EMA50 = '#f59e0b', PREV = '#94a3b8'
+const UP = '#16a34a', DOWN = '#dc2626', VWAP = '#facc15', EMA9 = '#14b8a6', EMA20 = '#2563eb', EMA50 = '#8b5cf6', PREV = '#94a3b8'
 const fmt = (v: number) => `$${v.toFixed(2)}`
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const dayLabel = (iso: string) => {
