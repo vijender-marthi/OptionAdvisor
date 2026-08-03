@@ -1542,6 +1542,12 @@ def _chart_levels(metrics: dict[str, Any], entry_guidance: dict[str, Any], risk_
     or_low = _num(metrics.get("or_low"))
     if or_high is not None and or_low is not None and or_high >= or_low:
         levels.append(_level("or_mid", "or_mid", (or_high + or_low) / 2.0, "OR Mid", "neutral", 80, scale=False))
+    # Prior-day reference lines — judge today's price against the last session.
+    prior_sessions = [s for s in _as_list(metrics.get("prior_sessions")) if isinstance(s, dict)]
+    prior = prior_sessions[-1] if prior_sessions else None
+    if prior:
+        levels.append(_level("prev_close", "prev_close", prior.get("close"), "Prev Close", "neutral", 90, scale=False))
+        levels.append(_level("prev_vwap", "prev_vwap", prior.get("vwap"), "Prev VWAP", "warning", 95, scale=False))
     return [item for item in levels if item is not None]
 
 
