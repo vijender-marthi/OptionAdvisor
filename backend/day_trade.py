@@ -1535,6 +1535,7 @@ def _multi_day_chart(df_et: pd.DataFrame, days: int = 5, interval_min: int = 5) 
             return []
         day_order = {d: i for i, d in enumerate(sorted(keep))}
         closes = res["Close"].astype(float)
+        ema9 = closes.ewm(span=9, adjust=False).mean()
         ema20 = closes.ewm(span=20, adjust=False).mean()
         ema50 = closes.ewm(span=50, adjust=False).mean()
         vwap_map: dict[Any, float] = {}
@@ -1561,6 +1562,7 @@ def _multi_day_chart(df_et: pd.DataFrame, days: int = 5, interval_min: int = 5) 
                 "close": round(float(row["Close"]), 4),
                 "volume": float(row["Volume"]) if pd.notna(row["Volume"]) else 0.0,
                 "vwap": round(float(vwap_map.get(ts, row["Close"])), 4),
+                "ema9": round(float(ema9.loc[ts]), 4),
                 "ema20": round(float(ema20.loc[ts]), 4),
                 "ema50": round(float(ema50.loc[ts]), 4),
                 "dayIndex": int(day_order.get(d, 0)),

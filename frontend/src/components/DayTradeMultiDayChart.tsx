@@ -4,12 +4,12 @@ import { CalendarRange } from 'lucide-react'
 export interface MultiDayBar {
   time: string
   open: number; high: number; low: number; close: number; volume: number
-  vwap: number; ema20: number; ema50: number
+  vwap: number; ema9?: number; ema20: number; ema50: number
   dayIndex: number; isDayOpen: boolean
 }
 
 const W = 760, H = 300, PAD_L = 6, PAD_R = 56, TOP = 26, BOT = 250
-const UP = '#16a34a', DOWN = '#dc2626', VWAP = '#8b5cf6', EMA20 = '#2563eb', EMA50 = '#f59e0b', PREV = '#94a3b8'
+const UP = '#16a34a', DOWN = '#dc2626', VWAP = '#8b5cf6', EMA9 = '#14b8a6', EMA20 = '#2563eb', EMA50 = '#f59e0b', PREV = '#94a3b8'
 const fmt = (v: number) => `$${v.toFixed(2)}`
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const dayLabel = (iso: string) => {
@@ -34,7 +34,7 @@ export default function DayTradeMultiDayChart({
     const keep = new Set(dayIdxs.slice(-days))
     const rows = all.filter(b => keep.has(b.dayIndex))
     if (rows.length === 0) return null
-    const prices = rows.flatMap(b => [b.high, b.low, b.vwap, b.ema20, b.ema50]).filter(Number.isFinite)
+    const prices = rows.flatMap(b => [b.high, b.low, b.vwap, b.ema9 ?? b.ema20, b.ema20, b.ema50]).filter(Number.isFinite)
     if (prevClose != null && Number.isFinite(prevClose)) prices.push(prevClose)
     const min = Math.min(...prices), max = Math.max(...prices)
     const pad = (max - min) * 0.06 || 0.5
@@ -75,7 +75,11 @@ export default function DayTradeMultiDayChart({
     seg.push(`${seg.length === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(b.vwap).toFixed(1)}`)
   })
   if (seg.length) vwapPaths.push(seg.join(' '))
-  const emaPath = (key: 'ema20' | 'ema50') => rows.map((b, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(b[key]).toFixed(1)}`).join(' ')
+  const emaPath = (key: 'ema9' | 'ema20' | 'ema50') => rows.reduce((acc, b, i) => {
+    const v = b[key]
+    if (typeof v !== 'number' || !Number.isFinite(v)) return acc
+    return { d: `${acc.d}${acc.started ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(v).toFixed(1)} `, started: true }
+  }, { d: '', started: false }).d
   const gridPrices = [0, 1, 2, 3].map(s => view.hi - s * ((view.hi - view.lo) / 3))
 
   const curPrice = lastPrice != null && Number.isFinite(lastPrice) ? lastPrice : rows[rows.length - 1].close
@@ -116,6 +120,7 @@ export default function DayTradeMultiDayChart({
 
       <div className="flex flex-wrap gap-3 pb-1 text-[10px] font-bold">
         <span className="flex items-center gap-1" style={{ color: VWAP }}><span className="inline-block h-0.5 w-3" style={{ background: VWAP }} />VWAP (per day)</span>
+        <span className="flex items-center gap-1" style={{ color: EMA9 }}><span className="inline-block h-0.5 w-3" style={{ background: EMA9 }} />EMA 9</span>
         <span className="flex items-center gap-1" style={{ color: EMA20 }}><span className="inline-block h-0.5 w-3" style={{ background: EMA20 }} />EMA 20</span>
         <span className="flex items-center gap-1" style={{ color: EMA50 }}><span className="inline-block h-0.5 w-3" style={{ background: EMA50 }} />EMA 50</span>
         {prevClose != null && <span className="flex items-center gap-1" style={{ color: PREV }}><span className="inline-block h-0.5 w-3" style={{ background: PREV }} />Prev Close</span>}
@@ -171,6 +176,7 @@ export default function DayTradeMultiDayChart({
 
         {/* per-day VWAP + continuous EMAs */}
         {vwapPaths.map((d, i) => <path key={`vw-${i}`} d={d} fill="none" stroke={VWAP} strokeWidth={1.6} strokeLinejoin="round" />)}
+        <path d={emaPath('ema9')} fill="none" stroke={EMA9} strokeWidth={1.3} opacity={0.9} strokeLinejoin="round" />
         <path d={emaPath('ema20')} fill="none" stroke={EMA20} strokeWidth={1.3} opacity={0.9} strokeLinejoin="round" />
         <path d={emaPath('ema50')} fill="none" stroke={EMA50} strokeWidth={1.3} opacity={0.9} strokeLinejoin="round" />
 
@@ -195,7 +201,7 @@ export default function DayTradeMultiDayChart({
                   <text x={8} y={30} className="fill-slate-600 text-[10px] dark:fill-slate-300">O {fmt(hb.open)}  H {fmt(hb.high)}</text>
                   <text x={8} y={44} className="fill-slate-600 text-[10px] dark:fill-slate-300">L {fmt(hb.low)}  C {fmt(hb.close)}</text>
                   <text x={8} y={58} className="text-[10px] font-bold" fill={VWAP}>VWAP {fmt(hb.vwap)}</text>
-                  <text x={8} y={72} className="text-[10px]" fill={EMA20}>EMA20 {fmt(hb.ema20)}</text>
+                  <text x={8} y={72} className="text-[10px]" fill={EMA9}>EMA9 {hb.ema9 != null ? fmt(hb.ema9) : '—'}  ·  <tspan fill={EMA20}>E20 {fmt(hb.ema20)}</tspan></text>
                   <text x={8} y={86} className="text-[10px]" fill={EMA50}>EMA50 {fmt(hb.ema50)}</text>
                 </g>
               )
@@ -203,7 +209,7 @@ export default function DayTradeMultiDayChart({
           </g>
         )}
       </svg>
-      <div className="mt-1 text-[10px] text-tertiary">RTH 5-minute bars. VWAP resets each session; EMA20/50 run continuously. Hover for details.</div>
+      <div className="mt-1 text-[10px] text-tertiary">RTH 5-minute bars. VWAP resets each session; EMA 9/20/50 run continuously. Hover for details.</div>
     </div>
   )
 }
