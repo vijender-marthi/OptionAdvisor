@@ -7775,18 +7775,34 @@ def _require_admin(email: str) -> None:
     """Raise 403 if the email does not resolve to the admin role."""
     normalized = _norm_email(email)
     if not normalized:
-        raise HTTPException(status_code=403, detail="Admin access required for paper trading")
+        raise HTTPException(status_code=403, detail="Admin access required")
     # Role comes from SQLite user_state.role (admin is DB-only; see storage.effective_user_role)
     role = get_user_state(normalized).get("role", "user")
     if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required for paper trading")
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+# Roles allowed to use Alpaca paper trading. Mirrors the frontend permission for
+# the 'auto-trade' page (permissions.ts): the Alpaca entry button lives on the Day
+# Trade and Swing Trade workspaces, so every role that can reach those may trade.
+_TRADING_ROLES = frozenset({"admin", "super_user", "day", "swing"})
+
+
+def _require_trading_access(email: str) -> None:
+    """Raise 403 unless the email resolves to a role permitted to paper trade."""
+    normalized = _norm_email(email)
+    if not normalized:
+        raise HTTPException(status_code=403, detail="Trading access required for paper trading")
+    role = get_user_state(normalized).get("role", "user")
+    if role not in _TRADING_ROLES:
+        raise HTTPException(status_code=403, detail="Trading access required for paper trading")
 
 
 @app.get("/api/trading/status")
 def trading_status(email: str, auth_email: str = Depends(require_access_email)):
     """Check if Alpaca is configured and return account summary."""
     ensure_same_user(auth_email, email)
-    _require_admin(email)
+    _require_trading_access(email)
     configured = alpaca_is_configured()
     if not configured:
         return {
@@ -7807,7 +7823,7 @@ def trading_status(email: str, auth_email: str = Depends(require_access_email)):
 def trading_positions(email: str, auth_email: str = Depends(require_access_email)):
     """Return all open Alpaca paper positions (admin only)."""
     ensure_same_user(auth_email, email)
-    _require_admin(email)
+    _require_trading_access(email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
     positions = alpaca_get_positions()
@@ -7820,7 +7836,7 @@ def trading_positions(email: str, auth_email: str = Depends(require_access_email
 def trading_orders(email: str, auth_email: str = Depends(require_access_email), status: str = "all"):
     """Return recent Alpaca orders (admin only). status: open | closed | all"""
     ensure_same_user(auth_email, email)
-    _require_admin(email)
+    _require_trading_access(email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
     orders = alpaca_get_orders(status)
@@ -7833,7 +7849,7 @@ def trading_orders(email: str, auth_email: str = Depends(require_access_email), 
 def trading_execute(req: TradingExecuteRequest, auth_email: str = Depends(require_access_email)):
     """Place a multi-leg paper trade on Alpaca from an engine recommendation."""
     ensure_same_user(auth_email, req.email)
-    _require_admin(req.email)
+    _require_trading_access(req.email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured. Add ALPACA_API_KEY + ALPACA_SECRET_KEY to .env")
     if not req.legs:
@@ -7853,7 +7869,7 @@ def trading_execute(req: TradingExecuteRequest, auth_email: str = Depends(requir
 def trading_cancel(req: TradingCancelRequest, auth_email: str = Depends(require_access_email)):
     """Cancel an open Alpaca order by order ID."""
     ensure_same_user(auth_email, req.email)
-    _require_admin(req.email)
+    _require_trading_access(req.email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
     result = alpaca_cancel_order(req.order_id)
@@ -7866,7 +7882,7 @@ def trading_cancel(req: TradingCancelRequest, auth_email: str = Depends(require_
 def trading_close_position(req: TradingCloseRequest, auth_email: str = Depends(require_access_email)):
     """Liquidate an open paper position by OCC symbol."""
     ensure_same_user(auth_email, req.email)
-    _require_admin(req.email)
+    _require_trading_access(req.email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
     result = alpaca_close_position(req.symbol)

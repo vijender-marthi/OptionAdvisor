@@ -11,16 +11,15 @@ export function normalizeUserRole(raw: string | undefined | null): UserRole {
  * Access tiers by feature:
  *
  *   admin      → Day Trade + Swing Trade + Regular (Strategy Finder) + all admin tools
- *   super_user → Day Trade + Swing Trade + Regular + Advanced Tools — no admin/alpaca tools
- *   day        → Day Trade + Regular — no Swing Trade or admin tools
- *   swing      → Swing Trade + Regular — no Day Trade or admin tools
+ *   super_user → Day Trade + Swing Trade + Regular + Advanced Tools + Alpaca — no admin tools
+ *   day        → Day Trade + Regular + Alpaca — no Swing Trade or admin tools
+ *   swing      → Swing Trade + Regular + Alpaca — no Day Trade or admin tools
  *   user       → Regular (Strategy Finder) only — no Day or Swing Trade
  *   finance    → Regular only (same as user), minus stock-discovery radars
  */
 
 /** Pages only admins can reach (super-admin tools). */
 const ADMIN_ONLY: ReadonlySet<Page> = new Set([
-  'auto-trade',
 ])
 
 /** Pages available to admin and super_user only (not regular day/swing subscribers). */
@@ -47,6 +46,9 @@ const SWING_AND_ABOVE: ReadonlySet<Page> = new Set([
 /** Pages available to admin, day-trade, or swing-trade subscribers (either advanced role). */
 const DAY_OR_SWING: ReadonlySet<Page> = new Set([
   'watchlist',
+  // Alpaca paper-trading. Its entry button lives on the Day Trade and Swing Trade
+  // workspaces, so any role that can reach those must also be able to reach it.
+  'auto-trade',
 ])
 
 /** Pages finance users cannot see (stock-discovery radars). */
