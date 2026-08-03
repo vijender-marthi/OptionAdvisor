@@ -693,7 +693,10 @@ export function TradeDecisionPanel({
         )}
       </Panel>}
       <DayTradePriorContext ctx={(workspace as unknown as { priorContext?: PriorContext }).priorContext} />
-      <DayTradeMultiDayChart bars={(workspace as unknown as { priorContext?: { multiDay?: MultiDayBar[] } }).priorContext?.multiDay} />
+      {(() => {
+        const pc = (workspace as unknown as { priorContext?: PriorContext & { multiDay?: MultiDayBar[] } }).priorContext
+        return <DayTradeMultiDayChart bars={pc?.multiDay} prevClose={pc?.prevClose} lastPrice={pc?.lastPrice} />
+      })()}
       {shouldRenderWidget('Entry / Stop / Targets') && <Panel title="Entry / Stop / Targets" {...panelProps}>
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={professional?.risk.entry.display ?? workspace.riskPlan.entry.display} />
