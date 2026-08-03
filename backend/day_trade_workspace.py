@@ -1387,6 +1387,53 @@ def _vwap_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: 
     }
 
 
+def _ema_overlay(chart_bars: list[Any]) -> dict[str, Any] | None:
+    """EMA 9 / 20 / 50 lines over the session chart bars for the intraday chart."""
+    times: list[str] = []
+    closes: list[float] = []
+    for bar in chart_bars:
+        if not isinstance(bar, dict):
+            continue
+        t = bar.get("time") or bar.get("t")
+        c = _num(bar.get("close"))
+        if not t or c is None:
+            continue
+        times.append(str(t))
+        closes.append(float(c))
+    if len(closes) < 5:
+        return None
+
+    def ema(series: list[float], span: int) -> list[float]:
+        k = 2.0 / (span + 1.0)
+        out: list[float] = []
+        prev = series[0]
+        for i, v in enumerate(series):
+            prev = v if i == 0 else v * k + prev * (1 - k)
+            out.append(prev)
+        return out
+
+    e9, e20, e50 = ema(closes, 9), ema(closes, 20), ema(closes, 50)
+    n = len(closes)
+    points = [
+        {
+            "barStartUtc": times[i],
+            "ema9": round(e9[i], 4),
+            "ema20": round(e20[i], 4),
+            "ema50": round(e50[i], 4),
+            "state": "forming" if i == n - 1 else "closed",
+            "quality": "good",
+        }
+        for i in range(n)
+    ]
+    return {
+        "id": "session-ema",
+        "label": "EMA 9 / 20 / 50",
+        "visibleByDefault": True,
+        "affectsTradeFocusScale": False,
+        "points": points,
+    }
+
+
 def _sigma_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: str | None) -> dict[str, Any] | None:
     """Expose the scan engine's canonical session VWAP sigma bands to the chart."""
     points: list[dict[str, Any]] = []
@@ -1706,6 +1753,7 @@ def build_day_trade_workspace_response(
     chart_bars = _interval_chart_bars(raw_chart_bars, interval)
     candles = _chart_candles(chart_bars)
     vwap_overlay = _vwap_overlay(chart_bars, metrics, session_date)
+    ema_overlay = _ema_overlay(chart_bars)
     sigma_overlay = _sigma_overlay(chart_bars, metrics, session_date)
     pattern_overlay = _flag_pattern_overlay(chart_bars, interval)
     levels = _chart_levels(metrics, entry_guidance, risk_levels)
@@ -1806,6 +1854,7 @@ def build_day_trade_workspace_response(
             "levels": levels,
             "events": events,
             "vwapOverlay": vwap_overlay,
+            "emaOverlay": ema_overlay,
             "sigmaOverlay": sigma_overlay,
             "marketStructure": market_structure,
             "patternOverlay": pattern_overlay,
@@ -1822,6 +1871,7 @@ def build_day_trade_workspace_response(
                 "visibleOverlayIds": [
                     *[level["id"] for level in levels if level.get("visibleByDefault")],
                     *([vwap_overlay["id"]] if vwap_overlay.get("visibleByDefault") else []),
+                    *([ema_overlay["id"]] if ema_overlay and ema_overlay.get("visibleByDefault") else []),
                     *([sigma_overlay["id"]] if sigma_overlay and sigma_overlay.get("visibleByDefault") else []),
                     *([market_structure["id"]] if market_structure.get("visibleByDefault") else []),
                     *([pattern_overlay["id"]] if pattern_overlay and pattern_overlay.get("visibleByDefault") else []),

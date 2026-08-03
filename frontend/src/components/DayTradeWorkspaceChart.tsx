@@ -132,6 +132,7 @@ export default function DayTradeWorkspaceChart({
   rangeOptions?: WorkspaceRange[]
 }) {
   const firstCandleTime = chart.candles[0]?.time || ''
+  const emaOverlay = (chart as unknown as { emaOverlay?: { id: string; label: string; points: Array<{ barStartUtc: string; ema9?: number | null; ema20?: number | null; ema50?: number | null }> } | null }).emaOverlay ?? null
   const baseVisibleBars = clamp(safeNumber(chart.defaults.initialVisibleBars, 100), MIN_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, chart.candles.length || MIN_VISIBLE_BARS))
   const defaultOverlayIds = useMemo(() => new Set(chart.defaults.visibleOverlayIds), [chart.defaults.visibleOverlayIds])
   const [zoomLevel, setZoomLevel] = useState(1)
@@ -352,6 +353,7 @@ export default function DayTradeWorkspaceChart({
     for (const level of chart.levels) map.set(level.id, { id: level.id, label: level.label })
     for (const event of chart.events) map.set(event.id, { id: event.id, label: event.title })
     if (chart.vwapOverlay) map.set(chart.vwapOverlay.id, { id: chart.vwapOverlay.id, label: chart.vwapOverlay.label })
+    if (emaOverlay) map.set(emaOverlay.id, { id: emaOverlay.id, label: emaOverlay.label })
     if (chart.sigmaOverlay) map.set(chart.sigmaOverlay.id, { id: chart.sigmaOverlay.id, label: chart.sigmaOverlay.label })
     if (chart.marketStructure) map.set(chart.marketStructure.id, { id: chart.marketStructure.id, label: 'HH / HL / LH / LL' })
     if (chart.patternOverlay) map.set(chart.patternOverlay.id, { id: chart.patternOverlay.id, label: `${chart.patternOverlay.label} pattern` })
@@ -361,6 +363,7 @@ export default function DayTradeWorkspaceChart({
   const activeChips = useMemo(() => {
     const chips: Array<{ id: string; label: string; removable: boolean }> = []
     if (chart.vwapOverlay) chips.push({ id: chart.vwapOverlay.id, label: 'VWAP', removable: true })
+    if (emaOverlay) chips.push({ id: emaOverlay.id, label: 'EMA 9/20/50', removable: true })
     if (chart.sigmaOverlay) chips.push({ id: chart.sigmaOverlay.id, label: 'VWAP +/-1 / +/-2 sigma', removable: true })
     for (const level of chart.levels) chips.push({ id: level.id, label: level.label, removable: true })
     if (chart.marketStructure) chips.push({ id: chart.marketStructure.id, label: 'HH / HL / LH / LL', removable: true })
@@ -431,6 +434,27 @@ export default function DayTradeWorkspaceChart({
   }
 
   const vwapVisible = Boolean(chart.vwapOverlay && visibleOverlayIds.has(chart.vwapOverlay.id))
+  const emaVisible = Boolean(emaOverlay && visibleOverlayIds.has(emaOverlay.id))
+  const emaLines = (() => {
+    if (!emaVisible || !emaOverlay) return [] as Array<{ key: string; color: string; path: string }>
+    const specs: Array<{ key: 'ema9' | 'ema20' | 'ema50'; color: string }> = [
+      { key: 'ema9', color: '#14b8a6' }, { key: 'ema20', color: '#2563eb' }, { key: 'ema50', color: '#f59e0b' },
+    ]
+    const out: Array<{ key: string; color: string; path: string }> = []
+    for (const spec of specs) {
+      const segs: string[] = []
+      let seg: string[] = []
+      for (const p of emaOverlay.points) {
+        const v = p[spec.key]
+        const x = model.visibleTimes.get(p.barStartUtc)
+        if (typeof v !== 'number' || !Number.isFinite(v) || x == null) { if (seg.length) segs.push(seg.join(' ')); seg = []; continue }
+        seg.push(`${seg.length === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${model.yForPrice(v).toFixed(1)}`)
+      }
+      if (seg.length) segs.push(seg.join(' '))
+      segs.forEach((path, i) => out.push({ key: `${spec.key}-${i}`, color: spec.color, path }))
+    }
+    return out
+  })()
   const sigmaVisible = Boolean(chart.sigmaOverlay && visibleOverlayIds.has(chart.sigmaOverlay.id))
   const patternVisible = Boolean(chart.patternOverlay && visibleOverlayIds.has(chart.patternOverlay.id))
   const latestVwap = chart.vwapOverlay && typeof chart.vwapOverlay.latestValue === 'number' && Number.isFinite(chart.vwapOverlay.latestValue)
@@ -719,6 +743,9 @@ export default function DayTradeWorkspaceChart({
             />
           )
         })}
+        {emaLines.map(line => (
+          <path key={`ema-${line.key}`} d={line.path} fill="none" stroke={line.color} strokeWidth="1.5" opacity="0.9" strokeLinecap="round" strokeLinejoin="round" />
+        ))}
         {sigmaVisible && SIGMA_BANDS.map(band => model.sigmaSegments[band.key].map((segment, index) => {
           if (!segment.length) return null
           const path = segment.map((point, pointIndex) => `${pointIndex === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
