@@ -48,6 +48,15 @@ export default function DayTradeMultiDayChart({
 
   const dayCount = useMemo(() => new Set((bars ?? []).map(b => b.dayIndex)).size, [bars])
 
+  const gap = useMemo(() => {
+    const all = (bars ?? []).filter(b => Number.isFinite(b.close))
+    if (!all.length || prevClose == null || !Number.isFinite(prevClose) || prevClose <= 0) return null
+    const lastDay = Math.max(...all.map(b => b.dayIndex))
+    const open = all.find(b => b.dayIndex === lastDay)?.open
+    if (open == null || !Number.isFinite(open)) return null
+    return { open, dollars: open - prevClose, pct: (open / prevClose - 1) * 100 }
+  }, [bars, prevClose])
+
   if (!view) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-tertiary dark:border-white/[0.08] dark:bg-slate-950">
@@ -85,9 +94,15 @@ export default function DayTradeMultiDayChart({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-slate-950">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <CalendarRange size={14} className="text-violet-500" />
           <span className="text-[11px] font-black uppercase tracking-widest text-tertiary">Multi-Day Context</span>
+          {gap && (
+            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${gap.dollars >= 0 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'}`}
+              title="Overnight gap: prior-session close → today's open">
+              Overnight {gap.dollars >= 0 ? '+' : '−'}{fmt(Math.abs(gap.dollars))} ({gap.pct >= 0 ? '+' : '−'}{Math.abs(gap.pct).toFixed(2)}%)
+            </span>
+          )}
         </div>
         <div className="flex overflow-hidden rounded-md border border-slate-200 dark:border-white/[0.1]">
           {[2, 3, 5].map(d => (
