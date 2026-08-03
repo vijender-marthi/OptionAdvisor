@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { isChunkLoadError, recoverFromStaleChunk } from '../chunkRecovery'
 
 interface Props {
   children: ReactNode
@@ -18,11 +19,30 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    // A failed lazy import (stale chunk after a deploy) throws here via React.lazy.
+    // Reload once to pull the fresh build instead of stranding the user on an error.
+    if (isChunkLoadError(error) && recoverFromStaleChunk()) return
     console.error('[ErrorBoundary]', error, info.componentStack)
   }
 
   render() {
     if (this.state.hasError) {
+      // Stale-chunk reload is in flight — show a neutral message, not a scary error.
+      if (isChunkLoadError(this.state.error)) {
+        return (
+          <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 py-16 text-center">
+            <div className="text-3xl">⏳</div>
+            <p className="text-sm font-semibold text-gray-400">Updating to the latest version…</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-1.5 text-xs font-semibold text-gray-300 hover:bg-gray-700"
+            >
+              Reload now
+            </button>
+          </div>
+        )
+      }
       return this.props.fallback ?? (
         <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 py-16 text-center">
           <div className="text-3xl">⚠️</div>
