@@ -1794,6 +1794,7 @@ def build_day_trade_workspace_response(
             "ema50": _num(metrics.get("ema50")),
             "ema150": _num(metrics.get("ema150")),
             "priorSessions": [s for s in _as_list(metrics.get("prior_sessions")) if isinstance(s, dict)],
+            "multiDay": [b for b in _as_list(metrics.get("multi_day_chart")) if isinstance(b, dict)],
         },
         "decisionEngine": decision_engine,
         "professionalDecision": professional_decision,

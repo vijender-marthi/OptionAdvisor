@@ -1515,6 +1515,62 @@ def _prior_sessions_context(df_et: pd.DataFrame, current_session_date: Any, coun
     return out[-count:]
 
 
+def _multi_day_chart(df_et: pd.DataFrame, days: int = 5, interval_min: int = 5) -> list[dict[str, Any]]:
+    """Multi-day RTH candle series (default 5 days of 5m bars) with per-day VWAP
+    (reset each session) and continuous EMA20/EMA50. Powers the multi-day context
+    chart so a trader can read today's price against several prior sessions."""
+    try:
+        rth = df_et.between_time("09:30", "16:00")
+        if rth is None or rth.empty:
+            return []
+        agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+        res = rth.resample(f"{interval_min}min").agg(agg).dropna(subset=["Close"])
+        res = res.between_time("09:30", "16:00")
+        if res.empty:
+            return []
+        all_dates = sorted({ts.date() for ts in res.index})
+        keep = set(all_dates[-days:])
+        res = res[[ts.date() in keep for ts in res.index]]
+        if res.empty:
+            return []
+        day_order = {d: i for i, d in enumerate(sorted(keep))}
+        closes = res["Close"].astype(float)
+        ema20 = closes.ewm(span=20, adjust=False).mean()
+        ema50 = closes.ewm(span=50, adjust=False).mean()
+        vwap_map: dict[Any, float] = {}
+        for _day, grp in res.groupby(res.index.date):
+            tp = (grp["High"] + grp["Low"] + grp["Close"]) / 3.0
+            vol = grp["Volume"].fillna(0)
+            cumv = vol.cumsum()
+            vw = (tp * vol).cumsum() / cumv.replace(0, np.nan)
+            vw = vw.fillna(grp["Close"])
+            for ts in grp.index:
+                vwap_map[ts] = float(vw.loc[ts])
+        seen: set[Any] = set()
+        out: list[dict[str, Any]] = []
+        for ts in res.index:
+            row = res.loc[ts]
+            d = ts.date()
+            is_open = d not in seen
+            seen.add(d)
+            out.append({
+                "time": ts.isoformat(),
+                "open": round(float(row["Open"]), 4),
+                "high": round(float(row["High"]), 4),
+                "low": round(float(row["Low"]), 4),
+                "close": round(float(row["Close"]), 4),
+                "volume": float(row["Volume"]) if pd.notna(row["Volume"]) else 0.0,
+                "vwap": round(float(vwap_map.get(ts, row["Close"])), 4),
+                "ema20": round(float(ema20.loc[ts]), 4),
+                "ema50": round(float(ema50.loc[ts]), 4),
+                "dayIndex": int(day_order.get(d, 0)),
+                "isDayOpen": bool(is_open),
+            })
+        return out
+    except Exception:
+        return []
+
+
 def _intraday_session_return_pct(session: pd.DataFrame) -> Optional[float]:
     if session is None or session.empty or len(session) < 2:
         return None
@@ -5735,6 +5791,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "ema50": round(latest_ema50, 4),
         "ema150": round(latest_ema150, 4),
         "prior_sessions": _prior_sessions_context(df_et, session_date, count=4),
+        "multi_day_chart": _multi_day_chart(df_et, days=5, interval_min=5),
         "or_high": round(or_high, 4),
         "or_low": round(or_low, 4),
         "or_breakout": or_state,

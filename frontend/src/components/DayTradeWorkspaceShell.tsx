@@ -15,6 +15,7 @@ import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
 import AICoachWidget from './AICoachWidget'
 import SetupExitPlanner from './SetupExitPlanner'
 import DayTradePriorContext, { type PriorContext } from './DayTradePriorContext'
+import DayTradeMultiDayChart, { type MultiDayBar } from './DayTradeMultiDayChart'
 
 type Props = {
   workspace: DayTradeWorkspaceResponse
@@ -692,6 +693,7 @@ export function TradeDecisionPanel({
         )}
       </Panel>}
       <DayTradePriorContext ctx={(workspace as unknown as { priorContext?: PriorContext }).priorContext} />
+      <DayTradeMultiDayChart bars={(workspace as unknown as { priorContext?: { multiDay?: MultiDayBar[] } }).priorContext?.multiDay} />
       {shouldRenderWidget('Entry / Stop / Targets') && <Panel title="Entry / Stop / Targets" {...panelProps}>
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={professional?.risk.entry.display ?? workspace.riskPlan.entry.display} />
