@@ -14,6 +14,7 @@ import { workspaceToneBadgeClass, workspaceToneTextClass } from '../utils/worksp
 import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
 import AICoachWidget from './AICoachWidget'
 import SetupExitPlanner from './SetupExitPlanner'
+import DayTradePriorContext, { type PriorContext } from './DayTradePriorContext'
 
 type Props = {
   workspace: DayTradeWorkspaceResponse
@@ -690,6 +691,7 @@ export function TradeDecisionPanel({
           </div>
         )}
       </Panel>}
+      <DayTradePriorContext ctx={(workspace as unknown as { priorContext?: PriorContext }).priorContext} />
       {shouldRenderWidget('Entry / Stop / Targets') && <Panel title="Entry / Stop / Targets" {...panelProps}>
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={professional?.risk.entry.display ?? workspace.riskPlan.entry.display} />

@@ -1470,6 +1470,51 @@ def _rth_session_on_date(df_et: pd.DataFrame, session_date: str) -> pd.DataFrame
     return sub.sort_index()
 
 
+def _prior_sessions_context(df_et: pd.DataFrame, current_session_date: Any, count: int = 4) -> list[dict[str, Any]]:
+    """Per-day RTH open/high/low/close and session VWAP for the trailing sessions
+    (excluding the current one). Lets day traders judge the current price against
+    prior-day closes and VWAPs. Uses the already-fetched 5-day 1m frame."""
+    try:
+        rth = df_et.between_time("09:30", "16:00")
+    except Exception:
+        rth = df_et
+    if rth is None or rth.empty:
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        groups = rth.groupby(rth.index.date)
+    except Exception:
+        return []
+    for day, grp in groups:
+        if grp is None or grp.empty:
+            continue
+        if str(day) == str(current_session_date):
+            continue
+        try:
+            close = float(grp["Close"].iloc[-1])
+            open_ = float(grp["Open"].iloc[0]) if "Open" in grp.columns else close
+            high = float(grp["High"].max()) if "High" in grp.columns else close
+            low = float(grp["Low"].min()) if "Low" in grp.columns else close
+            tp = (grp["High"] + grp["Low"] + grp["Close"]) / 3.0 if {"High", "Low"}.issubset(grp.columns) else grp["Close"]
+            vol = grp["Volume"].fillna(0) if "Volume" in grp.columns else None
+            if vol is not None and float(vol.sum()) > 0:
+                vwap = float((tp * vol).sum() / float(vol.sum()))
+            else:
+                vwap = float(tp.mean())
+        except Exception:
+            continue
+        out.append({
+            "date": str(day),
+            "open": round(open_, 4),
+            "high": round(high, 4),
+            "low": round(low, 4),
+            "close": round(close, 4),
+            "vwap": round(vwap, 4),
+        })
+    out.sort(key=lambda r: r["date"])
+    return out[-count:]
+
+
 def _intraday_session_return_pct(session: pd.DataFrame) -> Optional[float]:
     if session is None or session.empty or len(session) < 2:
         return None
@@ -5687,6 +5732,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "vwap_slope_pct": vwap_slope_pct,
         "vwap_macro_slope_pct": vwap_macro_slope_pct,
         "ema20": round(latest_ema20, 4),
+        "ema50": round(latest_ema50, 4),
+        "ema150": round(latest_ema150, 4),
+        "prior_sessions": _prior_sessions_context(df_et, session_date, count=4),
         "or_high": round(or_high, 4),
         "or_low": round(or_low, 4),
         "or_breakout": or_state,
