@@ -440,6 +440,7 @@ class DayTradeChartView(BaseModel):
     levels: list[DayTradeChartLevelView] = Field(default_factory=list)
     events: list[DayTradeChartEventView] = Field(default_factory=list)
     vwapOverlay: DayTradeVwapOverlayView | None = None
+    emaOverlay: dict[str, Any] | None = None
     sigmaOverlay: DayTradeSigmaOverlayView | None = None
     marketStructure: DayTradeMarketStructureView | None = None
     patternOverlay: DayTradePatternOverlayView | None = None
@@ -461,5 +462,6 @@ class DayTradeWorkspaceResponse(BaseModel):
     selectedContract: DayTradeSelectedContractView | None = None
     trapDetection: dict[str, Any] | None = None
     chart: DayTradeChartView
+    priorContext: dict[str, Any] | None = None
     tabs: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] | None = None
