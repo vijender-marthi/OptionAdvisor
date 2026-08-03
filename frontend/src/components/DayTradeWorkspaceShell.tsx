@@ -497,6 +497,8 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
   const [minimized, setMinimized] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [chartHeight, setChartHeight] = useState(680)
+  const [chartTab, setChartTab] = useState<'session' | 'multiday'>('session')
+  const priorCtx = (workspace as unknown as { priorContext?: PriorContext & { multiDay?: MultiDayBar[] } }).priorContext
   const resizeChart = (event: React.PointerEvent<HTMLDivElement>) => {
     const startY = event.clientY
     const startHeight = chartHeight
@@ -513,16 +515,30 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
   }
   const chartBody = (
     <div className="min-h-0 flex-1" style={{ minHeight: minimized ? 0 : fillFrame ? 0 : `clamp(320px, 62dvh, ${chartHeight}px)` }}>
-      <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+      {chartTab === 'session' ? (
+        <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+      ) : (
+        <div className="h-full space-y-2 overflow-auto p-2">
+          <DayTradePriorContext ctx={priorCtx} />
+          <DayTradeMultiDayChart bars={priorCtx?.multiDay} prevClose={priorCtx?.prevClose} lastPrice={priorCtx?.lastPrice} />
+        </div>
+      )}
     </div>
   )
   return (
     <>
     <section className="flex h-full min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.07] dark:bg-slate-950 md:min-h-0">
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-900/60">
-        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-tertiary">
-          <GripVertical size={14} />
-          Chart Widget
+        <div className="flex items-center gap-2">
+          <GripVertical size={14} className="text-tertiary" />
+          <div className="flex overflow-hidden rounded-md border border-slate-200 dark:border-white/[0.1]">
+            {(['session', 'multiday'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setChartTab(t)}
+                className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wide transition-colors ${chartTab === t ? 'bg-violet-600 text-white' : 'text-secondary hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                {t === 'session' ? 'Session' : 'Multi-Day'}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => setMinimized(cur => !cur)} className="inline-flex h-6 w-6 items-center justify-center rounded-md text-tertiary hover:bg-slate-200 hover:text-heading dark:hover:bg-slate-800" aria-label={minimized ? 'Restore chart widget' : 'Minimize chart widget'} title={minimized ? 'Restore chart' : 'Minimize chart'}>
@@ -692,11 +708,6 @@ export function TradeDecisionPanel({
           </div>
         )}
       </Panel>}
-      <DayTradePriorContext ctx={(workspace as unknown as { priorContext?: PriorContext }).priorContext} />
-      {(() => {
-        const pc = (workspace as unknown as { priorContext?: PriorContext & { multiDay?: MultiDayBar[] } }).priorContext
-        return <DayTradeMultiDayChart bars={pc?.multiDay} prevClose={pc?.prevClose} lastPrice={pc?.lastPrice} />
-      })()}
       {shouldRenderWidget('Entry / Stop / Targets') && <Panel title="Entry / Stop / Targets" {...panelProps}>
         <div className="grid grid-cols-2 gap-2">
           <Value label="Entry" value={professional?.risk.entry.display ?? workspace.riskPlan.entry.display} />
