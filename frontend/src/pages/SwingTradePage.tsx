@@ -1784,6 +1784,14 @@ function SwingRightRail({
   )
 }
 
+// Colors for price-panel overlay lines. Shared by the chart strokes and the
+// "Active" legend swatches so the line and its label can never drift apart.
+const OVERLAY_LINE_COLORS: Record<string, string> = {
+  sma20: '#34d399',
+  sma50: '#fbbf24',
+  ema9: '#38bdf8',
+}
+
 function SwingPrimaryChart({
   result,
   unified,
@@ -2112,6 +2120,13 @@ function SwingPrimaryChart({
               title={item.mandatory ? 'Engine evidence for the current backend decision. Hiding changes only this visual view, not the backend verdict.' : item.reason || item.name}
             >
               {item.mandatory && <Lock size={10} />}
+              {OVERLAY_LINE_COLORS[item.id] && (
+                <span
+                  aria-hidden
+                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: OVERLAY_LINE_COLORS[item.id] }}
+                />
+              )}
               {item.name}
               <X size={10} />
             </button>
@@ -2199,11 +2214,11 @@ function SwingPrimaryChart({
               </g>
             )
           })}
-          {activeIds.has('sma20') && <path d={linePath('ma20')} fill="none" stroke="#34d399" strokeWidth="1.8" opacity="0.72" />}
-          {activeIds.has('sma50') && <path d={linePath('ma50')} fill="none" stroke="#fbbf24" strokeWidth="1.8" opacity="0.72" />}
+          {activeIds.has('sma20') && <path d={linePath('ma20')} fill="none" stroke={OVERLAY_LINE_COLORS.sma20} strokeWidth="1.8" opacity="0.72" />}
+          {activeIds.has('sma50') && <path d={linePath('ma50')} fill="none" stroke={OVERLAY_LINE_COLORS.sma50} strokeWidth="1.8" opacity="0.72" />}
           {activeIds.has('ema9') && num(fibTargets?.ema9) != null && (
             <g>
-              <line x1="0" x2={width} y1={yFor(num(fibTargets?.ema9) || 0)} y2={yFor(num(fibTargets?.ema9) || 0)} stroke="#38bdf8" strokeDasharray="5 5" strokeWidth="1.2" opacity="0.72" />
+              <line x1="0" x2={width} y1={yFor(num(fibTargets?.ema9) || 0)} y2={yFor(num(fibTargets?.ema9) || 0)} stroke={OVERLAY_LINE_COLORS.ema9} strokeDasharray="5 5" strokeWidth="1.2" opacity="0.72" />
               <text x="12" y={yFor(num(fibTargets?.ema9) || 0) - 5} className="fill-sky-400 text-[10px] font-bold">EMA9 {money(fibTargets?.ema9)}</text>
             </g>
           )}
