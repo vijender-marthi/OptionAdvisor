@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from day_trade_trap_detection import build_trap_detection_from_metrics, build_unavailable_trap_detection
+from day_trade_or_vwap import compute_or_vwap_framework
 
 
 DAY_TRADE_WORKSPACE_SCHEMA_VERSION = "day-trade-workspace.v1"
@@ -1714,6 +1715,55 @@ def _workspace_mode(metrics: dict[str, Any], requested_session_date: str | None)
     return "live"
 
 
+def _minutes_since_open(iso_time: str | None) -> float | None:
+    """Minutes elapsed from the 9:30 ET open to the given ET timestamp."""
+    if not iso_time:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(iso_time))
+    except (TypeError, ValueError):
+        return None
+    open_ts = ts.replace(hour=9, minute=30, second=0, microsecond=0)
+    return max(0.0, (ts - open_ts).total_seconds() / 60.0)
+
+
+def _or_vwap_framework(metrics: dict[str, Any], raw_chart_bars: list[Any]) -> dict[str, Any]:
+    """Adapt live day-trade metrics into the OR/VWAP directional framework score."""
+    prior_sessions = [s for s in _as_list(metrics.get("prior_sessions")) if isinstance(s, dict)]
+    prev_vwap = _num(prior_sessions[-1].get("vwap")) if prior_sessions else None
+    prev_close = _num(metrics.get("prev_close"))
+    if prev_close is None and prior_sessions:
+        prev_close = _num(prior_sessions[-1].get("close"))
+
+    today_open = None
+    for bar in raw_chart_bars:
+        if isinstance(bar, dict):
+            today_open = _num(bar.get("open") if bar.get("open") is not None else bar.get("Open"))
+            if today_open is not None:
+                break
+    gap_pct = ((today_open / prev_close - 1.0) * 100.0) if (today_open and prev_close) else None
+
+    last_time = None
+    for bar in reversed(raw_chart_bars):
+        if isinstance(bar, dict):
+            last_time = bar.get("time") or bar.get("timestamp") or bar.get("t")
+            if last_time:
+                break
+    minutes = _minutes_since_open(last_time)
+
+    return compute_or_vwap_framework(
+        price=_num(metrics.get("last_price")),
+        today_vwap=_num(metrics.get("vwap")),
+        prev_vwap=prev_vwap,
+        or_high=_num(metrics.get("or_high")),
+        or_low=_num(metrics.get("or_low")),
+        vwap_slope_pct=_num(metrics.get("vwap_slope_pct")) or 0.0,
+        gap_pct=gap_pct,
+        minutes_since_open=minutes,
+        post_earnings=bool(metrics.get("is_earnings_day") or metrics.get("post_earnings")),
+    )
+
+
 def build_day_trade_workspace_response(
     *,
     scan: Any,
@@ -1844,6 +1894,7 @@ def build_day_trade_workspace_response(
             "priorSessions": [s for s in _as_list(metrics.get("prior_sessions")) if isinstance(s, dict)],
             "multiDay": [b for b in _as_list(metrics.get("multi_day_chart")) if isinstance(b, dict)],
         },
+        "orVwapFramework": _or_vwap_framework(metrics, raw_chart_bars),
         "decisionEngine": decision_engine,
         "professionalDecision": professional_decision,
         "evidence": _evidence(scan, resolved, metrics),

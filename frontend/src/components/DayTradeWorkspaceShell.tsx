@@ -15,6 +15,7 @@ import DayTradeWorkspaceChart from './DayTradeWorkspaceChart'
 import AICoachWidget from './AICoachWidget'
 import SetupExitPlanner from './SetupExitPlanner'
 import DayTradePriorContext, { type PriorContext } from './DayTradePriorContext'
+import DayTradeOrVwapFramework, { type OrVwapFramework } from './DayTradeOrVwapFramework'
 import DayTradeMultiDayChart, { type MultiDayBar } from './DayTradeMultiDayChart'
 
 type Props = {
@@ -601,6 +602,7 @@ export function TradeDecisionPanel({
   const decisionChecks = buildDecisionChecks(workspace)
   const decisionWarnings = buildDecisionWarnings(workspace)
   const formingPivot = workspace.chart.marketStructure?.provisionalPivot
+  const orVwap = (workspace as unknown as { orVwapFramework?: OrVwapFramework }).orVwapFramework
   const shouldRenderWidget = (title: string) => {
     const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
     return placement === 'bottom' ? docked : !docked
@@ -747,6 +749,9 @@ export function TradeDecisionPanel({
             onClick={() => onAction?.({ id: 'quick_alpaca', type: 'alpaca', label: 'Open Alpaca Trading', enabled: true })}
           />
         </div>
+      </Panel>}
+      {orVwap && shouldRenderWidget('OR / VWAP') && <Panel title="OR / VWAP" {...panelProps}>
+        <DayTradeOrVwapFramework fw={orVwap} />
       </Panel>}
       {shouldRenderWidget('Setup') && <Panel title="Setup" {...panelProps}>
         {engine ? (

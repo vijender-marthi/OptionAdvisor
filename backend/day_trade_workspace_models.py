@@ -463,5 +463,6 @@ class DayTradeWorkspaceResponse(BaseModel):
     trapDetection: dict[str, Any] | None = None
     chart: DayTradeChartView
     priorContext: dict[str, Any] | None = None
+    orVwapFramework: dict[str, Any] | None = None
     tabs: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] | None = None
