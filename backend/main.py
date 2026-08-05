@@ -3362,6 +3362,31 @@ def day_trade_workspace(
         )
 
 
+class EarningsRadarRequest(BaseModel):
+    tickers: list[str] = []
+    withinDays: int = 21
+    riskBudget: float = 1000.0
+
+
+@app.post("/api/earnings-radar")
+def earnings_radar_scan(req: EarningsRadarRequest, auth_email: str = Depends(require_access_email)):
+    """Earnings-volatility radar over the caller's tickers (or their watchlists)."""
+    import earnings_radar
+    tickers = [t.strip().upper() for t in (req.tickers or []) if t and t.strip()]
+    if not tickers:
+        state = get_user_state(_norm_email(auth_email)) or {}
+        pool: list[str] = []
+        for field in ("watchlist", "day_trade_watchlist", "swing_trade_watchlist", "my_tickers"):
+            vals = state.get(field)
+            if isinstance(vals, list):
+                pool += [str(v).upper().strip() for v in vals if isinstance(v, str) and v.strip()]
+        seen: set[str] = set()
+        tickers = [t for t in pool if not (t in seen or seen.add(t))]
+    within = max(1, min(int(req.withinDays or 21), 60))
+    budget = max(100.0, float(req.riskBudget or 1000.0))
+    return earnings_radar.scan(tickers[:40], within_days=within, budget=budget)
+
+
 @app.get("/api/position-trade/session-chart")
 def position_trade_session_chart(
     symbol: str = Query(..., min_length=1),

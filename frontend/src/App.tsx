@@ -37,6 +37,7 @@ const DayTradeDashboardPage = lazy(() => import('./pages/DayTradeDashboardPage')
 const TickerScannerPage      = lazy(() => import('./pages/TickerScannerPage'))
 const ToolsPage              = lazy(() => import('./pages/ToolsPage'))
 const DayTradeSessionPage    = lazy(() => import('./pages/DayTradeSessionPage'))
+const EarningsRadarPage      = lazy(() => import('./pages/EarningsRadarPage'))
 const TradeWorksheetPage     = lazy(() => import('./pages/TradeWorksheetPage'))
 const EODJournalPage         = lazy(() => import('./pages/EODJournalPage'))
 const JournalToolPage        = lazy(() => import('./pages/JournalToolPage'))
@@ -186,6 +187,7 @@ function ShellRoutes() {
               <Route path="/tools" element={<ToolsPage />} />
               <Route path="/day-trade-session" element={<DayTradeSessionPage />} />
               <Route path="/trade-worksheet" element={<TradeWorksheetPage />} />
+              <Route path="/earnings-radar" element={<EarningsRadarPage />} />
               <Route path="/option-chain" element={<Navigate to="/trade-worksheet" replace />} />
               <Route path="/eod-journal" element={<EODJournalPage />} />
               <Route path="/journal-tool" element={<JournalToolPage />} />

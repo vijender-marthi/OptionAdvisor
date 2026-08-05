@@ -87,6 +87,8 @@ export function locationToPage(pathname: string): Page {
       return 'investment-thesis'
     case 'trade-worksheet':
       return 'trade-worksheet'
+    case 'earnings-radar':
+      return 'earnings-radar'
     default:
       return 'trade-command-center'
   }
@@ -172,6 +174,8 @@ export function pageToLocation(p: Page): string {
       return '/investment-thesis'
     case 'trade-worksheet':
       return '/trade-worksheet'
+    case 'earnings-radar':
+      return '/earnings-radar'
     default:
       return '/trade-command-center'
   }

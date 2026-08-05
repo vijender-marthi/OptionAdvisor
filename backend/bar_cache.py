@@ -550,3 +550,36 @@ def get_calendar(ticker: str, force_refresh: bool = False) -> dict:
 
     _set(key, result)
     return result
+
+
+def get_earnings_dates(ticker: str, force_refresh: bool = False) -> list[str]:
+    """Return this ticker's earnings dates (past and upcoming) as sorted ISO date
+    strings. Powers the earnings-volatility radar's historical-move statistics.
+
+    TTL = BAR_CACHE_TTL_CALENDAR — earnings dates change infrequently.
+    """
+    t = ticker.upper().strip()
+    key = _cache_key(t, "EARNINGS_DATES")
+
+    cached = _get(key, BAR_CACHE_TTL_CALENDAR, force_refresh)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
+    result: list[str] = []
+    try:
+        import pandas as _pd
+        ed_df = yf.Ticker(t).earnings_dates
+        if ed_df is not None and not ed_df.empty:
+            seen: set[str] = set()
+            for idx in ed_df.index:
+                d = (idx.date() if hasattr(idx, "date") else _pd.Timestamp(idx).date()).isoformat()
+                if d not in seen:
+                    seen.add(d)
+                    result.append(d)
+            result.sort()
+    except Exception as exc:
+        log.warning("bar_cache.get_earnings_dates failed %s: %s", t, exc)
+        result = []
+
+    _set(key, result)
+    return result

@@ -230,6 +230,7 @@ export type Page =
   | 'track-mode'
   | 'investment-thesis'
   | 'trade-worksheet'
+  | 'earnings-radar'
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
 export type TradeIdeaEngine = 'DAY' | 'SWING'

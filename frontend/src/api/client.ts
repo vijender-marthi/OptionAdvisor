@@ -2444,3 +2444,48 @@ export function deriveUnifiedFromSwingResult(
     verdict_presentation: _stubVp(verdict),
   }
 }
+
+// ─── Earnings volatility radar ────────────────────────────────────────────────
+export type EarningsRadarCard = {
+  ticker: string
+  companyName: string
+  sector: string
+  industry: string
+  spot: number
+  nextEarnings: string
+  daysToEarnings: number
+  timing: string | null
+  lastEarnings: string | null
+  lastReaction: { date: string; runUpPct: number | null; gapPct: number | null; driftPct: number | null } | null
+  typicalMovePct: number | null
+  impliedMovePct: number | null
+  expectedMove: { expiry: string; atmStrike: number; callMid: number; putMid: number; straddle: number; movePct: number | null; moveDollars: number } | null
+  ivRank: number | null
+  volRead: { label: string; tone: string; text: string }
+  directionalLean: string
+  peers: string[]
+  play: {
+    type: string; side: string; expiry: string | null; atmStrike: number | null
+    premiumPerContract: number
+    sizing: { contracts: number; maxRisk: number; costPerContract: number } | null
+    breakevenUp: number | null; breakevenDown: number | null; scenarioGainIfTypical: number | null
+  } | null
+}
+export type EarningsRadarResponse = {
+  withinDays: number
+  riskBudget: number
+  count: number
+  cards: EarningsRadarCard[]
+  noEarningsInWindow: string[]
+}
+
+export const fetchEarningsRadar = async (
+  input: { tickers?: string[]; withinDays?: number; riskBudget?: number } = {},
+): Promise<EarningsRadarResponse> => {
+  const { data } = await api.post<EarningsRadarResponse>('/earnings-radar', {
+    tickers: input.tickers ?? [],
+    withinDays: input.withinDays ?? 21,
+    riskBudget: input.riskBudget ?? 1000,
+  })
+  return data
+}
