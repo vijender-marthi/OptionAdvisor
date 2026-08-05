@@ -1961,7 +1961,7 @@ export type AICoachMode =
   | 'positions_open' | 'positions_closed_week' | 'recommendation' | 'day_trade' | 'swing_trade'
 
 export const analyzeAICoach = async (
-  body: { mode: AICoachMode; title?: string; context: unknown },
+  body: { mode: AICoachMode; title?: string; context: unknown; question?: string },
 ): Promise<{ markdown: string; provider: string; model: string }> => {
   const { data } = await api.post('/ai-coach/analyze', body)
   return data

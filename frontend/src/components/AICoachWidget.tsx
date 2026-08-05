@@ -48,6 +48,8 @@ export default function AICoachWidget({
   heading = 'AI Coach',
   subtitle,
   compact = false,
+  allowQuestion = false,
+  questionPlaceholder = 'Ask about this chart — e.g. “Is price holding above VWAP?” or “Is the ORH breakout real?”',
 }: {
   mode: AICoachMode
   title?: string
@@ -56,18 +58,23 @@ export default function AICoachWidget({
   heading?: string
   subtitle?: string
   compact?: boolean
+  /** Show a free-text box so the trader can ask the coach a specific question. */
+  allowQuestion?: boolean
+  questionPlaceholder?: string
 }) {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ markdown: string; provider: string; model: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [question, setQuestion] = useState('')
 
   const run = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const ctx = typeof context === 'function' ? (context as () => unknown)() : context
-      const data = await analyzeAICoach({ mode, title, context: ctx })
+      const q = question.trim()
+      const data = await analyzeAICoach({ mode, title, context: ctx, question: q || undefined })
       setResult(data)
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string }; status?: number } })?.response
@@ -79,7 +86,7 @@ export default function AICoachWidget({
     } finally {
       setLoading(false)
     }
-  }, [context, mode, title])
+  }, [context, mode, title, question])
 
   return (
     <section className={`rounded-xl border border-violet-300/70 bg-violet-50/60 dark:border-violet-500/30 dark:bg-violet-500/[0.06] ${compact ? 'p-3' : 'p-4'}`}>
@@ -100,9 +107,23 @@ export default function AICoachWidget({
           className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-violet-500 disabled:opacity-60"
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : result ? <RefreshCw size={14} /> : <Sparkles size={14} />}
-          {loading ? 'Analyzing…' : result ? 'Re-analyze' : 'Ask AI Coach'}
+          {loading ? (question.trim() ? 'Answering…' : 'Analyzing…') : (allowQuestion && question.trim() ? 'Ask' : result ? 'Re-analyze' : 'Ask AI Coach')}
         </button>
       </div>
+
+      {allowQuestion && (
+        <div className="mt-3">
+          <textarea
+            value={question}
+            onChange={e => setQuestion(e.target.value)}
+            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void run() } }}
+            placeholder={questionPlaceholder}
+            rows={2}
+            className="w-full resize-y rounded-lg border border-violet-300/70 bg-white px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-violet-500 focus:outline-none dark:border-violet-500/30 dark:bg-slate-950"
+          />
+          <div className="mt-1 text-[10px] text-text-tertiary">Leave blank for a full setup review, or ask a specific question. ⌘/Ctrl+Enter to send.</div>
+        </div>
+      )}
 
       {error === 'NOT_CONFIGURED' && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">

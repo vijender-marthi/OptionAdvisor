@@ -124,6 +124,7 @@ class AICoachAnalyzeIn(BaseModel):
     mode: str
     title: Optional[str] = None
     context: Any = None
+    question: Optional[str] = None
 
 
 # ── settings endpoints ───────────────────────────────────────────────────────
@@ -239,13 +240,23 @@ _CALLERS = {"claude": _call_claude, "openai": _call_openai, "gemini": _call_gemi
 
 
 def _build_prompt(body: AICoachAnalyzeIn) -> str:
-    instruction = MODE_INSTRUCTIONS.get(body.mode, _DEFAULT_INSTRUCTION)
+    question = (body.question or "").strip()
+    if question:
+        task = (
+            "Answer the trader's specific question below using the chart/setup data provided. "
+            "Be concrete, reference the actual numbers (VWAP, opening range, structure, entry/stop/target, "
+            "any framework scores), and stay within what the data supports. If the data doesn't answer it, "
+            "say so plainly.\n\n"
+            f'Trader question: "{question[:600]}"'
+        )
+    else:
+        task = MODE_INSTRUCTIONS.get(body.mode, _DEFAULT_INSTRUCTION)
     try:
         ctx_json = json.dumps(body.context, indent=2, default=str)[:24000]
     except (TypeError, ValueError):
         ctx_json = str(body.context)[:24000]
     header = f"Context: {body.title}\n" if body.title else ""
-    return f"{instruction}\n\n{header}Data (JSON):\n```json\n{ctx_json}\n```"
+    return f"{task}\n\n{header}Data (JSON):\n```json\n{ctx_json}\n```"
 
 
 # ── analyze endpoint ─────────────────────────────────────────────────────────
