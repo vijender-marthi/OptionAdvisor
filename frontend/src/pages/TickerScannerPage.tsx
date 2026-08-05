@@ -977,6 +977,21 @@ export default function TickerScannerPage() {
     return b.price_change_pct - a.price_change_pct
   }), [rows])
 
+  // Group the sorted rows by sector so a long list reads as scannable sections.
+  // Sectors are ordered by size (largest first), rows keep their relative-strength sort.
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof sorted>()
+    for (const row of sorted) {
+      const sec = (row.sector && row.sector !== 'N/A') ? row.sector : 'Other'
+      const bucket = map.get(sec)
+      if (bucket) bucket.push(row)
+      else map.set(sec, [row])
+    }
+    return [...map.entries()]
+      .map(([sector, secRows]) => ({ sector, rows: secRows }))
+      .sort((a, b) => b.rows.length - a.rows.length || a.sector.localeCompare(b.sector))
+  }, [sorted])
+
   // Market snapshot values from first row's day.metrics
   const snap = useMemo((): { spyPct: number | null; qqqPct: number | null; vix: number | null; breadth: string; bias: string; ctxStr: string } | null => {
     const r = rows[0]
@@ -1100,7 +1115,14 @@ export default function TickerScannerPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map(row => {
+                    {grouped.map(group => (
+                      <Fragment key={`sector-${group.sector}`}>
+                        <tr className="bg-gray-100 dark:bg-gray-900/60">
+                          <td colSpan={9} className="px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">
+                            {group.sector} <span className="font-bold text-gray-400">· {group.rows.length}</span>
+                          </td>
+                        </tr>
+                        {group.rows.map(row => {
                       const pct = row.price_change_pct
                       const isUp = pct >= 0
                       const isSelected = selected === row.ticker
@@ -1166,7 +1188,9 @@ export default function TickerScannerPage() {
                           )}
                         </Fragment>
                       )
-                    })}
+                        })}
+                      </Fragment>
+                    ))}
                   </tbody>
                 </table>
               </div>
