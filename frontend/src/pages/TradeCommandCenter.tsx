@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Zap, TrendingUp, Layers, CalendarClock, AlertTriangle, RefreshCw, Radar } from 'lucide-react'
 import { fetchSignalFeed } from '../api/commandCenter'
 import { fetchEarningsRadar, type EarningsRadarCard } from '../api/client'
-import type { SignalFeedRow } from '../types/commandCenter'
+import type { SignalFeedRow, SignalFeedDecisionBlock } from '../types/commandCenter'
 import { getEngineRoute } from '../routing/routes'
 
 // ── structure (bull / bear / flat) from the row's backend trend ──────────────
@@ -34,10 +34,18 @@ function StructBadge({ s }: { s: { label: string; tone: 'bull' | 'bear' | 'flat'
   return <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${toneCls(s.tone)}`}>{s.label}</span>
 }
 
-function EngineList({ title, icon, rows, decisionKey, confKey, onOpen }: {
+const verdictCls = (v?: string) => {
+  const s = String(v || '').toUpperCase()
+  if (s.includes('STRONG_GO') || s === 'GO' || s === 'READY' || s === 'ENTER') return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+  if (s === 'WATCH' || s === 'MANAGE') return 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+  if (s.includes('AVOID') || s.includes('NO_EDGE') || s === 'WAIT' || s === 'CONFLICT') return 'bg-red-500/10 text-red-600 dark:text-red-300'
+  return 'bg-slate-500/10 text-tertiary'
+}
+
+function EngineList({ title, icon, rows, blockKey, decisionKey, onOpen }: {
   title: string; icon: ReactNode
-  rows: SignalFeedRow[]; decisionKey: 'day_decision' | 'swing_decision' | 'regular_decision'
-  confKey: 'day' | 'swing' | 'regular'; onOpen: (ticker: string) => void
+  rows: SignalFeedRow[]; blockKey: 'day' | 'swing' | 'regular'
+  decisionKey: 'day_decision' | 'swing_decision' | 'regular_decision'; onOpen: (ticker: string) => void
 }) {
   const visible = rows.slice(0, 6)
   return (
@@ -47,14 +55,25 @@ function EngineList({ title, icon, rows, decisionKey, confKey, onOpen }: {
         {visible.length === 0 ? (
           <div className="px-3 py-4 text-center text-xs text-tertiary">No actionable {title.toLowerCase()} setups right now.</div>
         ) : visible.map((row, i) => {
-          const conf = (row as unknown as Record<string, { confidence?: number } | undefined>)[confKey]?.confidence
+          const block = (row as unknown as Record<string, SignalFeedDecisionBlock | undefined>)[blockKey]
+          const verdict = block?.verdict || block?.final_decision || String(row[decisionKey] || '')
+          const exec = (block?.execution_fields || []).filter(f => f?.value && f.value !== '—').slice(0, 3)
           return (
             <button key={row.id} type="button" onClick={() => onOpen(row.ticker)}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-muted ${i < visible.length - 1 ? 'border-b border-border' : ''}`}>
-              <span className="w-14 shrink-0 font-mono text-sm font-semibold text-heading">{row.ticker}</span>
-              <StructBadge s={structOf(row)} />
-              <span className="min-w-0 flex-1 truncate text-xs text-secondary">{String(row[decisionKey] || '').replace(/_/g, ' ')}</span>
-              {typeof conf === 'number' && <span className="shrink-0 font-mono text-[11px] text-tertiary">{conf}%</span>}
+              className={`block w-full px-3 py-2.5 text-left hover:bg-surface-muted ${i < visible.length - 1 ? 'border-b border-border' : ''}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-semibold text-heading">{row.ticker}</span>
+                <StructBadge s={structOf(row)} />
+                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${verdictCls(verdict)}`}>{String(verdict).replace(/_/g, ' ')}</span>
+                {block?.strategy && <span className="truncate text-[11px] font-medium text-secondary">{block.strategy}</span>}
+                {typeof block?.confidence === 'number' && <span className="ml-auto shrink-0 font-mono text-[11px] text-tertiary">{block.confidence}%</span>}
+              </div>
+              {block?.reason && <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-secondary">{block.reason}</div>}
+              {exec.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-tertiary">
+                  {exec.map(f => <span key={f.label}><span className="opacity-70">{f.label}</span> {f.value}</span>)}
+                </div>
+              )}
             </button>
           )
         })}
@@ -63,30 +82,58 @@ function EngineList({ title, icon, rows, decisionKey, confKey, onOpen }: {
   )
 }
 
+const CC_CACHE_KEY = 'oa_command_center_cache_v1'
+type CCCache = { rows: SignalFeedRow[]; earnings: EarningsRadarCard[]; at: number }
+function readCCCache(): CCCache | null {
+  try {
+    const raw = localStorage.getItem(CC_CACHE_KEY)
+    return raw ? (JSON.parse(raw) as CCCache) : null
+  } catch { return null }
+}
+function writeCCCache(rows: SignalFeedRow[], earnings: EarningsRadarCard[]): number {
+  const at = Date.now()
+  try { localStorage.setItem(CC_CACHE_KEY, JSON.stringify({ rows, earnings, at })) } catch { /* quota/private mode */ }
+  return at
+}
+
 export default function TradeCommandCenter() {
   const navigate = useNavigate()
-  const [rows, setRows] = useState<SignalFeedRow[]>([])
-  const [earnings, setEarnings] = useState<EarningsRadarCard[]>([])
-  const [loading, setLoading] = useState(true)
+  const cached = useMemo(() => readCCCache(), [])
+  const [rows, setRows] = useState<SignalFeedRow[]>(cached?.rows ?? [])
+  const [earnings, setEarnings] = useState<EarningsRadarCard[]>(cached?.earnings ?? [])
+  // Only block the page when there is nothing cached to show yet.
+  const [loading, setLoading] = useState(!cached)
+  const [refreshing, setRefreshing] = useState(false)
+  const [updatedAt, setUpdatedAt] = useState<number | null>(cached?.at ?? null)
   const [error, setError] = useState('')
 
-  const load = async () => {
-    setLoading(true); setError('')
+  const load = useCallback(async (refresh: boolean, hasCache: boolean) => {
+    if (refresh || !hasCache) { if (!hasCache) setLoading(true) }
+    setRefreshing(true); setError('')
     try {
       const [feed, radar] = await Promise.allSettled([
-        fetchSignalFeed({ page_size: 60, sort_by: 'relative_strength', sort_dir: 'desc' }),
+        fetchSignalFeed({ page_size: 60, sort_by: 'relative_strength', sort_dir: 'desc', refresh }),
         fetchEarningsRadar({ withinDays: 30 }),
       ])
-      if (feed.status === 'fulfilled') setRows(feed.value.data?.rows ?? [])
-      if (radar.status === 'fulfilled') setEarnings(radar.value.cards ?? [])
-      if (feed.status === 'rejected' && radar.status === 'rejected') setError('Unable to load the command center. Try again.')
+      const nextRows = feed.status === 'fulfilled' ? (feed.value.data?.rows ?? []) : null
+      const nextEarnings = radar.status === 'fulfilled' ? (radar.value.cards ?? []) : null
+      if (nextRows) setRows(nextRows)
+      if (nextEarnings) setEarnings(nextEarnings)
+      if (nextRows || nextEarnings) {
+        setUpdatedAt(writeCCCache(nextRows ?? cached?.rows ?? [], nextEarnings ?? cached?.earnings ?? []))
+      }
+      if (feed.status === 'rejected' && radar.status === 'rejected' && !hasCache) {
+        setError('Unable to load the command center. Try again.')
+      }
     } catch {
-      setError('Unable to load the command center. Try again.')
+      if (!hasCache) setError('Unable to load the command center. Try again.')
     } finally {
-      setLoading(false)
+      setLoading(false); setRefreshing(false)
     }
-  }
-  useEffect(() => { void load() }, [])
+  }, [cached])
+
+  // Show cached data instantly, then always revalidate in the background on mount.
+  useEffect(() => { void load(false, !!cached) }, [load, cached])
 
   const market = useMemo(() => {
     const row = rows[0]
@@ -119,8 +166,9 @@ export default function TradeCommandCenter() {
           <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${biasCls(market.spy)}`}>SPY {market.spy || '—'}</span>
           <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${biasCls(market.qqq)}`}>QQQ {market.qqq || '—'}</span>
           {market.vix != null && <span className="rounded-md bg-surface-muted px-2 py-0.5 text-xs font-semibold text-secondary">VIX {market.vix.toFixed(1)}</span>}
-          <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-secondary hover:bg-surface-muted disabled:opacity-60">
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />Refresh
+          {updatedAt && <span className="text-[10px] text-tertiary">{refreshing ? 'updating…' : `updated ${new Date(updatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}</span>}
+          <button type="button" onClick={() => void load(true, true)} disabled={refreshing} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-secondary hover:bg-surface-muted disabled:opacity-60">
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />Refresh
           </button>
         </div>
       </div>
@@ -175,12 +223,12 @@ export default function TradeCommandCenter() {
 
       {/* Day / Swing */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <EngineList title="Day trade" icon={<Zap size={15} className="text-violet-500" />} rows={dayRows} decisionKey="day_decision" confKey="day" onOpen={openEngine('day')} />
-        <EngineList title="Swing trade" icon={<TrendingUp size={15} className="text-violet-500" />} rows={swingRows} decisionKey="swing_decision" confKey="swing" onOpen={openEngine('swing')} />
+        <EngineList title="Day trade" icon={<Zap size={15} className="text-violet-500" />} rows={dayRows} decisionKey="day_decision" blockKey="day" onOpen={openEngine('day')} />
+        <EngineList title="Swing trade" icon={<TrendingUp size={15} className="text-violet-500" />} rows={swingRows} decisionKey="swing_decision" blockKey="swing" onOpen={openEngine('swing')} />
       </div>
 
       {/* Regular */}
-      <EngineList title="Regular · options ideas" icon={<Layers size={15} className="text-violet-500" />} rows={regularRows} decisionKey="regular_decision" confKey="regular" onOpen={openEngine('regular')} />
+      <EngineList title="Regular · options ideas" icon={<Layers size={15} className="text-violet-500" />} rows={regularRows} decisionKey="regular_decision" blockKey="regular" onOpen={openEngine('regular')} />
 
       <div className="flex items-start gap-1.5 border-t border-border pt-3 text-[11px] text-tertiary">
         <Radar size={13} className="mt-0.5 shrink-0" />
