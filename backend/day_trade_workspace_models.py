@@ -464,5 +464,6 @@ class DayTradeWorkspaceResponse(BaseModel):
     chart: DayTradeChartView
     priorContext: dict[str, Any] | None = None
     orVwapFramework: dict[str, Any] | None = None
+    fvgStrategy: dict[str, Any] | None = None
     tabs: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] | None = None

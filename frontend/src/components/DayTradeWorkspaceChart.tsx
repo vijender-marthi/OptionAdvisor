@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent, ReactNode, WheelEvent } from 'react'
 import { ArrowLeft, ArrowRight, Focus, Layers, Maximize2, Minimize2, RotateCcw, SlidersHorizontal, ZoomIn, ZoomOut } from 'lucide-react'
 import type { DayTradeSemanticTone, DayTradeWorkspaceResponse } from '../api/client'
+import DayTradeFvgLayer, { type FvgStrategy } from './DayTradeFvgLayer'
 
 type WorkspaceChart = DayTradeWorkspaceResponse['chart']
 type WorkspaceInterval = '1m' | '5m' | '15m' | '1h'
@@ -124,12 +125,14 @@ export default function DayTradeWorkspaceChart({
   activeInterval,
   onIntervalChange,
   rangeOptions = ['30m', '1h', '2h', 'session'],
+  fvg,
 }: {
   chart: WorkspaceChart
   marketTimeZone?: string
   activeInterval?: WorkspaceInterval
   onIntervalChange?: (interval: WorkspaceInterval) => void
   rangeOptions?: WorkspaceRange[]
+  fvg?: FvgStrategy | null
 }) {
   const firstCandleTime = chart.candles[0]?.time || ''
   const emaOverlay = (chart as unknown as { emaOverlay?: { id: string; label: string; points: Array<{ barStartUtc: string; ema9?: number | null; ema20?: number | null; ema50?: number | null }> } | null }).emaOverlay ?? null
@@ -139,6 +142,7 @@ export default function DayTradeWorkspaceChart({
   const [panOffsetBars, setPanOffsetBars] = useState(0)
   const [followLive, setFollowLive] = useState(chart.defaults.followLive)
   const [overlayMenuOpen, setOverlayMenuOpen] = useState(false)
+  const [showSmc, setShowSmc] = useState(true)
   const [visibleOverlayIds, setVisibleOverlayIds] = useState(defaultOverlayIds)
   const [fullscreen, setFullscreen] = useState(false)
   const [visibleRange, setVisibleRange] = useState<WorkspaceRange>(chart.defaults.visibleRange === '30m' || chart.defaults.visibleRange === '2h' || chart.defaults.visibleRange === 'session' || chart.defaults.visibleRange === '7d' ? chart.defaults.visibleRange : '1h')
@@ -667,6 +671,20 @@ export default function DayTradeWorkspaceChart({
             </button>
           )
         })}
+        {fvg && (
+          <button
+            type="button"
+            onClick={() => setShowSmc(v => !v)}
+            title="Fair Value Gaps, CHoCH & order-block strategy"
+            className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
+              showSmc
+                ? 'border-violet-500/35 bg-violet-500/10 text-violet-700 shadow-sm shadow-violet-500/10 dark:text-violet-200'
+                : 'border-slate-200 text-tertiary opacity-60 dark:border-white/[0.08]'
+            }`}
+          >
+            FVG / SMC
+          </button>
+        )}
       </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -708,6 +726,18 @@ export default function DayTradeWorkspaceChart({
           )
         })}
         <line x1="0" x2={WIDTH} y1={VOLUME_TOP} y2={VOLUME_TOP} className="stroke-slate-300/70 dark:stroke-white/10" />
+        {showSmc && fvg && model.visibleCandles.length > 0 && (
+          <DayTradeFvgLayer
+            data={fvg}
+            yForPrice={model.yForPrice}
+            visibleTimes={model.visibleTimes}
+            firstTime={model.visibleCandles[0]?.time || ''}
+            lastTime={model.visibleCandles[model.visibleCandles.length - 1]?.time || ''}
+            width={WIDTH}
+            priceTop={PRICE_TOP}
+            priceBottom={PRICE_BOTTOM}
+          />
+        )}
         {model.points.map((point, index) => {
           const candleWidth = Math.max(3.5, Math.min(model.barWidth * 0.76, 20))
           const bodyTop = Math.min(point.openY, point.closeY)

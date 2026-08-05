@@ -16,6 +16,7 @@ import AICoachWidget from './AICoachWidget'
 import SetupExitPlanner from './SetupExitPlanner'
 import DayTradePriorContext, { type PriorContext } from './DayTradePriorContext'
 import DayTradeOrVwapFramework, { type OrVwapFramework } from './DayTradeOrVwapFramework'
+import { type FvgStrategy } from './DayTradeFvgLayer'
 import DayTradeMultiDayChart, { type MultiDayBar } from './DayTradeMultiDayChart'
 
 type Props = {
@@ -500,6 +501,7 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
   const [chartHeight, setChartHeight] = useState(680)
   const [chartTab, setChartTab] = useState<'session' | 'multiday'>('session')
   const priorCtx = (workspace as unknown as { priorContext?: PriorContext & { multiDay?: MultiDayBar[] } }).priorContext
+  const fvgStrategy = (workspace as unknown as { fvgStrategy?: FvgStrategy }).fvgStrategy
   const resizeChart = (event: React.PointerEvent<HTMLDivElement>) => {
     const startY = event.clientY
     const startHeight = chartHeight
@@ -517,7 +519,7 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
   const chartBody = (
     <div className="min-h-0 flex-1" style={{ minHeight: minimized ? 0 : fillFrame ? 0 : `clamp(320px, 62dvh, ${chartHeight}px)` }}>
       {chartTab === 'session' ? (
-        <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+        <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} fvg={fvgStrategy} />
       ) : (
         <div className="h-full space-y-2 overflow-auto p-2">
           <DayTradePriorContext ctx={priorCtx} />
@@ -564,7 +566,7 @@ export function WorkspaceChartPreview({ workspace, displayTimeZone, selectedInte
           </button>
         </div>
         <div className="min-h-0 flex-1 p-2">
-          <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} />
+          <DayTradeWorkspaceChart chart={workspace.chart} marketTimeZone={displayTimeZone} activeInterval={selectedInterval} onIntervalChange={onIntervalChange} fvg={fvgStrategy} />
         </div>
       </div>
     )}
@@ -603,6 +605,7 @@ export function TradeDecisionPanel({
   const decisionWarnings = buildDecisionWarnings(workspace)
   const formingPivot = workspace.chart.marketStructure?.provisionalPivot
   const orVwap = (workspace as unknown as { orVwapFramework?: OrVwapFramework }).orVwapFramework
+  const fvgStrategy = (workspace as unknown as { fvgStrategy?: FvgStrategy }).fvgStrategy
   const shouldRenderWidget = (title: string) => {
     const docked = dockedWidgetIds.includes(widgetIdForTitle(title))
     return placement === 'bottom' ? docked : !docked
@@ -752,6 +755,25 @@ export function TradeDecisionPanel({
       </Panel>}
       {orVwap && shouldRenderWidget('OR / VWAP') && <Panel title="OR / VWAP" {...panelProps}>
         <DayTradeOrVwapFramework fw={orVwap} />
+      </Panel>}
+      {fvgStrategy?.strategy && shouldRenderWidget('FVG Strategy') && <Panel title="FVG Strategy" {...panelProps}>
+        {fvgStrategy.strategy.valid ? (
+          <div className="space-y-2 text-xs">
+            <div className={`text-[11px] font-black uppercase tracking-wide ${fvgStrategy.strategy.direction === 'bullish' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
+              {fvgStrategy.strategy.direction} · {String(fvgStrategy.strategy.status || '').replace(/_/g, ' ')}
+            </div>
+            <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
+              <div><div className="text-[9px] text-tertiary">Entry (FVG mid)</div><div className="font-bold text-heading">{fvgStrategy.strategy.entry?.toFixed(2)}</div></div>
+              <div><div className="text-[9px] text-tertiary">Stop</div><div className="font-bold text-red-600 dark:text-red-300">{fvgStrategy.strategy.stop?.toFixed(2)}</div></div>
+              <div><div className="text-[9px] text-tertiary">Target (OB)</div><div className="font-bold text-emerald-700 dark:text-emerald-300">{fvgStrategy.strategy.target != null ? fvgStrategy.strategy.target.toFixed(2) : '—'}</div></div>
+            </div>
+            {fvgStrategy.strategy.riskReward != null && <div className="font-mono text-[11px] text-secondary">R:R <span className="font-bold text-heading">{fvgStrategy.strategy.riskReward}</span></div>}
+            <div className="text-[10px] leading-relaxed text-tertiary">{fvgStrategy.strategy.reason}</div>
+            {fvgStrategy.counts && <div className="text-[9px] text-tertiary">{fvgStrategy.counts.fvgUnmitigated} active FVGs · {fvgStrategy.counts.choch} CHoCH · {fvgStrategy.counts.orderBlocks} order blocks</div>}
+          </div>
+        ) : (
+          <div className="text-[11px] text-tertiary">{fvgStrategy.strategy.reason}</div>
+        )}
       </Panel>}
       {shouldRenderWidget('Setup') && <Panel title="Setup" {...panelProps}>
         {engine ? (

@@ -11,6 +11,7 @@ from typing import Any
 
 from day_trade_trap_detection import build_trap_detection_from_metrics, build_unavailable_trap_detection
 from day_trade_or_vwap import compute_or_vwap_framework
+from day_trade_fvg import compute_fvg_strategy
 
 
 DAY_TRADE_WORKSPACE_SCHEMA_VERSION = "day-trade-workspace.v1"
@@ -1764,6 +1765,28 @@ def _or_vwap_framework(metrics: dict[str, Any], raw_chart_bars: list[Any]) -> di
     )
 
 
+def _fvg_strategy(chart_bars: list[Any]) -> dict[str, Any]:
+    """FVG / CHoCH / order-block Smart-Money engine over the displayed session bars.
+
+    Trims fair value gaps for rendering — every unmitigated (actionable) gap plus a
+    few of the most recent filled ones — so the chart stays readable on a full session."""
+    bars = [b for b in _as_list(chart_bars) if isinstance(b, dict)]
+    result = compute_fvg_strategy(bars, extend_bars=20)
+    fvgs = result.get("fvgs", [])
+    unmitigated = [f for f in fvgs if not f.get("mitigated")]
+    mitigated = [f for f in fvgs if f.get("mitigated")]
+    shown = sorted(unmitigated + mitigated[-6:], key=lambda f: f.get("startIndex", 0))[-40:]
+    result["fvgs"] = shown
+    result["counts"] = {
+        "fvgTotal": len(fvgs),
+        "fvgUnmitigated": len(unmitigated),
+        "fvgShown": len(shown),
+        "choch": len(result.get("choch", [])),
+        "orderBlocks": len(result.get("orderBlocks", [])),
+    }
+    return result
+
+
 def build_day_trade_workspace_response(
     *,
     scan: Any,
@@ -1895,6 +1918,7 @@ def build_day_trade_workspace_response(
             "multiDay": [b for b in _as_list(metrics.get("multi_day_chart")) if isinstance(b, dict)],
         },
         "orVwapFramework": _or_vwap_framework(metrics, raw_chart_bars),
+        "fvgStrategy": _fvg_strategy(chart_bars),
         "decisionEngine": decision_engine,
         "professionalDecision": professional_decision,
         "evidence": _evidence(scan, resolved, metrics),
