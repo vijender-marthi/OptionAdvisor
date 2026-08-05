@@ -148,6 +148,56 @@ def _expected_move(ticker: str, spot: float, on_or_after: date) -> dict[str, Any
         return None
 
 
+def _credit_spread(ticker: str, spot: float, expiry: str, side: str, sigma_dollars: float, width: float = 5.0) -> dict[str, Any] | None:
+    """A defined-risk credit spread from the chain: sell ~1σ OTM, buy ``width`` further.
+
+    side='put'  → bull put spread (bullish structure). side='call' → bear call spread.
+    Credit and max risk use real chain mids; POP ≈ Φ(distance / σ)."""
+    try:
+        calls, puts = bar_cache.get_option_chain(ticker, expiry)
+        chain = puts if side == "put" else calls
+        if chain is None or chain.empty:
+            return None
+        chain = chain.copy()
+        strikes = chain["strike"].astype(float)
+        target = spot - sigma_dollars if side == "put" else spot + sigma_dollars
+        short_row = chain.iloc[(strikes - target).abs().argsort().iloc[0]]
+        short_strike = float(short_row["strike"])
+        long_target = short_strike - width if side == "put" else short_strike + width
+        long_row = chain.iloc[(strikes - long_target).abs().argsort().iloc[0]]
+        long_strike = float(long_row["strike"])
+
+        def _mid(r: Any) -> float | None:
+            bid, ask, last = _f(r.get("bid")), _f(r.get("ask")), _f(r.get("lastPrice"))
+            if bid and ask and bid > 0 and ask > 0:
+                return (bid + ask) / 2.0
+            return last
+
+        sm, lm = _mid(short_row), _mid(long_row)
+        actual_width = abs(short_strike - long_strike)
+        if sm is None or lm is None or actual_width <= 0:
+            return None
+        credit = sm - lm
+        if credit <= 0:
+            return None
+        max_risk = (actual_width - credit) * 100.0
+        sigma = max(0.01, sigma_dollars)
+        k = abs(spot - short_strike) / sigma
+        pop = 0.5 * (1.0 + math.erf(k / math.sqrt(2.0)))
+        return {
+            "type": "Bull put spread" if side == "put" else "Bear call spread",
+            "shortStrike": round(short_strike, 2),
+            "longStrike": round(long_strike, 2),
+            "width": round(actual_width, 2),
+            "credit": round(credit, 2),
+            "maxRisk": round(max_risk, 2),
+            "pop": round(pop * 100),
+            "note": "sell ~1σ OTM below structure" if side == "put" else "sell ~1σ OTM above structure",
+        }
+    except Exception:
+        return None
+
+
 def _vol_read(implied_pct: float | None, typical_pct: float | None) -> dict[str, str]:
     if implied_pct is None or typical_pct is None:
         return {"label": "Insufficient data", "tone": "neutral",
@@ -280,6 +330,10 @@ def build_card(ticker: str, within_days: int, budget: float) -> dict[str, Any] |
         "directionalLean": lean,
         "peers": _peers(sector, industry, ticker),
         "play": play,
+        "creditSpread": (
+            _credit_spread(ticker, spot, em["expiry"], "call" if lean == "slight bearish" else "put", em["straddle"] * 0.85)
+            if em and em.get("expiry") and em.get("straddle") else None
+        ),
     }
 
 

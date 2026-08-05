@@ -23,23 +23,11 @@ const toneCls = (tone: 'bull' | 'bear' | 'flat') =>
 const ACTIONABLE = new Set(['GO', 'STRONG_GO', 'READY', 'ENTER', 'WATCH', 'MANAGE'])
 const isActionable = (d?: string) => ACTIONABLE.has(String(d || '').toUpperCase())
 
-// Credit-spread suggestion from an earnings card: sell ~1σ OTM on the structure side.
-function creditSpread(card: EarningsRadarCard) {
-  const spot = card.spot
-  const move = (card.impliedMovePct ?? 6) / 100
-  const bull = card.directionalLean.includes('bullish')
-  const bear = card.directionalLean.includes('bearish')
-  if (bull) {
-    const s = Math.round(spot * (1 - move))
-    return { type: 'Bull put spread', strikes: `${s} / ${s - 5}`, note: 'sell ~1σ OTM below structure', tone: 'bull' as const }
-  }
-  if (bear) {
-    const s = Math.round(spot * (1 + move))
-    return { type: 'Bear call spread', strikes: `${s} / ${s + 5}`, note: 'sell ~1σ OTM above structure', tone: 'bear' as const }
-  }
-  const lo = Math.round(spot * (1 - move))
-  const hi = Math.round(spot * (1 + move))
-  return { type: 'Iron condor', strikes: `${lo} / ${hi}`, note: 'defined-risk, both sides', tone: 'flat' as const }
+function earningsTone(card: EarningsRadarCard): 'bull' | 'bear' | 'flat' {
+  const cs = card.creditSpread
+  if (card.directionalLean.includes('bearish') || (cs && cs.type.startsWith('Bear'))) return 'bear'
+  if (card.directionalLean.includes('bullish') || (cs && cs.type.startsWith('Bull'))) return 'bull'
+  return 'flat'
 }
 
 function StructBadge({ s }: { s: { label: string; tone: 'bull' | 'bear' | 'flat' } }) {
@@ -90,7 +78,7 @@ export default function TradeCommandCenter() {
         fetchEarningsRadar({ withinDays: 30 }),
       ])
       if (feed.status === 'fulfilled') setRows(feed.value.data?.rows ?? [])
-      if (radar.status === 'fulfilled') setEarnings((radar.value.cards ?? []).filter(c => c.daysToEarnings >= 14))
+      if (radar.status === 'fulfilled') setEarnings(radar.value.cards ?? [])
       if (feed.status === 'rejected' && radar.status === 'rejected') setError('Unable to load the command center. Try again.')
     } catch {
       setError('Unable to load the command center. Try again.')
@@ -149,20 +137,35 @@ export default function TradeCommandCenter() {
 
       {/* Earnings → credit spreads */}
       <div>
-        <div className="mb-2 flex items-center gap-2 text-[15px] font-semibold text-heading"><CalendarClock size={18} className="text-violet-500" />Earnings in 14–30 days · credit-spread candidates</div>
+        <div className="mb-2 flex items-center gap-2 text-[15px] font-semibold text-heading"><CalendarClock size={18} className="text-violet-500" />Earnings in the next 30 days · credit-spread candidates</div>
         {earnings.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border px-3 py-5 text-center text-xs text-tertiary">No watchlist tickers report in that window. Add names, or open the Earnings Radar.</div>
+          <div className="rounded-xl border border-dashed border-border px-3 py-5 text-center text-xs text-tertiary">No watchlist tickers report in the next 30 days. Add names, or open the Earnings Radar.</div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border">
-            {earnings.slice(0, 6).map((c, i, arr) => {
-              const cs = creditSpread(c)
+            {earnings.slice(0, 8).map((c, i, arr) => {
+              const cs = c.creditSpread
+              const tone = earningsTone(c)
               return (
                 <button key={c.ticker} type="button" onClick={() => navigate('/earnings-radar')}
                   className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-surface-muted ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
-                  <div className="w-28 shrink-0"><div className="font-mono text-sm font-semibold text-heading">{c.ticker}</div><div className="text-[10px] text-tertiary">{c.nextEarnings} · in {c.daysToEarnings}d</div></div>
-                  <StructBadge s={{ label: cs.tone === 'bull' ? 'Bullish' : cs.tone === 'bear' ? 'Bearish' : 'Neutral', tone: cs.tone }} />
-                  <div className="min-w-0 flex-1"><div className="text-sm font-medium text-heading">{cs.type} {cs.strikes}</div><div className="text-[10px] text-tertiary">{cs.note}</div></div>
-                  <div className="shrink-0 text-right font-mono text-[11px] text-tertiary">impl ±{c.impliedMovePct ?? '—'}% · typ ±{c.typicalMovePct ?? '—'}%</div>
+                  <div className="w-24 shrink-0"><div className="font-mono text-sm font-semibold text-heading">{c.ticker}</div><div className="text-[10px] text-tertiary">{c.nextEarnings} · in {c.daysToEarnings}d</div></div>
+                  <StructBadge s={{ label: tone === 'bull' ? 'Bullish' : tone === 'bear' ? 'Bearish' : 'Neutral', tone }} />
+                  <div className="min-w-0 flex-1">
+                    {cs ? (
+                      <>
+                        <div className="text-sm font-medium text-heading">{cs.type} <span className="font-mono">{cs.shortStrike} / {cs.longStrike}</span></div>
+                        <div className="text-[10px] text-tertiary">{cs.note} · impl ±{c.impliedMovePct ?? '—'}% vs typ ±{c.typicalMovePct ?? '—'}%</div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-tertiary">Spread unavailable (no chain) · impl ±{c.impliedMovePct ?? '—'}%</div>
+                    )}
+                  </div>
+                  {cs && (
+                    <div className="shrink-0 text-right font-mono text-[11px]">
+                      <div className="font-semibold text-emerald-600 dark:text-emerald-400">+${cs.credit.toFixed(2)} cr</div>
+                      <div className="text-tertiary">risk ${cs.maxRisk.toFixed(0)} · POP {cs.pop}%</div>
+                    </div>
+                  )}
                 </button>
               )
             })}

@@ -2470,6 +2470,10 @@ export type EarningsRadarCard = {
     sizing: { contracts: number; maxRisk: number; costPerContract: number } | null
     breakevenUp: number | null; breakevenDown: number | null; scenarioGainIfTypical: number | null
   } | null
+  creditSpread: {
+    type: string; shortStrike: number; longStrike: number; width: number
+    credit: number; maxRisk: number; pop: number; note: string
+  } | null
 }
 export type EarningsRadarResponse = {
   withinDays: number
