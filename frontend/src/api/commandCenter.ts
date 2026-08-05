@@ -365,13 +365,14 @@ export async function fetchPositionsCenter(): Promise<ApiEnvelope<Record<string,
 export async function fetchPositionsPerformance(): Promise<{
   performance: Record<string, unknown>
   coaching: Record<string, unknown>
+  edge?: Record<string, unknown>
 }> {
   if (USE_MOCK) {
-    return { performance: {}, coaching: {} }
+    return { performance: {}, coaching: {}, edge: {} }
   }
   const { data } = await api.get<unknown>('/positions-center/performance')
   const env = normalizeCommandCenterEnvelope(data)
-  return env.data as unknown as { performance: Record<string, unknown>; coaching: Record<string, unknown> }
+  return env.data as unknown as { performance: Record<string, unknown>; coaching: Record<string, unknown>; edge?: Record<string, unknown> }
 }
 
 export async function fetchSignalFeed(params: {

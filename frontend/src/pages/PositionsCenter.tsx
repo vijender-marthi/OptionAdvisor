@@ -39,12 +39,14 @@ import {
 import * as XLSX from 'xlsx'
 import PositionsDashboardTab from '../components/PositionsDashboardTab'
 import PerformanceCoachingTab from '../components/PerformanceCoachingTab'
+import PositionsEdgeTab from '../components/PositionsEdgeTab'
 import AICoachWidget from '../components/AICoachWidget'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'options', label: 'Options' },
   { id: 'stocks', label: 'Stocks' },
+  { id: 'edge', label: 'Your Edge' },
 ] as const
 
 type MainTabId = (typeof TABS)[number]['id']
@@ -2540,7 +2542,7 @@ export default function PositionsCenter() {
               </button>
             ))}
           </div>
-          {tab !== 'dashboard' && (
+          {tab !== 'dashboard' && tab !== 'edge' && (
           <div className="flex items-center gap-2 flex-wrap">
             {/* Ticker / strategy / expiry / close-date search */}
             <label className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-3 py-1.5 text-sm min-w-[180px]">
@@ -2597,7 +2599,7 @@ export default function PositionsCenter() {
           )}
         </div>
 
-        {filterOpen && tab !== 'dashboard' && (
+        {filterOpen && tab !== 'dashboard' && tab !== 'edge' && (
           <div className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
@@ -2773,6 +2775,8 @@ export default function PositionsCenter() {
           onDelete={handleDeletePosition}
           onAdd={() => setShowAddModal(true)}
         />
+      ) : tab === 'edge' ? (
+        <PositionsEdgeTab refreshKey={portfolioRefreshKey} />
       ) : (
         null
       )}

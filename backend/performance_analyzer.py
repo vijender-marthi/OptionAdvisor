@@ -218,3 +218,122 @@ def analyze_performance(positions: list[dict], *, now: Optional[date] = None) ->
             "prior_avg_win_rate": prior_agg["win_rate"],
         },
     }
+
+
+# ── Edge review: where your money actually comes from ─────────────────────────
+_EDGE_BUCKETS = {
+    "earnings": {"label": "Earnings-adjacent plays", "repeatable": False, "cadence": "~8 weeks/year",
+                 "detail": "Pre/post-print options, calendars, fades around earnings."},
+    "structure_day": {"label": "Structure day trades", "repeatable": True, "cadence": "every week",
+                      "detail": "VWAP rejections/reclaims, LH@VWAP, crowding-top fades."},
+    "carry": {"label": "Overnight carries", "repeatable": True, "cadence": "trending weeks",
+              "detail": "Final-hour trend into a morning exit."},
+    "swing": {"label": "Swings", "repeatable": True, "cadence": "any week",
+              "detail": "Multi-day holds at Fib/MA confluence and weekly higher lows."},
+    "other": {"label": "Other", "repeatable": True, "cadence": "", "detail": "Uncategorized closed trades."},
+}
+
+_BEST_SETUP = {
+    "structure_day": "VWAP rejection / reclaim day trade",
+    "swing": "Swing pullback at confluence",
+    "carry": "Carry trade (final-hour trend → AM exit)",
+    "earnings": "Earnings volatility play",
+    "other": "Review manually",
+}
+
+_PLAYBOOK = [
+    {"name": "VWAP rejection / reclaim", "frequency": "2–4/week", "expectation": "$150–400", "note": "Highest hit-rate pattern"},
+    {"name": "Swing pullback at confluence", "frequency": "1–2/month", "expectation": "$300–800", "note": "Fib + MA clusters, weekly HLs"},
+    {"name": "Carry trade", "frequency": "2–3/week", "expectation": "$100–300", "note": "Final-hour trend → AM exit"},
+    {"name": "Theta income", "frequency": "1–2/month", "expectation": "25–50% of debit", "note": "Calendars/spreads on any range thesis"},
+    {"name": "Event substitutes", "frequency": "~2/month", "expectation": "= earnings fades", "note": "Fed, CPI, launches — same fade grammar"},
+]
+
+
+def _near_earnings(ticker: str, d: Optional[date], earnings_map: dict[str, list[date]], window: int = 5) -> bool:
+    if not d:
+        return False
+    for ed in earnings_map.get(ticker.upper(), []):
+        if abs((ed - d).days) <= window:
+            return True
+    return False
+
+
+def _edge_bucket(p: dict, earnings_map: dict[str, list[date]]) -> str:
+    ticker = str(p.get("ticker") or "").upper()
+    if _near_earnings(ticker, _entry_date(p), earnings_map) or _near_earnings(ticker, _exit_date(p), earnings_map):
+        return "earnings"
+    hold = _hold_days(p)
+    if hold is None:
+        return "other"
+    if hold == 0:
+        return "structure_day"
+    if hold == 1:
+        return "carry"
+    return "swing"
+
+
+def analyze_edge(positions: list[dict]) -> dict[str, Any]:
+    """Separate durable, repeatable edge from earnings-season harvest, and surface
+    the best setup per ticker — an honest 'where your money came from' review."""
+    rows = _closed(positions)
+    tickers = {str(p.get("ticker") or "").upper() for p in rows if p.get("ticker")}
+
+    earnings_map: dict[str, list[date]] = {}
+    try:
+        import bar_cache
+        for t in tickers:
+            try:
+                earnings_map[t] = [d for d in (_parse_date(x) for x in bar_cache.get_earnings_dates(t)) if d]
+            except Exception:
+                earnings_map[t] = []
+    except Exception:
+        earnings_map = {}
+
+    buckets: dict[str, list[dict]] = {}
+    for p in rows:
+        buckets.setdefault(_edge_bucket(p, earnings_map), []).append(p)
+
+    by_source = []
+    for key, meta in _EDGE_BUCKETS.items():
+        items = buckets.get(key, [])
+        if not items:
+            continue
+        a = _agg(items)
+        by_source.append({
+            "key": key, "label": meta["label"], "repeatable": meta["repeatable"],
+            "cadence": meta["cadence"], "detail": meta["detail"],
+            "realized": a["realized"], "n": a["n"], "win_rate": a["win_rate"],
+        })
+    by_source.sort(key=lambda r: r["realized"], reverse=True)
+
+    total = round(sum(_f(p.get("realized_pnl")) for p in rows), 2)
+    durable = round(sum(r["realized"] for r in by_source if r["repeatable"]), 2)
+    earnings = round(total - durable, 2)
+
+    per_ticker = []
+    tb: dict[str, list[dict]] = {}
+    for p in rows:
+        tb.setdefault(str(p.get("ticker") or "—").upper(), []).append(p)
+    for t, items in tb.items():
+        counts: dict[str, int] = {}
+        for p in items:
+            counts[_edge_bucket(p, earnings_map)] = counts.get(_edge_bucket(p, earnings_map), 0) + 1
+        dominant = max(counts, key=counts.get) if counts else "other"
+        per_ticker.append({
+            "ticker": t, "realized": _agg(items)["realized"], "n": len(items),
+            "dominant": dominant, "bestSetup": _BEST_SETUP.get(dominant, "Review manually"),
+        })
+    per_ticker.sort(key=lambda r: r["realized"], reverse=True)
+
+    return {
+        "total": total,
+        "durable": durable,
+        "earningsDependent": earnings,
+        "durablePct": round(100 * durable / total, 0) if total else 0,
+        "bySource": by_source,
+        "perTicker": per_ticker,
+        "playbook": _PLAYBOOK,
+        "oneLiner": ("You don't need earnings — run your durable setups at high read-quality with discipline. "
+                     "Treat steady months as the baseline and earnings quarters as the bonus, not the business."),
+    }

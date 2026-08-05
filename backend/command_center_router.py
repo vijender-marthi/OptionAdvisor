@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 
 from alerts.alert_service import build_alert_center_payload
 from auth_routes import require_access_email
-from performance_analyzer import analyze_performance
+from performance_analyzer import analyze_performance, analyze_edge
 from coaching_engine import analyze_coaching
 import bar_cache
 import yfinance as yf
@@ -1852,7 +1852,8 @@ def get_positions_center_performance(auth_email: str = Depends(require_access_em
     state = get_user_state(email)
     portfolio = state.get("portfolio") or []
     return api_envelope(
-        {"performance": analyze_performance(portfolio), "coaching": analyze_coaching(portfolio)},
+        {"performance": analyze_performance(portfolio), "coaching": analyze_coaching(portfolio),
+         "edge": analyze_edge(portfolio)},
         stale=False,
     )
 
