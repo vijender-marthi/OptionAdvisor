@@ -273,9 +273,39 @@ def _edge_bucket(p: dict, earnings_map: dict[str, list[date]]) -> str:
     return "swing"
 
 
+def _resolved_realized_pnl(p: dict) -> Optional[float]:
+    """Realized P&L for a closed position, mirroring the dashboard's fallback so the
+    edge tab counts the same trades: use realized_pnl if set, else derive it from the
+    stored percent × cost basis × contracts (debit → |net_credit|, credit → max_profit)."""
+    rp = p.get("realized_pnl")
+    if rp is not None:
+        return _f(rp)
+    pnl_pct = p.get("pnlPct")
+    if pnl_pct is None:
+        pnl_pct = p.get("realized_pnl_percent")
+    if pnl_pct is None:
+        return None
+    net_credit = _f(p.get("net_credit"), 0.0)
+    cost_ref = abs(net_credit) if net_credit < 0 else _f(p.get("max_profit"), 0.0)
+    if cost_ref <= 0:
+        return None
+    contracts = max(1.0, _f(p.get("contracts"), 1.0))
+    return round((_f(pnl_pct, 0.0) / 100.0) * cost_ref * 100.0 * contracts, 2)
+
+
 def analyze_edge(positions: list[dict]) -> dict[str, Any]:
     """Separate durable, repeatable edge from earnings-season harvest, and surface
     the best setup per ticker — an honest 'where your money came from' review."""
+    # Backfill realized_pnl using the dashboard's fallback so closed trades that only
+    # carry a percent (not an absolute P&L) are still counted here.
+    enriched: list[dict] = []
+    for p in positions:
+        if str(p.get("status") or "").lower() == "closed" and p.get("realized_pnl") is None:
+            resolved = _resolved_realized_pnl(p)
+            if resolved is not None:
+                p = {**p, "realized_pnl": resolved}
+        enriched.append(p)
+    positions = enriched
     rows = _closed(positions)
     tickers = {str(p.get("ticker") or "").upper() for p in rows if p.get("ticker")}
 
