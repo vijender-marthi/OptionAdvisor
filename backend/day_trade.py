@@ -1299,7 +1299,11 @@ def _build_orh_breakout_lifecycle(
                 hold_close = close > or_high
                 continuation = high > prior_high and _vol_ok(i)
                 pullback_hold = low <= or_high * 1.0015 and close > opens[i] and close > or_high
-                if (hold_close or continuation or pullback_hold) and _vol_ok(i) and not _extended(i):
+                # A held close above ORH confirms the breakout (trigger fired) so the
+                # setup leaves "Pending". Volume and over-extension no longer BLOCK the
+                # trigger — they only downgrade entry safety (see the E2 return below),
+                # otherwise a strong, decisive break can never confirm.
+                if hold_close or continuation or pullback_hold:
                     first_signal_i = i
                     state = "ACTIVE_TRADE"
         elif state == "ACTIVE_TRADE":
@@ -1331,7 +1335,7 @@ def _build_orh_breakout_lifecycle(
                 prior_high = highs[pending_i]
                 hold_close = close > or_high
                 continuation = high > prior_high and _vol_ok(i)
-                if (hold_close or continuation) and _vol_ok(i) and not _extended(i):
+                if hold_close or continuation:
                     candidate_i = i
                     state = "ACTIVE_TRADE"
                     break
@@ -1366,21 +1370,39 @@ def _build_orh_breakout_lifecycle(
 
     if first_signal_i is not None and (failure_i is None or first_signal_i > failure_i):
         t1, t2, rr = _rr(first_signal_i, stop)
+        _extended_entry = _extended(first_signal_i)
+        _weak_volume = not _vol_ok(first_signal_i)
+        _thin_rr = not (rr is None or rr >= 0.8)
+        # Trigger has fired (setup confirmed); these only govern whether it's SAFE to
+        # chase a fresh entry right here.
+        _safe = not (_extended_entry or _thin_rr)
+        if _extended_entry:
+            _status = "GO LONG — E2 ORH breakout confirmed (extended — wait for a pullback)"
+            _why = "Breakout confirmed above ORH, but price is extended past the VWAP bands. Chasing here is poor timing — wait for a pullback toward ORH/VWAP."
+        elif _weak_volume:
+            _status = "GO LONG — E2 ORH breakout confirmed (volume light)"
+            _why = "Breakout held above ORH, but volume is below the confirmation threshold — size down or wait for a volume push."
+        elif _thin_rr:
+            _status = "GO LONG — E2 ORH breakout confirmed"
+            _why = "Breakout confirmed, but reward to T1 is thin."
+        else:
+            _status = "GO LONG — E2 ORH breakout confirmed"
+            _why = "First breakout is confirmed by candle close and follow-through with volume."
         return {
             **base,
             "state": "ACTIVE_TRADE" if state == "ACTIVE_TRADE" else "BREAKOUT_CONFIRMED",
             "signal": "E2",
             "signal_label": "ORH Breakout",
             "action": "GO_LONG",
-            "status_message": "GO LONG — E2 ORH breakout confirmed",
-            "reason": "Breakout candle closed above ORH and the next candle held/continued with acceptable volume.",
+            "status_message": _status,
+            "reason": "Breakout candle closed above ORH and the next candle held/continued.",
             "invalidates": f"Close back below ORH {_fmt_level(or_high)} or loss of VWAP.",
             "stop_level": stop,
             "t1": t1,
             "t2": t2,
             "risk_reward": rr,
-            "safe": bool(rr is None or rr >= 0.8),
-            "why_safe_or_unsafe": "First breakout is confirmed by candle close and follow-through." if rr is None or rr >= 0.8 else "Breakout confirmed, but reward to T1 is thin.",
+            "safe": _safe,
+            "why_safe_or_unsafe": _why,
             "confirmed_at": pd.Timestamp(times[first_signal_i]).isoformat() if first_signal_i < len(times) else None,
         }
 

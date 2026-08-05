@@ -59,6 +59,19 @@ class TestOrhBreakoutLifecycle(unittest.TestCase):
         self.assertEqual(state["signal_label"], "ORH Breakout")
         self.assertEqual(state["action"], "GO_LONG")
 
+    def test_extended_breakout_still_confirms_e2_but_flags_unsafe(self):
+        # Regression: a strong ORH break that runs past the VWAP bands used to stay
+        # stuck on "Pending" forever. It must now confirm (trigger fired) while
+        # flagging the fresh entry as extended/unsafe.
+        state = _life([
+            _bar(99.9, 100.4, 99.8, 100.2),
+            _bar(100.2, 104.6, 100.1, 104.5),  # holds above ORH but extended past vwap_upper2 (104)
+        ])
+        self.assertEqual(state["signal"], "E2")
+        self.assertEqual(state["action"], "GO_LONG")
+        self.assertFalse(state["safe"])
+        self.assertIn("extended", state["status_message"].lower())
+
     def test_failed_breakout_requires_reset_before_reentry(self):
         state = _life([
             _bar(99.9, 100.4, 99.8, 100.2),
