@@ -1814,7 +1814,24 @@ function SwingPrimaryChart({
     const last = num(metrics?.last_price)
     if (last == null || last <= 0) return rawPoints
     const next = rawPoints.slice()
-    next[next.length - 1] = { ...next[next.length - 1]!, c: last }
+    const tail = next[next.length - 1]!
+    // Current session date in US market time.
+    const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const isWeekday = new Date(`${todayET}T12:00:00Z`).getUTCDay() % 6 !== 0
+    if (tail.d === todayET) {
+      // Today's bar is already in the series — keep its candle live and growing.
+      next[next.length - 1] = {
+        ...tail,
+        c: last,
+        h: Math.max(num(tail.h) ?? last, last),
+        l: Math.min(num(tail.l) ?? last, last),
+      }
+    } else if (isWeekday && todayET > tail.d) {
+      // Today's daily bar is not in the backend series yet (e.g. a cached scan) —
+      // append a forming candle so the current day always shows. Indicators stay
+      // blank for it (they only compute on completed sessions).
+      next.push({ d: todayET, o: tail.c, c: last, h: Math.max(tail.c, last), l: Math.min(tail.c, last), ma20: null, ma50: null, rsi: null, hv20: null, v: null })
+    }
     return next
   }, [metrics?.last_price, rawPoints])
   const framework = useMemo(() => buildIndicatorFramework(result, unified, fibTargets), [result, unified, fibTargets])
