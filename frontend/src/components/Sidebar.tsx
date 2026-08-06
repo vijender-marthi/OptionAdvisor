@@ -5,6 +5,7 @@ import {
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
   HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench, Link2, NotebookPen, Radio, Star, Radar,
+  Sparkles, CandlestickChart, Calculator, Lightbulb, Crosshair, CalendarCheck,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -126,7 +127,7 @@ export default function Sidebar() {
       // Step 1: build your watchlist before doing anything else
       label: 'My Watchlist',
       items: [
-        { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
+        { id: 'my-tickers', label: 'My Tickers', icon: <Eye size={18} /> },
       ],
     },
     {
@@ -134,7 +135,6 @@ export default function Sidebar() {
       label: 'Research',
       items: [
         { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
-        { id: 'ai-coach', label: 'AI Coach', icon: <Bot size={18} /> },
       ],
     },
     {
@@ -150,9 +150,9 @@ export default function Sidebar() {
       items: [
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade',   label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
-        { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
+        { id: 'ticker', label: 'Position Trading', icon: <CandlestickChart size={18} /> },
         { id: 'auto-trade', label: 'Auto Trading', icon: <Wallet size={18} /> },
-        { id: 'trade-worksheet', label: 'Pre-Trade Analysis', icon: <Link2 size={18} /> },
+        { id: 'trade-worksheet', label: 'Pre-Trade Analysis', icon: <Calculator size={18} /> },
         { id: 'earnings-radar', label: 'Earnings Radar', icon: <Radar size={18} /> },
       ],
     },
@@ -170,10 +170,8 @@ export default function Sidebar() {
       label: 'Portfolio',
       items: [
         { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
-        { id: 'investment-thesis', label: 'Investment Thesis', icon: <Star size={18} /> },
-        { id: 'track-mode', label: 'Track Mode', icon: <Radio size={18} /> },
+        { id: 'track-mode', label: 'Track Mode', icon: <Crosshair size={18} /> },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
-        { id: 'tools', label: 'Tools', icon: <Wrench size={18} /> },
       ],
     },
     {
@@ -181,9 +179,15 @@ export default function Sidebar() {
       label: 'Review',
       items: [
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-        { id: 'eod-journal', label: 'EOD Journal', icon: <Monitor size={18} /> },
+        { id: 'eod-journal', label: 'EOD Journal', icon: <CalendarCheck size={18} /> },
         { id: 'journal-tool', label: 'EOD Trade Journal', icon: <NotebookPen size={18} /> },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+      ],
+    },
+    {
+      label: 'Coach',
+      items: [
+        { id: 'ai-coach', label: 'AI Coach', icon: <Sparkles size={18} /> },
       ],
     },
     {
@@ -205,13 +209,13 @@ export default function Sidebar() {
   ]
   const mobileMoreItems: NavItem[] = [
     // Research
-    { id: 'my-tickers',    label: 'My Tickers',     icon: <ListTodo size={18} /> },
+    { id: 'my-tickers',    label: 'My Tickers',     icon: <Eye size={18} /> },
     { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
-    { id: 'ai-coach',       label: 'AI Coach',       icon: <Bot size={18} /> },
+    { id: 'ai-coach',       label: 'AI Coach',       icon: <Sparkles size={18} /> },
     // Trade
-    { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
+    { id: 'ticker',         label: 'Regular',       icon: <CandlestickChart size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },
-    { id: 'trade-worksheet',  label: 'Pre-Trade Analysis',   icon: <Link2 size={18} /> },
+    { id: 'trade-worksheet',  label: 'Pre-Trade Analysis',   icon: <Calculator size={18} /> },
     { id: 'earnings-radar',   label: 'Earnings Radar',        icon: <Radar size={18} /> },
     // Discover
     { id: 'ai-stocks',      label: 'AI Stocks',      icon: <Bot size={18} /> },
@@ -219,8 +223,7 @@ export default function Sidebar() {
     { id: 'trade-signals',  label: 'Trade Signals',  icon: <BarChart2 size={18} /> },
     // Portfolio
     { id: 'positions',      label: 'Positions',      icon: <Briefcase size={18} /> },
-    { id: 'investment-thesis', label: 'Investment Thesis', icon: <Star size={18} /> },
-    { id: 'track-mode',     label: 'Track Mode',     icon: <Radio size={18} /> },
+    { id: 'track-mode',     label: 'Track Mode',     icon: <Crosshair size={18} /> },
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     // Review
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
