@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Zap, TrendingUp, Layers, CalendarClock, AlertTriangle, RefreshCw, Radar } from 'lucide-react'
+import { CalendarClock, AlertTriangle, RefreshCw, Radar, ChevronUp, ChevronDown } from 'lucide-react'
 import { fetchSignalFeed } from '../api/commandCenter'
 import { fetchEarningsRadar, type EarningsRadarCard } from '../api/client'
 import type { SignalFeedRow, SignalFeedDecisionBlock } from '../types/commandCenter'
 import { getEngineRoute } from '../routing/routes'
 
-// ── structure (bull / bear / flat) from the row's backend trend ──────────────
+// ── shared helpers ───────────────────────────────────────────────────────────
 function structOf(row: SignalFeedRow): { label: string; tone: 'bull' | 'bear' | 'flat' } {
   const m = row.metrics as Record<string, unknown> | undefined
   const t = String(row.trend || (typeof m?.market_bias === 'string' ? m.market_bias : '')).toUpperCase()
@@ -19,9 +18,26 @@ const toneCls = (tone: 'bull' | 'bear' | 'flat') =>
   tone === 'bull' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
   : tone === 'bear' ? 'bg-red-500/10 text-red-600 dark:text-red-300'
   : 'bg-slate-500/10 text-tertiary'
+function StructBadge({ s }: { s: { label: string; tone: 'bull' | 'bear' | 'flat' } }) {
+  return <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${toneCls(s.tone)}`}>{s.label}</span>
+}
 
 const ACTIONABLE = new Set(['GO', 'STRONG_GO', 'READY', 'ENTER', 'WATCH', 'MANAGE'])
 const isActionable = (d?: string) => ACTIONABLE.has(String(d || '').toUpperCase())
+const V_RANK: Record<string, number> = { STRONG_GO: 5, GO: 4, READY: 4, ENTER: 4, WATCH: 3, MANAGE: 2, WAIT: 1, CONFLICT: 1, AVOID: 0, NO_EDGE: 0 }
+const rankOf = (v?: string) => V_RANK[String(v || '').toUpperCase()] ?? 0
+const verdictCls = (v?: string) => {
+  const r = rankOf(v)
+  return r >= 4 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+    : r >= 2 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+    : 'bg-red-500/10 text-red-600 dark:text-red-300'
+}
+const engineCls: Record<string, string> = {
+  day: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  swing: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  regular: 'bg-slate-500/10 text-secondary',
+}
+const engineLabel: Record<string, string> = { day: 'Day', swing: 'Swing', regular: 'Regular' }
 
 function earningsTone(card: EarningsRadarCard): 'bull' | 'bear' | 'flat' {
   const cs = card.creditSpread
@@ -30,85 +46,73 @@ function earningsTone(card: EarningsRadarCard): 'bull' | 'bear' | 'flat' {
   return 'flat'
 }
 
-function StructBadge({ s }: { s: { label: string; tone: 'bull' | 'bear' | 'flat' } }) {
-  return <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${toneCls(s.tone)}`}>{s.label}</span>
+// ── flatten feed rows × engines into one opportunity per actionable engine ────
+type Opp = {
+  id: string; ticker: string; struct: ReturnType<typeof structOf>; engine: 'day' | 'swing' | 'regular'
+  verdict: string; strategy: string | null; reason: string | null
+  entry: string | null; stop: string | null; target: string | null; rr: string | null; confidence: number | null
+  conviction: number; rrNum: number
 }
-
-const verdictCls = (v?: string) => {
-  const s = String(v || '').toUpperCase()
-  if (s.includes('STRONG_GO') || s === 'GO' || s === 'READY' || s === 'ENTER') return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-  if (s === 'WATCH' || s === 'MANAGE') return 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-  if (s.includes('AVOID') || s.includes('NO_EDGE') || s === 'WAIT' || s === 'CONFLICT') return 'bg-red-500/10 text-red-600 dark:text-red-300'
-  return 'bg-slate-500/10 text-tertiary'
+function execVal(block: SignalFeedDecisionBlock | undefined, re: RegExp): string | null {
+  const f = (block?.execution_fields || []).find(x => re.test(String(x.label)))
+  return f?.value && f.value !== '—' ? f.value : null
 }
-
-function EngineList({ title, icon, rows, blockKey, decisionKey, onOpen }: {
-  title: string; icon: ReactNode
-  rows: SignalFeedRow[]; blockKey: 'day' | 'swing' | 'regular'
-  decisionKey: 'day_decision' | 'swing_decision' | 'regular_decision'; onOpen: (ticker: string) => void
-}) {
-  const visible = rows.slice(0, 6)
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-heading">{icon}{title}</div>
-      <div className="overflow-hidden rounded-xl border border-border">
-        {visible.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs text-tertiary">No actionable {title.toLowerCase()} setups right now.</div>
-        ) : visible.map((row, i) => {
-          const block = (row as unknown as Record<string, SignalFeedDecisionBlock | undefined>)[blockKey]
-          const verdict = block?.verdict || block?.final_decision || String(row[decisionKey] || '')
-          const exec = (block?.execution_fields || []).filter(f => f?.value && f.value !== '—').slice(0, 3)
-          return (
-            <button key={row.id} type="button" onClick={() => onOpen(row.ticker)}
-              className={`block w-full px-3 py-2.5 text-left hover:bg-surface-muted ${i < visible.length - 1 ? 'border-b border-border' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-semibold text-heading">{row.ticker}</span>
-                <StructBadge s={structOf(row)} />
-                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${verdictCls(verdict)}`}>{String(verdict).replace(/_/g, ' ')}</span>
-                {block?.strategy && <span className="truncate text-[11px] font-medium text-secondary">{block.strategy}</span>}
-                {typeof block?.confidence === 'number' && <span className="ml-auto shrink-0 font-mono text-[11px] text-tertiary">{block.confidence}%</span>}
-              </div>
-              {block?.reason && <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-secondary">{block.reason}</div>}
-              {exec.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-tertiary">
-                  {exec.map(f => <span key={f.label}><span className="opacity-70">{f.label}</span> {f.value}</span>)}
-                </div>
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
+const numOf = (s: string | null): number => {
+  if (!s) return NaN
+  const n = parseFloat(String(s).replace(/[^0-9.\-]/g, ''))
+  return Number.isFinite(n) ? n : NaN
+}
+function buildOpps(rows: SignalFeedRow[]): Opp[] {
+  const engines: Array<['day' | 'swing' | 'regular', 'day_decision' | 'swing_decision' | 'regular_decision']> = [
+    ['day', 'day_decision'], ['swing', 'swing_decision'], ['regular', 'regular_decision'],
+  ]
+  const out: Opp[] = []
+  for (const row of rows) {
+    for (const [engine, dk] of engines) {
+      const block = (row as unknown as Record<string, SignalFeedDecisionBlock | undefined>)[engine]
+      const verdict = String(block?.verdict || block?.final_decision || row[dk] || '')
+      if (!isActionable(verdict)) continue
+      const rr = execVal(block, /r.?r|reward|risk.?reward/i)
+      const confidence = typeof block?.confidence === 'number' ? block.confidence : null
+      out.push({
+        id: `${row.id}-${engine}`, ticker: row.ticker, struct: structOf(row), engine, verdict,
+        strategy: block?.strategy ?? null, reason: block?.reason ?? null,
+        entry: execVal(block, /entry/i), stop: execVal(block, /stop/i), target: execVal(block, /target|tgt/i), rr,
+        confidence, conviction: rankOf(verdict) * 100 + (confidence ?? 0), rrNum: numOf(rr),
+      })
+    }
+  }
+  return out
 }
 
 const CC_CACHE_KEY = 'oa_command_center_cache_v1'
 type CCCache = { rows: SignalFeedRow[]; earnings: EarningsRadarCard[]; at: number }
 function readCCCache(): CCCache | null {
-  try {
-    const raw = localStorage.getItem(CC_CACHE_KEY)
-    return raw ? (JSON.parse(raw) as CCCache) : null
-  } catch { return null }
+  try { const raw = localStorage.getItem(CC_CACHE_KEY); return raw ? (JSON.parse(raw) as CCCache) : null } catch { return null }
 }
 function writeCCCache(rows: SignalFeedRow[], earnings: EarningsRadarCard[]): number {
   const at = Date.now()
-  try { localStorage.setItem(CC_CACHE_KEY, JSON.stringify({ rows, earnings, at })) } catch { /* quota/private mode */ }
+  try { localStorage.setItem(CC_CACHE_KEY, JSON.stringify({ rows, earnings, at })) } catch { /* quota/private */ }
   return at
 }
+
+type SortCol = 'conviction' | 'ticker' | 'engine' | 'verdict' | 'rr' | 'confidence'
 
 export default function TradeCommandCenter() {
   const navigate = useNavigate()
   const cached = useMemo(() => readCCCache(), [])
   const [rows, setRows] = useState<SignalFeedRow[]>(cached?.rows ?? [])
   const [earnings, setEarnings] = useState<EarningsRadarCard[]>(cached?.earnings ?? [])
-  // Only block the page when there is nothing cached to show yet.
   const [loading, setLoading] = useState(!cached)
   const [refreshing, setRefreshing] = useState(false)
   const [updatedAt, setUpdatedAt] = useState<number | null>(cached?.at ?? null)
   const [error, setError] = useState('')
+  const [engineFilter, setEngineFilter] = useState<'all' | 'day' | 'swing' | 'regular'>('all')
+  const [structFilter, setStructFilter] = useState<'all' | 'bull' | 'bear'>('all')
+  const [sort, setSort] = useState<{ col: SortCol; dir: 'asc' | 'desc' }>({ col: 'conviction', dir: 'desc' })
 
   const load = useCallback(async (refresh: boolean, hasCache: boolean) => {
-    if (refresh || !hasCache) { if (!hasCache) setLoading(true) }
+    if (!hasCache) setLoading(true)
     setRefreshing(true); setError('')
     try {
       const [feed, radar] = await Promise.allSettled([
@@ -119,20 +123,14 @@ export default function TradeCommandCenter() {
       const nextEarnings = radar.status === 'fulfilled' ? (radar.value.cards ?? []) : null
       if (nextRows) setRows(nextRows)
       if (nextEarnings) setEarnings(nextEarnings)
-      if (nextRows || nextEarnings) {
-        setUpdatedAt(writeCCCache(nextRows ?? cached?.rows ?? [], nextEarnings ?? cached?.earnings ?? []))
-      }
-      if (feed.status === 'rejected' && radar.status === 'rejected' && !hasCache) {
-        setError('Unable to load the command center. Try again.')
-      }
+      if (nextRows || nextEarnings) setUpdatedAt(writeCCCache(nextRows ?? cached?.rows ?? [], nextEarnings ?? cached?.earnings ?? []))
+      if (feed.status === 'rejected' && radar.status === 'rejected' && !hasCache) setError('Unable to load the command center. Try again.')
     } catch {
       if (!hasCache) setError('Unable to load the command center. Try again.')
     } finally {
       setLoading(false); setRefreshing(false)
     }
   }, [cached])
-
-  // Show cached data instantly, then always revalidate in the background on mount.
   useEffect(() => { void load(false, !!cached) }, [load, cached])
 
   const market = useMemo(() => {
@@ -148,18 +146,48 @@ export default function TradeCommandCenter() {
     }
   }, [rows])
 
-  const dayRows = useMemo(() => rows.filter(r => isActionable(r.day_decision)), [rows])
-  const swingRows = useMemo(() => rows.filter(r => isActionable(r.swing_decision)), [rows])
-  const regularRows = useMemo(() => rows.filter(r => isActionable(r.regular_decision)), [rows])
+  const opps = useMemo(() => {
+    let list = buildOpps(rows)
+    if (engineFilter !== 'all') list = list.filter(o => o.engine === engineFilter)
+    if (structFilter !== 'all') list = list.filter(o => o.struct.tone === structFilter)
+    const dir = sort.dir === 'asc' ? 1 : -1
+    list.sort((a, b) => {
+      switch (sort.col) {
+        case 'ticker': return a.ticker.localeCompare(b.ticker) * dir
+        case 'engine': return a.engine.localeCompare(b.engine) * dir
+        case 'verdict': return (rankOf(a.verdict) - rankOf(b.verdict)) * dir
+        case 'rr': return ((isNaN(a.rrNum) ? -1 : a.rrNum) - (isNaN(b.rrNum) ? -1 : b.rrNum)) * dir
+        case 'confidence': return ((a.confidence ?? 0) - (b.confidence ?? 0)) * dir
+        default: return (a.conviction - b.conviction) * dir
+      }
+    })
+    return list
+  }, [rows, engineFilter, structFilter, sort])
 
-  const openEngine = (engine: 'day' | 'swing' | 'regular') => (ticker: string) =>
-    navigate(getEngineRoute(engine, ticker))
+  const toggleSort = (col: SortCol) =>
+    setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'ticker' || col === 'engine' ? 'asc' : 'desc' })
 
   const biasCls = (v: string) => /BULL/i.test(v) ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
     : /BEAR/i.test(v) ? 'bg-red-500/10 text-red-600 dark:text-red-300' : 'bg-slate-500/10 text-secondary'
 
+  const Th = ({ col, label, className }: { col?: SortCol; label: string; className?: string }) => (
+    <th className={`px-3 py-2 text-left font-semibold ${className || ''}`}>
+      {col ? (
+        <button type="button" onClick={() => toggleSort(col)} className="inline-flex items-center gap-0.5 hover:text-heading">
+          {label}{sort.col === col && (sort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
+        </button>
+      ) : label}
+    </th>
+  )
+  const Chip = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button type="button" onClick={onClick}
+      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${active ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-200' : 'border-border text-tertiary hover:bg-surface-muted'}`}>
+      {children}
+    </button>
+  )
+
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-5 p-3 sm:p-5">
+    <div className="mx-auto w-full max-w-6xl space-y-4 p-3 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-heading">Trade command center</h1>
         <div className="flex items-center gap-2">
@@ -187,7 +215,7 @@ export default function TradeCommandCenter() {
       <div>
         <div className="mb-2 flex items-center gap-2 text-[15px] font-semibold text-heading"><CalendarClock size={18} className="text-violet-500" />Earnings in the next 30 days · credit-spread candidates</div>
         {earnings.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border px-3 py-5 text-center text-xs text-tertiary">No watchlist tickers report in the next 30 days. Add names, or open the Earnings Radar.</div>
+          <div className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-tertiary">No watchlist tickers report in the next 30 days. Add names, or open the Earnings Radar.</div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border">
             {earnings.slice(0, 8).map((c, i, arr) => {
@@ -195,25 +223,16 @@ export default function TradeCommandCenter() {
               const tone = earningsTone(c)
               return (
                 <button key={c.ticker} type="button" onClick={() => navigate('/earnings-radar')}
-                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-surface-muted ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-surface-muted ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                   <div className="w-24 shrink-0"><div className="font-mono text-sm font-semibold text-heading">{c.ticker}</div><div className="text-[10px] text-tertiary">{c.nextEarnings} · in {c.daysToEarnings}d</div></div>
                   <StructBadge s={{ label: tone === 'bull' ? 'Bullish' : tone === 'bear' ? 'Bearish' : 'Neutral', tone }} />
                   <div className="min-w-0 flex-1">
                     {cs ? (
-                      <>
-                        <div className="text-sm font-medium text-heading">{cs.type} <span className="font-mono">{cs.shortStrike} / {cs.longStrike}</span></div>
-                        <div className="text-[10px] text-tertiary">{cs.note} · impl ±{c.impliedMovePct ?? '—'}% vs typ ±{c.typicalMovePct ?? '—'}%</div>
-                      </>
-                    ) : (
-                      <div className="text-xs text-tertiary">Spread unavailable (no chain) · impl ±{c.impliedMovePct ?? '—'}%</div>
-                    )}
+                      <><div className="text-sm font-medium text-heading">{cs.type} <span className="font-mono">{cs.shortStrike} / {cs.longStrike}</span></div>
+                      <div className="text-[10px] text-tertiary">{cs.note} · impl ±{c.impliedMovePct ?? '—'}% vs typ ±{c.typicalMovePct ?? '—'}%</div></>
+                    ) : <div className="text-xs text-tertiary">Spread unavailable (no chain) · impl ±{c.impliedMovePct ?? '—'}%</div>}
                   </div>
-                  {cs && (
-                    <div className="shrink-0 text-right font-mono text-[11px]">
-                      <div className="font-semibold text-emerald-600 dark:text-emerald-400">+${cs.credit.toFixed(2)} cr</div>
-                      <div className="text-tertiary">risk ${cs.maxRisk.toFixed(0)} · POP {cs.pop}%</div>
-                    </div>
-                  )}
+                  {cs && <div className="shrink-0 text-right font-mono text-[11px]"><div className="font-semibold text-emerald-600 dark:text-emerald-400">+${cs.credit.toFixed(2)} cr</div><div className="text-tertiary">risk ${cs.maxRisk.toFixed(0)} · POP {cs.pop}%</div></div>}
                 </button>
               )
             })}
@@ -221,18 +240,64 @@ export default function TradeCommandCenter() {
         )}
       </div>
 
-      {/* Day / Swing */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <EngineList title="Day trade" icon={<Zap size={15} className="text-violet-500" />} rows={dayRows} decisionKey="day_decision" blockKey="day" onOpen={openEngine('day')} />
-        <EngineList title="Swing trade" icon={<TrendingUp size={15} className="text-violet-500" />} rows={swingRows} decisionKey="swing_decision" blockKey="swing" onOpen={openEngine('swing')} />
+      {/* Unified sortable setups table */}
+      <div>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="text-[15px] font-semibold text-heading">Today's setups</div>
+          <span className="text-xs text-tertiary">{opps.length} actionable</span>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {(['all', 'day', 'swing', 'regular'] as const).map(e => <Chip key={e} active={engineFilter === e} onClick={() => setEngineFilter(e)}>{e === 'all' ? 'All' : engineLabel[e]}</Chip>)}
+            <span className="mx-1 h-4 w-px bg-border" />
+            {(['all', 'bull', 'bear'] as const).map(s => <Chip key={s} active={structFilter === s} onClick={() => setStructFilter(s)}>{s === 'all' ? 'Any' : s === 'bull' ? 'Bull' : 'Bear'}</Chip>)}
+          </div>
+        </div>
+        {opps.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-tertiary">No actionable setups match. Add tickers to your watchlists, or clear the filters.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full min-w-[860px] border-collapse text-xs">
+              <thead className="bg-surface-muted text-[10px] uppercase tracking-wide text-tertiary">
+                <tr>
+                  <Th col="ticker" label="Ticker" />
+                  <Th label="Struct" />
+                  <Th col="engine" label="Engine" />
+                  <Th col="verdict" label="Verdict" />
+                  <Th label="Setup / strategy" />
+                  <Th label="Entry" className="text-right" />
+                  <Th label="Stop" className="text-right" />
+                  <Th label="Target" className="text-right" />
+                  <Th col="rr" label="R:R" className="text-right" />
+                  <Th col="confidence" label="Conf" className="text-right" />
+                </tr>
+              </thead>
+              <tbody>
+                {opps.map(o => (
+                  <tr key={o.id} onClick={() => navigate(getEngineRoute(o.engine, o.ticker))}
+                    className="cursor-pointer border-t border-border hover:bg-surface-muted">
+                    <td className="px-3 py-2 font-mono text-sm font-semibold text-heading">{o.ticker}</td>
+                    <td className="px-3 py-2"><StructBadge s={o.struct} /></td>
+                    <td className="px-3 py-2"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${engineCls[o.engine]}`}>{engineLabel[o.engine]}</span></td>
+                    <td className="px-3 py-2"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${verdictCls(o.verdict)}`}>{o.verdict.replace(/_/g, ' ')}</span></td>
+                    <td className="px-3 py-2">
+                      {o.strategy && <div className="font-medium text-heading">{o.strategy}</div>}
+                      {o.reason && <div className="max-w-[320px] truncate text-[11px] text-tertiary">{o.reason}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-heading">{o.entry ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-red-600 dark:text-red-400">{o.stop ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400">{o.target ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-secondary">{o.rr ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-tertiary">{o.confidence != null ? `${o.confidence}%` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-
-      {/* Regular */}
-      <EngineList title="Regular · options ideas" icon={<Layers size={15} className="text-violet-500" />} rows={regularRows} decisionKey="regular_decision" blockKey="regular" onOpen={openEngine('regular')} />
 
       <div className="flex items-start gap-1.5 border-t border-border pt-3 text-[11px] text-tertiary">
         <Radar size={13} className="mt-0.5 shrink-0" />
-        <span>Educational analysis, not financial advice. Credit spreads into earnings sell elevated IV at defined risk — a bigger-than-priced move can still hit the short strike. Structure is the backend read, not a guarantee. Strikes shown are ~1σ estimates.</span>
+        <span>Educational analysis, not financial advice. Verdicts and entry / stop / target are the backend engines' reads, not guarantees; blank fields mean the engine didn't return that value. Credit-spread strikes are ~1σ estimates.</span>
       </div>
     </div>
   )
