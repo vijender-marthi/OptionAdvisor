@@ -16,7 +16,6 @@ const TradeDeskPage = lazy(() => import('./pages/TradeDeskPage'))
 const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const PositionTradingV2Page = lazy(() => import('./pages/PositionTradingV2Page'))
-const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
 
 const AIStocksPage = lazy(() => import('./pages/AIStocksPage'))
@@ -168,9 +167,9 @@ function ShellRoutes() {
         <Route element={<RoleGuard />}>
           <Route element={<Suspense fallback={<RouteFallback />}><AppLayout /></Suspense>}>
             <Route element={<SuspensedOutlet />}>
-              <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
+              <Route path="/trade-command-center" element={<Navigate to="/ticker-scanner" replace />} />
               <Route path="/desk" element={<TradeDeskPage />} />
-              <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
+              <Route path="/ai-coach" element={<Navigate to="/ticker-scanner" replace />} />
               <Route path="/position-trading" element={<TickerPage />} />
               <Route path="/position-trading-v2" element={<PositionTradingV2Page />} />
               <Route path="/positions" element={<PositionsRoute />} />

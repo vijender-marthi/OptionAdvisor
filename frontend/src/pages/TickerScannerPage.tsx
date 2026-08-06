@@ -4,13 +4,42 @@ import {
   RefreshCw, TrendingUp, TrendingDown, ScanLine, ArrowUpRight, CheckCircle, XCircle, MinusCircle, HelpCircle,
 } from 'lucide-react'
 import { fetchSignalFeed } from '../api/commandCenter'
-import type { SignalFeedRow, SignalFeedMetrics } from '../types/commandCenter'
+import { fetchEarningsRadar, type EarningsRadarCard } from '../api/client'
+import type { SignalFeedRow, SignalFeedMetrics, SignalFeedDecisionBlock } from '../types/commandCenter'
 import { useApp } from '../contexts/AppContext'
 import {
   getAgreementBadgeClass,
   getDecisionBadgeClass,
 } from '../utils/semanticTrading'
 import { getEngineRoute } from '../routing/routes'
+
+// ─── Eligible-legs helpers (consolidated from the Command Center) ─────────────
+const CC_ACTIONABLE = new Set(['GO', 'STRONG_GO', 'READY', 'ENTER', 'WATCH', 'MANAGE'])
+const CC_VRANK: Record<string, number> = { STRONG_GO: 5, GO: 4, READY: 4, ENTER: 4, WATCH: 3, MANAGE: 2, WAIT: 1, CONFLICT: 1, AVOID: 0, NO_EDGE: 0 }
+const ccRank = (v?: string) => CC_VRANK[String(v || '').toUpperCase()] ?? 0
+const ccVerdictCls = (v?: string) => { const r = ccRank(v); return r >= 4 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : r >= 2 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-red-500/10 text-red-600 dark:text-red-300' }
+const ccEngineLabel: Record<string, string> = { day: 'Day', swing: 'Swing', regular: 'Regular' }
+const ccStructPill = (s: 'bull' | 'bear' | 'flat') => s === 'bull' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : s === 'bear' ? 'bg-red-500/10 text-red-600 dark:text-red-300' : 'bg-slate-500/10 text-gray-500'
+function ccExecVal(block: SignalFeedDecisionBlock | undefined, re: RegExp): string | null {
+  const f = (block?.execution_fields || []).find(x => re.test(String(x.label)))
+  return f?.value && f.value !== '—' ? f.value : null
+}
+type CCOpp = { id: string; ticker: string; struct: 'bull' | 'bear' | 'flat'; engine: 'day' | 'swing' | 'regular'; verdict: string; strategy: string | null; entry: string | null; stop: string | null; target: string | null; rr: string | null; confidence: number | null; conviction: number }
+function ccBuildOpps(rows: SignalFeedRow[]): CCOpp[] {
+  const engines: Array<['day' | 'swing' | 'regular', 'day_decision' | 'swing_decision' | 'regular_decision']> = [['day', 'day_decision'], ['swing', 'swing_decision'], ['regular', 'regular_decision']]
+  const out: CCOpp[] = []
+  for (const row of rows) for (const [engine, dk] of engines) {
+    const block = (row as unknown as Record<string, SignalFeedDecisionBlock | undefined>)[engine]
+    const verdict = String(block?.verdict || block?.final_decision || row[dk] || '')
+    if (!CC_ACTIONABLE.has(verdict.toUpperCase())) continue
+    const t = String(row.trend || '').toUpperCase()
+    const struct: 'bull' | 'bear' | 'flat' = t.includes('BULL') ? 'bull' : t.includes('BEAR') ? 'bear' : 'flat'
+    const confidence = typeof block?.confidence === 'number' ? block.confidence : null
+    out.push({ id: `${row.id}-${engine}`, ticker: row.ticker, struct, engine, verdict, strategy: block?.strategy ?? null, entry: ccExecVal(block, /entry/i), stop: ccExecVal(block, /stop/i), target: ccExecVal(block, /target|tgt/i), rr: ccExecVal(block, /r.?r|reward|risk.?reward/i), confidence, conviction: ccRank(verdict) * 100 + (confidence ?? 0) })
+  }
+  out.sort((a, b) => b.conviction - a.conviction)
+  return out
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -936,6 +965,7 @@ export default function TickerScannerPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [showingCache, setShowingCache] = useState(() => Boolean(cacheSeed?.rows?.length))
   const [error, setError] = useState<string | null>(null)
+  const [earnings, setEarnings] = useState<EarningsRadarCard[]>([])
   const [selected, setSelected] = useState<string | null>(() => cacheSeed?.rows?.[0]?.ticker ?? null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(() => cacheSeed?.fetchedAt ?? null)
 
@@ -969,6 +999,15 @@ export default function TickerScannerPage() {
   }, [rows.length, selected])
 
   useEffect(() => { void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let cancelled = false
+    fetchEarningsRadar({ withinDays: 30 })
+      .then(r => { if (!cancelled) setEarnings(r.cards ?? []) })
+      .catch(() => { /* earnings section stays empty */ })
+    return () => { cancelled = true }
+  }, [])
+
+  const opps = useMemo(() => ccBuildOpps(rows).slice(0, 12), [rows])
 
   const sorted = useMemo(() => [...rows].sort((a, b) => {
     const rsA = metricVal(a.metrics, 'relative_strength') ?? a.price_change_pct
@@ -1064,6 +1103,73 @@ export default function TickerScannerPage() {
             />
             <MarketCard label="Breadth" value={snap.breadth} sub="Scanner rows with day-trade interest" tone={snap.breadth.startsWith('0/') ? 'gray' : 'green'} />
             <MarketCard label="Overall Bias" value={snap.bias} sub="SPY/QQQ plus scanner breadth" tone={snap.bias === 'Bullish' ? 'green' : snap.bias === 'Bearish' || snap.bias === 'Defensive' ? 'red' : 'amber'} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Earnings · next 30 days · credit-spread legs ── */}
+      {earnings.length > 0 && (
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Earnings · next 30 days · credit-spread legs</div>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
+            {earnings.slice(0, 8).map((c, i, arr) => {
+              const cs = c.creditSpread
+              const tone: 'bull' | 'bear' | 'flat' = (cs?.type.startsWith('Bear') || c.directionalLean.includes('bearish')) ? 'bear' : (cs?.type.startsWith('Bull') || c.directionalLean.includes('bullish')) ? 'bull' : 'flat'
+              return (
+                <button key={c.ticker} type="button" onClick={() => navigate('/earnings-radar')}
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < arr.length - 1 ? 'border-b border-gray-100 dark:border-gray-800' : ''}`}>
+                  <div className="w-24 shrink-0"><div className="font-mono text-sm font-bold text-gray-900 dark:text-white">{c.ticker}</div><div className="text-[10px] text-gray-500">{c.nextEarnings} · in {c.daysToEarnings}d</div></div>
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${ccStructPill(tone)}`}>{tone === 'bull' ? 'Bullish' : tone === 'bear' ? 'Bearish' : 'Neutral'}</span>
+                  <div className="min-w-0 flex-1">
+                    {cs ? (<><div className="text-sm font-medium text-gray-900 dark:text-gray-100">{cs.type} <span className="font-mono">{cs.shortStrike} / {cs.longStrike}</span></div><div className="text-[10px] text-gray-500">{cs.note} · impl ±{c.impliedMovePct ?? '—'}%</div></>)
+                      : <div className="text-xs text-gray-500">Spread unavailable · impl ±{c.impliedMovePct ?? '—'}%</div>}
+                  </div>
+                  {cs && <div className="shrink-0 text-right font-mono text-[11px]"><div className="font-semibold text-emerald-600 dark:text-emerald-400">+${cs.credit.toFixed(2)} cr</div><div className="text-gray-500">risk ${cs.maxRisk.toFixed(0)} · POP {cs.pop}%</div></div>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Eligible legs · actionable setups ── */}
+      {opps.length > 0 && (
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Eligible legs · actionable setups ({opps.length})</div>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-x-auto">
+            <table className="w-full min-w-[820px] border-collapse text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-950/50 text-[10px] uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Ticker</th>
+                  <th className="px-3 py-2 text-left font-semibold">Str</th>
+                  <th className="px-3 py-2 text-left font-semibold">Engine</th>
+                  <th className="px-3 py-2 text-left font-semibold">Verdict</th>
+                  <th className="px-3 py-2 text-left font-semibold">Setup / strategy</th>
+                  <th className="px-3 py-2 text-right font-semibold">Entry</th>
+                  <th className="px-3 py-2 text-right font-semibold">Stop</th>
+                  <th className="px-3 py-2 text-right font-semibold">Target</th>
+                  <th className="px-3 py-2 text-right font-semibold">R:R</th>
+                  <th className="px-3 py-2 text-right font-semibold">Conf</th>
+                </tr>
+              </thead>
+              <tbody>
+                {opps.map(o => (
+                  <tr key={o.id} onClick={() => navigate(getEngineRoute(o.engine, o.ticker))}
+                    className="cursor-pointer border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                    <td className="px-3 py-2 font-mono font-bold text-gray-900 dark:text-white">{o.ticker}</td>
+                    <td className="px-3 py-2"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${ccStructPill(o.struct)}`}>{o.struct === 'bull' ? 'Bull' : o.struct === 'bear' ? 'Bear' : 'Flat'}</span></td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{ccEngineLabel[o.engine]}</td>
+                    <td className="px-3 py-2"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${ccVerdictCls(o.verdict)}`}>{o.verdict.replace(/_/g, ' ')}</span></td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><span className="block max-w-[260px] truncate">{o.strategy ?? '—'}</span></td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{o.entry ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-red-600 dark:text-red-400">{o.stop ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400">{o.target ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-600 dark:text-gray-300">{o.rr ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-500">{o.confidence != null ? `${o.confidence}%` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

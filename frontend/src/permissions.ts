@@ -25,9 +25,10 @@ const ADMIN_ONLY: ReadonlySet<Page> = new Set([
 /** Pages available to admin and super_user only (not regular day/swing subscribers). */
 const SUPER_AND_ABOVE: ReadonlySet<Page> = new Set([
   'day-trade-dashboard',
-  'ticker-scanner',
   'eod-journal',
 ])
+// ticker-scanner is the consolidated hub (Command Center redirects here), so it must
+// be reachable by every role — intentionally left ungated.
 
 /** Pages available to admin and day-trade subscribers. */
 const DAY_AND_ABOVE: ReadonlySet<Page> = new Set([

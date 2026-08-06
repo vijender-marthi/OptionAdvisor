@@ -140,7 +140,6 @@ export default function Sidebar() {
       // Step 3: assess and plan trades
       label: 'Command',
       items: [
-        { id: 'trade-command-center', label: 'Trade Command Center', icon: <Command size={18} /> },
         { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
       ],
     },
@@ -200,7 +199,6 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'day-trade',            label: 'Day Trade', icon: <Zap size={23} /> },
     { id: 'swing-trade',          label: 'Swing',     icon: <TrendingUp size={23} /> },
-    { id: 'trade-command-center', label: 'Command',   icon: <Command size={23} /> },
     { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
     { id: 'ticker',               label: 'Regular',   icon: <Layers size={23} /> },
   ]
