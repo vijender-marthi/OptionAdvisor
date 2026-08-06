@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from datetime import date, datetime, timedelta
@@ -111,6 +112,34 @@ def _massive_daily_history(ticker: str, period: str) -> pd.DataFrame:
         return df
     except Exception as exc:
         log.warning("bar_cache massive daily fallback failed %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+
+_ALPACA_TF = {"1m": "1Min", "5m": "5Min", "15m": "15Min", "30m": "30Min", "60m": "1Hour", "1h": "1Hour"}
+
+
+def _period_to_days(period: str) -> int:
+    m = re.match(r"\s*(\d+)\s*(d|wk|mo|y)", str(period).lower())
+    if not m:
+        return 5
+    n, unit = int(m.group(1)), m.group(2)
+    return n if unit == "d" else n * 7 if unit == "wk" else n * 31 if unit == "mo" else n * 366
+
+
+def _alpaca_intraday(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    """Live intraday bars via Alpaca's data API (reliable when Yahoo lags). Empty if
+    Alpaca isn't configured or the interval isn't supported."""
+    tf = _ALPACA_TF.get(interval)
+    if not tf:
+        return pd.DataFrame()
+    try:
+        import alpaca_trader
+        if not alpaca_trader.is_configured():
+            return pd.DataFrame()
+        df = alpaca_trader.get_stock_bars(ticker, timeframe=tf, days=min(30, _period_to_days(period)))
+        return df if df is not None and not df.empty else pd.DataFrame()
+    except Exception as exc:
+        log.warning("bar_cache alpaca intraday fetch failed %s: %s", ticker, exc)
         return pd.DataFrame()
 
 
@@ -361,7 +390,16 @@ def get_history(
         log.debug("bar_cache.get_history CACHE_HIT %s period=%s interval=%s", t, period, interval)
         return cached  # type: ignore[return-value]
 
-    log.debug("bar_cache.get_history MISS %s period=%s interval=%s — fetching Yahoo", t, period, interval)
+    log.debug("bar_cache.get_history MISS %s period=%s interval=%s — fetching", t, period, interval)
+    # Prefer Alpaca for intraday when configured — Yahoo's free 1-minute feed
+    # intermittently lags or stops serving today's bars, which blanks Day Trade.
+    if interval in _INTRADAY_INTERVALS:
+        alp = _alpaca_intraday(t, period, interval)
+        if not alp.empty:
+            _clear_stale(t)
+            _set(key, alp)
+            log.debug("bar_cache.get_history served Alpaca intraday %s %s", t, interval)
+            return alp
     try:
         tkr = yf.Ticker(t)
         df = tkr.history(period=period, interval=interval, auto_adjust=auto_adjust)

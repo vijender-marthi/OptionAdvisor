@@ -48,6 +48,50 @@ def is_configured() -> bool:
     return bool(key and secret)
 
 
+def get_stock_bars(ticker: str, timeframe: str = "1Min", days: int = 5, feed: str = "iex"):
+    """Fetch stock OHLCV bars from Alpaca's market-data API (free IEX feed by default).
+
+    Used as a reliable intraday fallback when Yahoo lags/stops serving 1-minute data.
+    Returns a pandas DataFrame (Open/High/Low/Close/Volume, ET-indexed, ascending) or
+    None when Alpaca isn't configured or has no data.
+    """
+    key, secret = _get_creds()
+    if not (key and secret):
+        return None
+    try:
+        import pandas as pd
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        end = _dt.now(_tz.utc)
+        start = end - _td(days=max(1, int(days)))
+        r = httpx.get(
+            f"{ALPACA_DATA_BASE}/v2/stocks/{ticker.upper().strip()}/bars",
+            params={
+                "timeframe": timeframe,
+                "start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "end": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "limit": 10000, "adjustment": "raw", "feed": feed, "sort": "asc",
+            },
+            headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
+            timeout=15,
+        )
+        r.raise_for_status()
+        bars = (r.json() or {}).get("bars") or []
+        if not bars:
+            return None
+        idx = pd.to_datetime([b["t"] for b in bars], utc=True).tz_convert("America/New_York")
+        df = pd.DataFrame({
+            "Open": [float(b["o"]) for b in bars],
+            "High": [float(b["h"]) for b in bars],
+            "Low": [float(b["l"]) for b in bars],
+            "Close": [float(b["c"]) for b in bars],
+            "Volume": [float(b.get("v", 0) or 0) for b in bars],
+        }, index=idx)
+        df.index.name = "Datetime"
+        return df
+    except Exception:
+        return None
+
+
 # ─────────────────────────────────────────────────────────────
 # OCC SYMBOL BUILDER
 # ─────────────────────────────────────────────────────────────
