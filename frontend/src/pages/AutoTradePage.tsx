@@ -492,7 +492,7 @@ export default function AutoTradePage() {
   const draftHasPrice = tradeDraft?.legs.every(leg => Number(leg.mid_price) > 0 || Number(leg.bid) > 0 || Number(leg.ask) > 0) ?? false
 
   return (
-    <div className="auto-trade-page min-h-screen p-4 md:p-6">
+    <div className="auto-trade-page relative z-0 min-h-full bg-[var(--surface-page)] p-4 md:p-6">
       {/* Confirm modal */}
       {confirmAction && (
         <ConfirmModal
