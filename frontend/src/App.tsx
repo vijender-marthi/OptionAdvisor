@@ -123,6 +123,15 @@ function RoleGuard() {
   return <Outlet />
 }
 
+// Signal Feed was consolidated into the Trade Command Center. Bare /signal-feed now
+// redirects there; the source-filtered day/swing watchlist views are preserved.
+function SignalFeedRoute() {
+  const [params] = useSearchParams()
+  const source = params.get('source')
+  if (source === 'day' || source === 'swing') return <SignalFeedPage />
+  return <Navigate to="/trade-command-center" replace />
+}
+
 function SuspensedOutlet() {
   return (
     <ErrorBoundary>
@@ -175,7 +184,7 @@ function ShellRoutes() {
               <Route path="/trade-signals" element={<TradeSignalsPage />} />
               <Route path="/journal" element={<JournalPage />} />
               <Route path="/auto-trade" element={<AutoTradePage />} />
-              <Route path="/signal-feed" element={<SignalFeedPage />} />
+              <Route path="/signal-feed" element={<SignalFeedRoute />} />
               <Route path="/watchlist" element={<UnifiedWatchlistPage />} />
               <Route path="/day-trade" element={<DayTradePage />} />
               <Route path="/day-trade-alerts" element={<DayTradeAlertsPage />} />
