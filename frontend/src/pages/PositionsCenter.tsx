@@ -40,7 +40,6 @@ import * as XLSX from 'xlsx'
 import PositionsDashboardTab from '../components/PositionsDashboardTab'
 import PerformanceCoachingTab from '../components/PerformanceCoachingTab'
 import PositionsEdgeTab from '../components/PositionsEdgeTab'
-import AICoachWidget from '../components/AICoachWidget'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -3482,19 +3481,6 @@ function PositionCategoryWorkspace({
         onFocus={onToggle}
       />
 
-      <AICoachWidget
-        mode="positions_open"
-        heading={`AI Coach — Open ${title}`}
-        subtitle={`${coachOpen.length} open · risk & management alerts`}
-        title="Open positions"
-        context={() => coachOpen.map(p => ({
-          ticker: p.ticker, strategy: p.strategy, bias: p.bias, contracts: p.contracts,
-          entryPrice: p.entryPrice, expiry: p.expiry, dte: p.dte,
-          maxLoss: p.max_loss, target1: p.target1, stopLoss: p.stopLoss,
-          unrealizedPnlPct: p.pnlPct,
-        }))}
-      />
-
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -3545,14 +3531,6 @@ function PositionCategoryWorkspace({
           </div>
         )}
       </section>
-
-      <AICoachWidget
-        mode="positions_closed_week"
-        heading={`AI Coach — ${title} Weekly Review`}
-        subtitle={`${coachClosed.length} closed · mistakes & process fixes`}
-        title="Closed trades — recent"
-        context={weeklyReviewContext}
-      />
 
       <section className="rounded-xl border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-900">
         <button

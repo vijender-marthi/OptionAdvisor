@@ -13,7 +13,6 @@ import { analyzeOptions, fetchPositionSessionChart } from '../api/client'
 import type { PositionSwingChartResponse } from '../api/client'
 import type { AnalyzeResponse, Recommendation, Signals, StrategyMode } from '../types'
 import { useApp } from '../contexts/AppContext'
-import AICoachWidget from '../components/AICoachWidget'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { getTradeWorksheetRoute, ROUTES } from '../routing/routes'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
@@ -1091,27 +1090,6 @@ function RightDetailPanel({
         </div>
       </div>
 
-      {/* AI Coach — per-recommendation suggestion */}
-      <div className="px-4 pb-4">
-        <AICoachWidget
-          mode="recommendation"
-          compact
-          heading="AI Coach — This Recommendation"
-          title={`${analysis.ticker} · ${rec.strategy}`}
-          context={{
-            ticker: analysis.ticker,
-            price: analysis.signals?.current_price,
-            bias: analysis.market_bias ?? analysis.signals?.trend,
-            decision: analysis.final_decision,
-            recommendation: {
-              strategy: rec.strategy, rank: rec.rank, netCredit: rec.net_credit,
-              maxProfit: rec.max_profit, maxLoss: rec.max_loss, breakeven,
-              score, expectedValue: ev, riskReward: rr,
-              probOfProfit: rec.prob_of_profit, dte: rec.dte, legs: rec.legs,
-            },
-          }}
-        />
-      </div>
     </div>
   )
 }

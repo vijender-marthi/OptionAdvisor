@@ -43,7 +43,6 @@ import { analyzeSwingTrade, analyzeV2, deskApi, saveToJournal } from '../api/cli
 import type { DeskAlertCreate, ProfessionalDecisionPayload, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers, fetchStockTargets, type MyTickerEntry, type StockTargetData } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
-import AICoachWidget from '../components/AICoachWidget'
 import MacdHistogramChart from '../components/MacdHistogramChart'
 import { parseChartPayload } from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
@@ -987,31 +986,6 @@ export default function SwingTradePage() {
             </div>
           )}
 
-          {result && (
-            <div className="m-1 shrink-0">
-              <AICoachWidget
-                mode="swing_trade"
-                compact
-                heading="AI Coach — Swing Setup"
-                title={`${result.ticker} swing trade`}
-                context={() => {
-                  const exec = getExec(result)
-                  return {
-                    ticker: result.ticker,
-                    company: result.company_name,
-                    bias: result.bias,
-                    strategy: result.suggested_strategy,
-                    decision: result.final_action || result.decision_message,
-                    reason: result.reason,
-                    levels: {
-                      entry: num(exec.breakout), stop: num(exec.stop),
-                      target1: num(exec.target1), target2: num(exec.target2),
-                    },
-                  }
-                }}
-              />
-            </div>
-          )}
 
           <div
             className={`grid min-h-0 flex-1 auto-rows-max content-start items-start gap-1 overflow-auto p-1 xl:auto-rows-auto xl:content-stretch xl:items-stretch xl:overflow-hidden ${rightRailOpen ? 'xl:grid-cols-[minmax(0,1fr)_6px_var(--right-rail-width)]' : 'xl:grid-cols-1'}`}

@@ -37,6 +37,7 @@ const TickerScannerPage      = lazy(() => import('./pages/TickerScannerPage'))
 const ToolsPage              = lazy(() => import('./pages/ToolsPage'))
 const DayTradeSessionPage    = lazy(() => import('./pages/DayTradeSessionPage'))
 const EarningsRadarPage      = lazy(() => import('./pages/EarningsRadarPage'))
+const AICoachPage            = lazy(() => import('./pages/AICoachPage'))
 const TradeWorksheetPage     = lazy(() => import('./pages/TradeWorksheetPage'))
 const EODJournalPage         = lazy(() => import('./pages/EODJournalPage'))
 const JournalToolPage        = lazy(() => import('./pages/JournalToolPage'))
@@ -169,7 +170,7 @@ function ShellRoutes() {
             <Route element={<SuspensedOutlet />}>
               <Route path="/trade-command-center" element={<Navigate to="/ticker-scanner" replace />} />
               <Route path="/desk" element={<TradeDeskPage />} />
-              <Route path="/ai-coach" element={<Navigate to="/ticker-scanner" replace />} />
+              <Route path="/ai-coach" element={<AICoachPage />} />
               <Route path="/position-trading" element={<TickerPage />} />
               <Route path="/position-trading-v2" element={<PositionTradingV2Page />} />
               <Route path="/positions" element={<PositionsRoute />} />

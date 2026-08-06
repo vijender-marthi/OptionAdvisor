@@ -6,7 +6,6 @@ import { fetchOptionChainLiquidity, saveToJournal } from '../api/client'
 import type { DayTradeWorkspaceAction, DayTradeWorkspaceDisplayValue, DayTradeWorkspaceResponse, OptionChainRow } from '../api/client'
 import { addMyTicker, fetchMyTickers, searchTickers, updateMyTicker, type MyTickerEntry, type SearchTickerResult } from '../api/commandCenter'
 import DayTradeWorkspaceShell from '../components/DayTradeWorkspaceShell'
-import AICoachWidget from '../components/AICoachWidget'
 import { useApp } from '../contexts/AppContext'
 import { useDayTradeWorkspace } from '../hooks/useDayTradeWorkspace'
 import { formatTickerTitle, useDocumentTitle } from '../hooks/useDocumentTitle'
@@ -1272,50 +1271,8 @@ export default function DayTradeWorkspacePage() {
               </button>
             </div>
           ) : workspaceState.data ? (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 md:overflow-hidden">
-              <AICoachWidget
-                mode="day_trade"
-                allowQuestion
-                compact
-                heading="AI Coach — ask about this chart"
-                subtitle="Evaluates the live workspace: structure, VWAP, opening range, and the framework reads"
-                title={`${workspaceState.data.symbol.ticker} day trade`}
-                context={() => {
-                  const w = workspaceState.data!
-                  const x = w as unknown as {
-                    orVwapFramework?: { score?: number; direction?: string; read?: string; sizing?: string; conviction?: string }
-                    fvgStrategy?: { strategy?: { direction?: string; entry?: number; stop?: number; target?: number | null; status?: string; reason?: string } }
-                  }
-                  return {
-                    ticker: w.symbol.ticker,
-                    price: w.symbol.price?.display,
-                    change: w.symbol.change?.display,
-                    decision: w.decision.headline,
-                    action: w.decision.primaryAction?.label,
-                    setup: w.decision.setupName,
-                    permission: w.decision.permission?.label,
-                    marketStructure: w.chart?.marketStructure ? `${w.chart.marketStructure.display} · ${w.chart.marketStructure.trend}` : undefined,
-                    vwap: w.chart?.vwapOverlay?.latestValue,
-                    levels: (w.chart?.levels || []).map(l => ({ label: l.label, price: l.price })).slice(0, 12),
-                    risk: {
-                      entry: w.riskPlan.entry?.display, stop: w.riskPlan.stop?.display,
-                      target1: w.riskPlan.target1?.display, target2: w.riskPlan.target2?.display,
-                      riskReward: w.riskPlan.riskReward?.display,
-                    },
-                    orVwapFramework: x.orVwapFramework ? {
-                      score: x.orVwapFramework.score, direction: x.orVwapFramework.direction,
-                      conviction: x.orVwapFramework.conviction, sizing: x.orVwapFramework.sizing, read: x.orVwapFramework.read,
-                    } : undefined,
-                    fvgStrategy: x.fvgStrategy?.strategy ? {
-                      direction: x.fvgStrategy.strategy.direction, entry: x.fvgStrategy.strategy.entry,
-                      stop: x.fvgStrategy.strategy.stop, target: x.fvgStrategy.strategy.target,
-                      status: x.fvgStrategy.strategy.status, reason: x.fvgStrategy.strategy.reason,
-                    } : undefined,
-                  }
-                }}
-              />
-              <div className="min-h-0 flex-1 md:overflow-hidden">
-                <DayTradeWorkspaceShell
+            <div className="min-h-0 flex-1 md:overflow-hidden">
+              <DayTradeWorkspaceShell
                 workspace={workspaceState.data}
                 onAction={handleWorkspaceAction}
                 onIntervalChange={handleIntervalChange}
@@ -1324,8 +1281,7 @@ export default function DayTradeWorkspacePage() {
                 onToggleRightRail={() => setRightRailOpen(open => !open)}
                 rightRailWidth={rightRailWidth}
                 onRightRailWidthChange={setRightRailWidth}
-                />
-              </div>
+              />
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white p-6 text-sm text-secondary dark:border-white/[0.08] dark:bg-slate-900">

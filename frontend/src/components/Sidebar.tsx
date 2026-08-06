@@ -134,6 +134,7 @@ export default function Sidebar() {
       label: 'Research',
       items: [
         { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
+        { id: 'ai-coach', label: 'AI Coach', icon: <Bot size={18} /> },
       ],
     },
     {
@@ -206,6 +207,7 @@ export default function Sidebar() {
     // Research
     { id: 'my-tickers',    label: 'My Tickers',     icon: <ListTodo size={18} /> },
     { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
+    { id: 'ai-coach',       label: 'AI Coach',       icon: <Bot size={18} /> },
     // Trade
     { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },

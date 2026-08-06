@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
+import FloatingAICoach from '../components/FloatingAICoach'
 import CopyrightFooter from '../components/CopyrightFooter'
 import AdvisoryDisclaimerModal from '../components/AdvisoryDisclaimerModal'
 import FirstLoginHelpModal from '../components/FirstLoginHelpModal'
@@ -82,6 +83,7 @@ export default function AppLayout({ children }: { children?: ReactNode }) {
       <FirstLoginHelpModal />
       <HelpModal />
       <ExitSignalOverlay />
+      <FloatingAICoach />
     </div>
   )
 }
