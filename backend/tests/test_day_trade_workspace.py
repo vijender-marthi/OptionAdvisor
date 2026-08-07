@@ -29,6 +29,11 @@ def _scan(final_decision: str = "READY"):
             "or_high": 312.0,
             "or_low": 308.0,
             "vwap": 310.5,
+            # Momentum/volume so the synthetic setup scores as a genuine, armed
+            # trade (trend health >= the 40 floor the coherence gate enforces).
+            "momentum_score": 82,
+            "volume_ratio": 1.5,
+            "rvol": 1.5,
             "data_quality_status": "OK",
             "chart_bars": [
                 {"t": "2026-07-09T09:30:00-04:00", "o": 309.0, "h": 310.0, "l": 308.5, "c": 309.5, "v": 1000, "vwap": 309.3333, "vwap_upper1": 309.7, "vwap_lower1": 308.9666, "vwap_upper2": 310.0667, "vwap_lower2": 308.6},
@@ -40,8 +45,10 @@ def _scan(final_decision: str = "READY"):
         entry_guidance={
             "entry_price": 312.0,
             "risk_below": 309.5,
-            "scalp_target": 314.0,
-            "target_2": 316.0,
+            # First target must clear the 1.5 R:R floor to the T1 (spec #4):
+            # |316-312| / |312-309.5| = 1.6.
+            "scalp_target": 316.0,
+            "target_2": 320.0,
             "rr_ratio": "1.6:1",
         },
         option_risk_context={"recommended_contracts": "1 contract"},
@@ -250,7 +257,9 @@ class DayTradeWorkspaceTests(unittest.TestCase):
             entry_overrides={
                 "entry_price": 100,
                 "risk_below": 98,
-                "scalp_target": 102,
+                # T1 clears the 1.5 R:R floor (|103-100|/|100-98| = 1.5); the
+                # decisionEngine ratio still uses T2 (|104-100|/2 = 2.0).
+                "scalp_target": 103,
                 "target_2": 104,
                 "rr_ratio": "99:1",
             },

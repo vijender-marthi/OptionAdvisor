@@ -12,6 +12,7 @@ from typing import Any
 from day_trade_trap_detection import build_trap_detection_from_metrics, build_unavailable_trap_detection
 from day_trade_or_vwap import compute_or_vwap_framework
 from day_trade_fvg import compute_fvg_strategy
+from day_trade_decision_gate import GateInput, GateResult, apply_gate
 
 
 DAY_TRADE_WORKSPACE_SCHEMA_VERSION = "day-trade-workspace.v1"
@@ -19,6 +20,25 @@ DAY_TRADE_WORKSPACE_SCHEMA_VERSION = "day-trade-workspace.v1"
 
 def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _et_datetime(iso_utc: str | None) -> datetime | None:
+    """Parse the assembler's UTC ``generatedAt`` into America/New_York wall time.
+
+    The coherence gate needs the exchange-local clock to decide RTH vs. EOD and
+    to derive entry timing. Returns ``None`` when the timestamp cannot be parsed.
+    """
+    if not iso_utc:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        dt = datetime.fromisoformat(str(iso_utc).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        return dt.astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        return None
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -1343,6 +1363,132 @@ def _professional_decision(
     }
 
 
+def _run_decision_gate(
+    *,
+    metrics: dict[str, Any],
+    risk_levels: dict[str, Any],
+    market_structure: dict[str, Any],
+    professional_decision: dict[str, Any],
+    permission: dict[str, Any],
+    generated_at: str,
+) -> GateResult:
+    """Run the coherence gate over the assembled decision and reconcile fields.
+
+    Single source of truth for level suppression (#3/#4/#9), the BLOCKED badge
+    vs. blockers-panel agreement (#8), entry timing (#10) and EOD review (#13).
+    Mutates ``professional_decision`` and ``permission`` in place; the caller
+    consults the returned result to suppress the top-level ``riskPlan`` and the
+    session execution flag.
+    """
+    panel = professional_decision.get("blockers", [])
+    panel_texts = [str(m.get("display") or "").strip() for m in panel]
+    panel_texts = [t for t in panel_texts if t]
+    # #8: a "Blocked" badge with an empty panel is the observed contradiction.
+    # Seed the permission's own reason as a blocker so the panel is never empty
+    # when the badge says blocked.
+    if not panel_texts and str(permission.get("code")) == "blocked" and permission.get("description"):
+        panel_texts = [str(permission["description"])]
+
+    last = _num(metrics.get("last_price"))
+    vwap = _num(metrics.get("vwap"))
+    extension_pct = abs(last - vwap) / vwap if last is not None and vwap not in (None, 0) else None
+
+    scores = professional_decision.get("scores", {})
+    confidence = professional_decision.get("confidence", {})
+    trade_score = _num((scores.get("overallTradeScore") or {}).get("value"))
+    trade_confidence = (confidence.get("tradeConfidence") or {}).get("value")
+
+    result = apply_gate(
+        GateInput(
+            direction=_bias_from_structure(market_structure, metrics, risk_levels),
+            entry=_num(risk_levels.get("entry")),
+            stop=_num(risk_levels.get("stop")),
+            t1=_num(risk_levels.get("t1")),
+            t2=_num(risk_levels.get("t2")),
+            trade_score=trade_score,
+            confidence=trade_confidence,
+            blockers=panel_texts,
+            generated_at_et=_et_datetime(generated_at),
+            extension_pct=extension_pct,
+            sessions_until_earnings=_int_or_none(metrics.get("sessions_until_earnings")),
+            earnings_date=metrics.get("earnings_date"),
+        )
+    )
+
+    # #8: append any gate-derived blockers (earnings/invalid/rejected/seed) to the
+    # panel, preserving the original decision-table metrics and their source.
+    existing = {t.strip().upper() for t in panel_texts}
+    have = {str(m.get("display") or "").strip().upper() for m in panel}
+    for blocker in result.blockers:
+        key = blocker.strip().upper()
+        if key in have:
+            continue
+        have.add(key)
+        panel.append(
+            _metric(
+                value=blocker,
+                display=blocker,
+                formula="Decision coherence gate",
+                inputs=["decision_gate"],
+                reason="Canonical blocker; the BLOCKED badge is derived only from this list.",
+                timestamp=generated_at,
+                source="day_trade_decision_gate",
+            )
+        )
+    professional_decision["blockers"] = panel
+
+    # #8: reconcile the badge with the canonical panel.
+    if result.badge == "BLOCKED" and str(permission.get("code")) not in {"blocked", "manage", "complete"}:
+        reason = result.blockers[0] if result.blockers else (result.reasons[0] if result.reasons else "Blocked by decision gate.")
+        permission.clear()
+        permission.update(_status("blocked", "Blocked", "danger", reason))
+
+    # #3/#4/#9: phase override.
+    if result.phase_override:
+        phase_metric = professional_decision.get("hierarchy", {}).get("currentPhase")
+        if isinstance(phase_metric, dict):
+            label = {
+                "INVALID": "Invalid — levels out of order, suppressed",
+                "REJECTED": "Rejected — reward:risk below minimum",
+                "DISARMED": "Disarmed — below trade-score/confidence threshold",
+            }.get(result.phase_override, result.phase_override)
+            phase_metric["value"] = result.phase_override
+            phase_metric["display"] = label
+
+    # #3/#4/#9: suppress the professionalDecision level metrics.
+    if result.suppress_levels:
+        risk_block = professional_decision.get("risk", {})
+        for key in ("entry", "stop", "risk", "target", "riskReward", "rewardRemaining", "riskRemaining"):
+            metric = risk_block.get(key)
+            if isinstance(metric, dict):
+                metric["value"] = None
+                metric["display"] = "—"
+
+    # #10 / #13: entry timing and action fields.
+    timing_metric = professional_decision.get("confidence", {}).get("entryTiming")
+    if isinstance(timing_metric, dict):
+        if result.suppress_action:
+            timing_metric["value"] = "EOD Review"
+            timing_metric["display"] = "EOD Review"
+        elif result.entry_timing is not None:
+            timing_metric["value"] = result.entry_timing
+            timing_metric["display"] = result.entry_timing
+    if result.suppress_action:
+        action_metric = professional_decision.get("hierarchy", {}).get("currentAction")
+        if isinstance(action_metric, dict):
+            action_metric["value"] = "EOD Review"
+            action_metric["display"] = "EOD Review"
+
+    return result
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _vwap_overlay(chart_bars: list[Any], metrics: dict[str, Any], session_date: str | None) -> dict[str, Any]:
     points: list[dict[str, Any]] = []
     latest_value: float | None = None
@@ -1854,21 +2000,44 @@ def build_day_trade_workspace_response(
         generated_at=generated_at,
     )
 
+    # Coherence gate: one place that reconciles level validity, the BLOCKED
+    # badge, phase, entry timing and EOD review before anything is emitted.
+    gate_result = _run_decision_gate(
+        metrics=metrics,
+        risk_levels=risk_levels,
+        market_structure=market_structure,
+        professional_decision=professional_decision,
+        permission=permission,
+        generated_at=generated_at,
+    )
+
     trigger_view = {
         "status": _status("triggered" if metrics.get("trigger_fired") else "pending", "Triggered" if metrics.get("trigger_fired") else "Pending", "positive" if metrics.get("trigger_fired") else "warning"),
         "summary": str(metrics.get("trigger_requirement") or "Backend trigger requirement is pending."),
         "requirements": _requirements(metrics),
     }
     computed_rr = decision_engine["rewardRisk"]["display"]
-    risk_plan = {
-        "entry": _display_money(entry),
-        "stop": _display_money(stop),
-        "target1": _display_money(target1),
-        "target2": _display_money(target2),
-        "invalidation": _display_money(risk_levels.get("invalidation")),
-        "positionSize": _display_text(option_risk.get("recommended_contracts") or "1 contract max"),
-        "riskReward": _display_ratio(_num(decision_engine["rewardRisk"].get("ratio"))) if computed_rr != "—" else _display_text("—"),
-    }
+    if gate_result.suppress_levels:
+        # #3/#4/#9: an invalid/rejected/disarmed decision renders no levels.
+        risk_plan = {
+            "entry": _display_text("—"),
+            "stop": _display_text("—"),
+            "target1": _display_text("—"),
+            "target2": _display_text("—"),
+            "invalidation": _display_text("—"),
+            "positionSize": _display_text(option_risk.get("recommended_contracts") or "1 contract max"),
+            "riskReward": _display_text("—"),
+        }
+    else:
+        risk_plan = {
+            "entry": _display_money(entry),
+            "stop": _display_money(stop),
+            "target1": _display_money(target1),
+            "target2": _display_money(target2),
+            "invalidation": _display_money(risk_levels.get("invalidation")),
+            "positionSize": _display_text(option_risk.get("recommended_contracts") or "1 contract max"),
+            "riskReward": _display_ratio(_num(decision_engine["rewardRisk"].get("ratio"))) if computed_rr != "—" else _display_text("—"),
+        }
     last_price = _num(metrics.get("last_price"))
     previous_close = _num(metrics.get("prev_close"))
     day_change_amount = last_price - previous_close if last_price is not None and previous_close is not None else None
@@ -1889,8 +2058,17 @@ def build_day_trade_workspace_response(
             "sessionDate": str(metrics.get("session_date") or session_date or date.today().isoformat()),
             "displayDate": str(metrics.get("session_date") or session_date or date.today().isoformat()),
             "marketTimeZone": "America/New_York",
-            "isExecutionAllowed": mode == "live" and permission.get("code") == "ready",
-            "reviewCopy": "Historical review mode. Live execution is disabled." if mode == "review" else None,
+            "isExecutionAllowed": mode == "live"
+            and permission.get("code") == "ready"
+            and not gate_result.suppress_levels
+            and not gate_result.suppress_action,
+            "reviewCopy": (
+                "Historical review mode. Live execution is disabled."
+                if mode == "review"
+                else "End-of-day review. Live action and timing are suppressed outside regular trading hours."
+                if gate_result.mode == "EOD_REVIEW"
+                else None
+            ),
         },
         "decision": {
             "context": _status(str(resolved.get("market_bias") or "NEUTRAL"), context_label, "info", str(metrics.get("opening_playbook_reason") or "")),
