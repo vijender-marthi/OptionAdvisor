@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   Shield,
+  Table2,
   TrendingUp,
   TrendingDown,
   Trash2,
@@ -3405,6 +3406,89 @@ function ActionCenter({
   )
 }
 
+/** Compact, scannable table view for option positions — easy to read and export. */
+function PositionsTable({
+  positions,
+  allPositions,
+  perPositionPnl,
+  showClose,
+  onManage,
+  onClose,
+  onDelete,
+}: {
+  positions: PortfolioPosition[]
+  allPositions: PortfolioPosition[]
+  perPositionPnl: Record<string, PositionPnlData>
+  showClose: boolean
+  onManage: (pos: PortfolioPosition) => void
+  onClose: (pos: PortfolioPosition) => void
+  onDelete: (pos: PortfolioPosition) => void
+}) {
+  const markLabel: Record<string, string> = {
+    live: 'Live', bs_theoretical: 'Est.', stale: 'Stale', invalid_premium: 'Check', saved_estimate: 'Saved',
+  }
+  const th = 'px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-tertiary whitespace-nowrap'
+  const td = 'px-3 py-2 whitespace-nowrap'
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.08]">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03]">
+            <th className={th}>Ticker</th>
+            <th className={th}>Strategy</th>
+            <th className={th}>Bias</th>
+            <th className={`${th} text-right`}>Qty</th>
+            <th className={th}>Strike</th>
+            <th className={th}>Expiry</th>
+            <th className={`${th} text-right`}>DTE</th>
+            <th className={`${th} text-right`}>Entry</th>
+            <th className={`${th} text-right`}>Mark</th>
+            <th className={`${th} text-right`}>P&amp;L $</th>
+            <th className={`${th} text-right`}>P&amp;L %</th>
+            <th className={th}>Src</th>
+            <th className={`${th} text-right`}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {positions.map(pos => {
+            const pnl = resolvePositionPnl(pos, allPositions, perPositionPnl)
+            const dte = safeDte(pos.dte, 0)
+            const entry = pnl?.entry_premium_per_share ?? (pos.net_credit ? Math.abs(pos.net_credit) : pos.entryPrice)
+            const mark = pnl?.current_mark_per_share
+            const pnlDollar = pnl?.pnl ?? (pos.status === 'closed' ? pos.realized_pnl : null)
+            const pnlPct = pnl?.pnl_pct ?? pos.realized_pnl_percent ?? pos.pnlPct
+            const up = (pnlDollar ?? 0) >= 0
+            const pnlCls = pnlDollar == null ? 'text-secondary' : up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+            return (
+              <tr key={pos.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-white/[0.05] dark:hover:bg-white/[0.03]">
+                <td className={`${td} font-mono font-bold text-primary`}>{positionTicker(pos)}</td>
+                <td className={`${td} text-secondary`}>{pos.strategy || '—'}</td>
+                <td className={td}>{pos.bias ? <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${getBiasBadgeClass(pos.bias)}`}>{pos.bias}</span> : '—'}</td>
+                <td className={`${td} text-right font-mono`}>{pos.contracts}</td>
+                <td className={`${td} font-mono`}>{positionStrikeLabel(pos) ?? '—'}</td>
+                <td className={`${td} font-mono text-secondary`}>{String(pos.expiry || '').slice(0, 10) || '—'}</td>
+                <td className={`${td} text-right font-mono`}>{pos.status === 'open' ? dte : '—'}</td>
+                <td className={`${td} text-right font-mono`}>{fmtUsd(entry)}</td>
+                <td className={`${td} text-right font-mono`}>{mark != null ? fmtUsd(mark) : '—'}</td>
+                <td className={`${td} text-right font-mono font-semibold ${pnlCls}`}>{pnlDollar != null ? fmtUsd(pnlDollar) : '—'}</td>
+                <td className={`${td} text-right font-mono font-semibold ${pnlCls}`}>{pnlPct != null ? fmtPct(pnlPct) : '—'}</td>
+                <td className={`${td} text-[11px] text-tertiary`}>{pos.status === 'open' ? (markLabel[pnl?.mark_source ?? ''] ?? '—') : 'Closed'}</td>
+                <td className={`${td} text-right`}>
+                  <div className="inline-flex items-center gap-1">
+                    <button type="button" title="Manage" onClick={() => onManage(pos)} className="rounded p-1 text-muted hover:text-primary hover:bg-slate-100 dark:hover:bg-white/[0.06]"><Edit3 size={14} /></button>
+                    {showClose && <button type="button" title="Close" onClick={() => onClose(pos)} className="rounded p-1 text-muted hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-white/[0.06]"><Check size={14} /></button>}
+                    <button type="button" title="Delete" onClick={() => onDelete(pos)} className="rounded p-1 text-muted hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-white/[0.06]"><Trash2 size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function PositionCategoryWorkspace({
   category,
   openPositions,
@@ -3446,6 +3530,8 @@ function PositionCategoryWorkspace({
 }) {
   const isStocks = category === 'stocks'
   const title = isStocks ? 'Stocks' : 'Options'
+  const [layout, setLayout] = useState<'cards' | 'table'>('cards')
+  const tableView = !isStocks && layout === 'table'
   const actionItems = openPositions.map(pos => ({
     pos,
     alert: isStocks
@@ -3491,9 +3577,23 @@ function PositionCategoryWorkspace({
             <h2 className="text-base font-bold text-heading">Open {title} Positions</h2>
             <p className="text-xs text-tertiary">{openPositions.length} active {isStocks ? 'stock' : 'option'} position{openPositions.length === 1 ? '' : 's'}</p>
           </div>
-          <button type="button" onClick={onAdd} className={`${getActionButtonClass('trade')} inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold`}>
-            <Plus size={14} /> Add Position
-          </button>
+          <div className="flex items-center gap-2">
+            {!isStocks && (
+              <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 dark:border-white/[0.08]">
+                <button type="button" title="Card view" onClick={() => setLayout('cards')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold ${layout === 'cards' ? 'bg-violet-600 text-white' : 'text-muted hover:text-secondary'}`}>
+                  <Layers size={14} /> Cards
+                </button>
+                <button type="button" title="Table view" onClick={() => setLayout('table')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold ${layout === 'table' ? 'bg-violet-600 text-white' : 'text-muted hover:text-secondary'}`}>
+                  <Table2 size={14} /> Table
+                </button>
+              </div>
+            )}
+            <button type="button" onClick={onAdd} className={`${getActionButtonClass('trade')} inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold`}>
+              <Plus size={14} /> Add Position
+            </button>
+          </div>
         </div>
 
         {loading && openPositions.length === 0 ? (
@@ -3505,6 +3605,16 @@ function PositionCategoryWorkspace({
             <div className="text-lg font-semibold text-heading">No open {isStocks ? 'stock' : 'option'} positions</div>
             <p className="mt-1 text-sm text-tertiary">Add a position to track action items and exits here.</p>
           </div>
+        ) : tableView ? (
+          <PositionsTable
+            positions={openPositions}
+            allPositions={allPositions}
+            perPositionPnl={perPositionPnl}
+            showClose
+            onManage={onManage}
+            onClose={onClose}
+            onDelete={onDelete}
+          />
         ) : (
           <div className="space-y-3">
             {openPositions.map(pos => isStocks ? (
@@ -3554,6 +3664,16 @@ function PositionCategoryWorkspace({
               <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-tertiary dark:border-white/[0.08]">
                 No closed {isStocks ? 'stock' : 'option'} positions yet.
               </div>
+            ) : tableView ? (
+              <PositionsTable
+                positions={closedPositions}
+                allPositions={allPositions}
+                perPositionPnl={perPositionPnl}
+                showClose={false}
+                onManage={onManage}
+                onClose={() => undefined}
+                onDelete={onDelete}
+              />
             ) : (
               closedPositions.map(pos => (
                 <TradingPositionCard
