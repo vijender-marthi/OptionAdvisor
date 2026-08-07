@@ -2253,7 +2253,11 @@ export default function PositionsCenter() {
   const positions = tab === 'stocks' ? stockPortfolio : tab === 'options' ? optionPortfolio : displayPortfolio
 
   const filtered = useMemo(() => {
-    let list = [...positions]
+    // A ticker/strategy search must find the position regardless of the active
+    // type tab: searching "NVDA" on the Options tab otherwise misses an NVDA
+    // stock (and vice-versa), and closed entries in the other tab. When a query
+    // is present, search the whole portfolio; otherwise stay tab-scoped.
+    let list = searchQuery.trim() ? [...displayPortfolio] : [...positions]
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
@@ -2340,7 +2344,7 @@ export default function PositionsCenter() {
     })
 
     return list
-  }, [positions, searchQuery, tradeStyle, typeFilter, riskFilter, closedDateFilter, expiryFilter, sortKey, sortDir])
+  }, [positions, displayPortfolio, searchQuery, tradeStyle, typeFilter, riskFilter, closedDateFilter, expiryFilter, sortKey, sortDir])
 
   // The workspace has separate open and closed sections, but both must consume
   // the same filtered and sorted result set as the controls above.

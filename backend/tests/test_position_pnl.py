@@ -275,5 +275,62 @@ class TestPositionPeriodCostBasis(unittest.TestCase):
         )
 
 
+class TestTheoreticalMarkGuard(unittest.TestCase):
+    """A theory-only (bs_theoretical) mark must not fabricate a gain on an OTM
+    long option (observed: PLTR long put +81% with the stock above the strike)."""
+
+    def _expiry(self, days=28):
+        from datetime import timedelta
+        return (date.today() + timedelta(days=days)).isoformat()
+
+    def test_otm_long_put_theoretical_gain_is_clamped_and_flagged_stale(self):
+        exp = self._expiry()
+        pos = {
+            "ticker": "PLTR", "strategy": "Long Put",
+            "contracts": 2, "max_profit": 0.0, "max_loss": 9.10,
+            "net_credit": -9.10, "expiry": exp,
+            # iv=120 -> sanitised to 1.2 (120%); makes the BS mark of an OTM put
+            # exceed the $9.10 entry, i.e. a fake winner with no live quote.
+            "legs": [{"action": "BUY", "option_type": "PUT", "strike": 160,
+                      "mid_price": 9.10, "iv": 120, "expiry": exp}],
+        }
+        r = calculate_position_pnl(pos, live_option_marks=None, underlying_price=170.15)
+        # Stock is ABOVE the strike (put OTM) -> the theoretical gain is not
+        # trustworthy; clamp to breakeven and flag stale so the UI shows no WIN.
+        self.assertEqual(r["mark_source"], "stale")
+        self.assertEqual(r["pnl"], 0.0)
+        self.assertAlmostEqual(r["pnl_percent"], 0.0)
+
+    def test_itm_long_put_theoretical_gain_is_preserved(self):
+        # Stock BELOW the strike (put ITM) -> a theoretical gain is legitimate
+        # and must NOT be clamped.
+        exp = self._expiry()
+        pos = {
+            "ticker": "PLTR", "strategy": "Long Put",
+            "contracts": 2, "max_profit": 0.0, "max_loss": 9.10,
+            "net_credit": -9.10, "expiry": exp,
+            "legs": [{"action": "BUY", "option_type": "PUT", "strike": 180,
+                      "mid_price": 9.10, "iv": 50, "expiry": exp}],
+        }
+        r = calculate_position_pnl(pos, live_option_marks=None, underlying_price=150.0)
+        self.assertEqual(r["mark_source"], "bs_theoretical")
+        self.assertGreater(r["pnl"], 0.0)
+
+    def test_live_mark_is_never_clamped(self):
+        # An OTM put with a real live quote showing a gain is trusted as-is.
+        exp = self._expiry()
+        pos = {
+            "ticker": "PLTR", "strategy": "Long Put",
+            "contracts": 1, "max_profit": 0.0, "max_loss": 9.10,
+            "net_credit": -9.10, "expiry": exp,
+            "legs": [{"action": "BUY", "option_type": "PUT", "strike": 160,
+                      "mid_price": 9.10, "iv": 50, "expiry": exp}],
+        }
+        marks = {"PUT:160.0": (12.0, 12.4, 12.2)}
+        r = calculate_position_pnl(pos, live_option_marks=marks, underlying_price=170.15)
+        self.assertEqual(r["mark_source"], "live")
+        self.assertGreater(r["pnl"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

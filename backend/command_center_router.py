@@ -859,6 +859,26 @@ def calculate_position_pnl(
             "invalid_legs": invalid_premiums,
         }
 
+    # Plausibility guard for theory-only marks: a single long option priced
+    # purely by Black-Scholes (no live quote) cannot be trusted to show a GAIN
+    # while it is out-of-the-money. A stale/low underlying close (bar_cache
+    # fallback) or a frozen entry IV fabricates a fake winner — observed as an
+    # OTM long PUT reading +81% with the stock above the strike. Without a live
+    # quote to confirm, fall back to breakeven and flag the mark as stale so the
+    # UI does not fire WIN / TAKE PROFIT on an unverifiable estimate.
+    if (
+        overall_mark_source == "bs_theoretical"
+        and len(legs) == 1
+        and str(legs[0].get("action", "BUY")).upper() == "BUY"
+        and underlying_price
+    ):
+        k = _float_or(legs[0].get("strike"), 0.0)
+        ot = str(legs[0].get("option_type", "CALL")).upper()
+        is_otm = (underlying_price >= k) if ot == "PUT" else (underlying_price <= k)
+        if k > 0 and is_otm and current_mark_ps > entry_premium_ps:
+            current_mark_ps = entry_premium_ps
+            overall_mark_source = "stale"
+
     entry_cost_total = entry_premium_ps * SHARES * contracts
     current_value_total = current_mark_ps * SHARES * contracts
     pnl = current_value_total - entry_cost_total
