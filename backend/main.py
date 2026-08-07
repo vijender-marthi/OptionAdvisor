@@ -5824,6 +5824,79 @@ def _tw_abs_premium(req: TradeWorksheetEvaluateRequest) -> float:
     return abs(_tw_net_premium(req))
 
 
+# Directional sign of each worksheet strategy's net delta (#5). 0 = non-directional.
+_TW_STRATEGY_SIGN = {
+    "Long Call": 1, "Bull Call Spread": 1, "Bull Put Spread": 1,
+    "Cash Secured Put": 1, "Covered Call": 1, "Shares": 1,
+    "Long Put": -1, "Bear Put Spread": -1, "Bear Call Spread": -1,
+    "Iron Condor": 0, "Calendar Spread": 0, "Diagonal Spread": 0,
+}
+
+
+def _tw_direction_sign(direction: str) -> int:
+    d = (direction or "").strip().lower()
+    if d == "bullish":
+        return 1
+    if d == "bearish":
+        return -1
+    return 0
+
+
+def _tw_direction_conflict(req: TradeWorksheetEvaluateRequest) -> str | None:
+    """#5: block when the strategy's delta sign contradicts the chosen direction."""
+    ssign = _TW_STRATEGY_SIGN.get(req.strategy, 0)
+    dsign = _tw_direction_sign(req.direction)
+    if ssign != 0 and dsign != 0 and ssign != dsign:
+        have = "bullish" if ssign > 0 else "bearish"
+        want = "bullish" if dsign > 0 else "bearish"
+        return (
+            f"Direction is {req.direction} but {req.strategy} is a {have} strategy "
+            f"(delta sign mismatch). Choose a {want} strategy or switch the direction."
+        )
+    return None
+
+
+def _tw_chain_net_premium(req: TradeWorksheetEvaluateRequest) -> float | None:
+    """Absolute net premium implied purely by the live chain mids (no typed override).
+
+    This is the reference the typed Premium is compared against (#6).
+    """
+    legs = req.selectedLegRows or {}
+    s = req.strategy
+    if s in {"Long Call", "Long Put"}:
+        return (_tw_leg_mid(legs.get("long") or req.selectedRow)) or None
+    if s in {"Covered Call", "Cash Secured Put"}:
+        return (_tw_leg_mid(legs.get("short") or req.selectedRow)) or None
+    if s in {"Bull Call Spread", "Bear Put Spread"}:
+        return abs(_tw_leg_mid(legs.get("long")) - _tw_leg_mid(legs.get("short"))) or None
+    if s in {"Bull Put Spread", "Bear Call Spread"}:
+        return abs(_tw_leg_mid(legs.get("short")) - _tw_leg_mid(legs.get("long"))) or None
+    if s in {"Calendar Spread", "Diagonal Spread"}:
+        return abs(_tw_leg_mid(legs.get("buy")) - _tw_leg_mid(legs.get("sell"))) or None
+    if s == "Iron Condor":
+        net = (
+            _tw_leg_mid(legs.get("shortPut")) + _tw_leg_mid(legs.get("shortCall"))
+            - _tw_leg_mid(legs.get("longPut")) - _tw_leg_mid(legs.get("longCall"))
+        )
+        return abs(net) or None
+    return None
+
+
+def _tw_premium_check(req: TradeWorksheetEvaluateRequest) -> dict[str, Any]:
+    """#6: compare typed premium to the chain mid; default to mid when blank.
+
+    status: none (no chain reference) | default (used chain mid) | ok | blocked (>5% off).
+    """
+    typed = abs(safe_float(req.premium))
+    chain = _tw_chain_net_premium(req)
+    if chain is None or chain <= 0:
+        return {"typed": round(typed, 2) if typed > 0 else None, "chainMid": None, "deviationPct": None, "status": "none"}
+    if typed <= 0:
+        return {"typed": round(chain, 2), "chainMid": round(chain, 2), "deviationPct": 0.0, "status": "default"}
+    dev = (typed - chain) / chain * 100
+    return {"typed": round(typed, 2), "chainMid": round(chain, 2), "deviationPct": round(dev, 1), "status": "blocked" if abs(dev) > 5 else "ok"}
+
+
 def _tw_primary_row(req: TradeWorksheetEvaluateRequest) -> TradeWorksheetSelectedRow | None:
     legs = req.selectedLegRows or {}
     for key in ("long", "short", "buy", "sell", "shortPut", "shortCall", "longPut", "longCall"):
@@ -6183,7 +6256,13 @@ def _tw_score(req: TradeWorksheetEvaluateRequest, greeks: dict[str, float], earn
     liquidity = _tw_clamp(100 - safe_float(row.spread_pct if row else 12) * 4 + min(20, safe_float(row.open_interest if row else 0) / 100)) if row else 55
     time_score = 90 if 8 <= dte <= 45 else 35 if dte < 5 else 75 if dte <= 90 else 60
     option_pricing = _tw_clamp(100 - safe_float(req.ivRank) * 0.45 - safe_float(row.spread_pct if row else 12) * 2)
-    probability = _tw_clamp(safe_float(greeks["probabilityItm"]) + (20 if abs(safe_float(greeks["delta"])) >= 0.45 else 0))
+    # POP is P(price beyond breakeven at expiry) — a different quantity from the
+    # prob-ITM at the strike (#7). Use the breakeven probability, never ITM (the
+    # old "ITM + delta bonus" made POP == Prob-ITM whenever |delta| < 0.45).
+    s_price = max(0.01, safe_float(req.stockPrice))
+    t_years = max(1, dte) / 365.0
+    pop = _tw_prob_profit(req, s_price, safe_float(greeks["iv"]), t_years)
+    probability = _tw_clamp(pop if pop is not None else safe_float(greeks["probabilityProfit"]))
     be = _tw_breakeven(req)
     denom = max(0.01, abs(safe_float(req.stockPrice) - safe_float(be or req.stockPrice)))
     rr = abs((safe_float(req.targetPrice) - safe_float(req.stockPrice)) / denom)
@@ -6296,6 +6375,19 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
     base = max(1, safe_float(req.stockPrice))
     payoff = [{"price": round(base * (1 + i / 100), 2), "pnl": round(_tw_payoff(req, base * (1 + i / 100)))} for i in range(-30, 31, 2)]
     payoff_matrix = _tw_payoff_matrix(req, safe_float(greeks["iv"]) or 0.3, front_dte)
+    # #5/#6: blocking validation at the source — a contradictory direction/strategy
+    # or a typed premium that diverges from the chain mid must stop submission.
+    premium_check = _tw_premium_check(req)
+    validation_errors: list[str] = []
+    direction_conflict = _tw_direction_conflict(req)
+    if direction_conflict:
+        validation_errors.append(direction_conflict)
+    if premium_check["status"] == "blocked":
+        validation_errors.append(
+            f"Premium ${premium_check['typed']:.2f} is {premium_check['deviationPct']:+g}% vs chain mid "
+            f"${premium_check['chainMid']:.2f}. Use the chain mid or confirm the override before trading."
+        )
+    validation = {"blocked": bool(validation_errors), "errors": validation_errors, "warnings": []}
     response = {
         "summary": {
             "ticker": req.ticker.upper().strip(),
@@ -6318,6 +6410,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
             "ivRank": round(safe_float(req.ivRank), 1),
             "probability": score["probability"],
             "probabilityItm": greeks["probabilityItm"],
+            "premiumCheck": premium_check,
             "riskLevel": "Medium" if score["total"] >= 82 else "High" if score["total"] >= 65 else "Extreme",
             "timeStopDays": max(1, min(safe_int(req.expectedHoldDays), front_dte - 2)),
             "successRequirement": "inside the short strike range" if req.strategy == "Iron Condor" else f"{round(((safe_float(be or req.stockPrice) / max(1, safe_float(req.stockPrice))) - 1) * 100, 1):+g}% toward breakeven",
@@ -6349,6 +6442,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
         },
         "comparisons": comparisons,
         "bestStrategy": comparisons[0] if comparisons else None,
+        "validation": validation,
         "pros": [p for p in pros if p],
         "cons": [c for c in cons if c],
         "coach": [

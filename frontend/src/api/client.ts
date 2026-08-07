@@ -1064,6 +1064,12 @@ export interface TradeWorksheetEvaluation {
     ivRank: number
     probability: number
     probabilityItm: number
+    premiumCheck?: {
+      typed: number | null
+      chainMid: number | null
+      deviationPct: number | null
+      status: 'none' | 'default' | 'ok' | 'blocked' | string
+    }
     riskLevel: string
     timeStopDays: number
     successRequirement: string
@@ -1113,6 +1119,7 @@ export interface TradeWorksheetEvaluation {
   }
   comparisons: Array<{ strategy: string; capital: number; maxLoss: number; maxProfit: number | null; pop: number; theta: string; score: number }>
   bestStrategy: { strategy: string; capital: number; maxLoss: number; maxProfit: number | null; pop: number; theta: string; score: number } | null
+  validation?: { blocked: boolean; errors: string[]; warnings: string[] }
   pros: string[]
   cons: string[]
   coach: string[]

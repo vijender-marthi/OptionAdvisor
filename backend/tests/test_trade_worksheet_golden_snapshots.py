@@ -78,11 +78,15 @@ class TradeWorksheetGoldenSnapshotTests(unittest.TestCase):
         self.assertEqual(summary["breakeven"], 155.0)
         self.assertEqual(summary["thetaPerDay"], -6.66)
         self.assertEqual(summary["delta"], 0.3906)
-        self.assertEqual(summary["probability"], 35)
-        self.assertEqual(output["score"]["total"], 75)
+        # POP is the breakeven probability (24), distinct from prob-ITM (35.2) (#7).
+        self.assertEqual(summary["probability"], 24)
+        self.assertEqual(summary["probabilityItm"], 35.2)
+        self.assertEqual(summary["premiumCheck"]["status"], "ok")
+        self.assertFalse(output["validation"]["blocked"])
+        self.assertEqual(output["score"]["total"], 74)
         self.assertEqual(output["score"]["label"], "ACCEPTABLE")
         self.assertEqual(output["bestStrategy"]["strategy"], "Bull Call Spread")
-        self.assertEqual(result["snapshot"]["output_hash"], "65e46eba5c1b353b1d1b6cc31682cb858dbc1a1a661470b5685692746453e9a5")
+        self.assertEqual(result["snapshot"]["output_hash"], "b3698a927173e80e71a325b065265f97c1dec9475d1ff2e093d86f6dfd6ece0f")
 
     def test_bear_put_spread_golden_snapshot(self) -> None:
         result = self._run_golden(
@@ -142,11 +146,85 @@ class TradeWorksheetGoldenSnapshotTests(unittest.TestCase):
         self.assertEqual(summary["breakeven"], 416.0)
         self.assertEqual(summary["thetaPerDay"], -46.78)
         self.assertEqual(summary["delta"], -0.437)
-        self.assertEqual(summary["probability"], 48)
-        self.assertEqual(output["score"]["total"], 79)
+        # POP is the breakeven probability (45), distinct from prob-ITM (48.5) (#7).
+        self.assertEqual(summary["probability"], 45)
+        self.assertEqual(summary["probabilityItm"], 48.5)
+        self.assertEqual(output["score"]["total"], 78)
         self.assertEqual(output["score"]["label"], "BUY")
         self.assertEqual(output["bestStrategy"]["strategy"], "Bear Call Spread")
-        self.assertEqual(result["snapshot"]["output_hash"], "6916dc2d01efe4f452c0fd34608318bebe50487a94f29d40a6d74ae6f86b6fec")
+        self.assertEqual(result["snapshot"]["output_hash"], "056b8a7f973a0024e476b8bac27697f13368852985e5716a238146338cc8d205")
+
+    def test_direction_strategy_conflict_blocks_submission(self) -> None:
+        # #5: Direction=Bullish + Long Put (bearish delta) -> blocked.
+        result = self._run_golden(
+            {
+                "ticker": "MSFT",
+                "direction": "Bullish",
+                "strategy": "Long Put",
+                "strike": 420,
+                "expiration": "2026-08-21",
+                "premium": 6,
+                "contracts": 1,
+                "stockPrice": 425,
+                "targetPrice": 440,
+                "historicalVolatility": 35,
+                "ivRank": 40,
+                "selectedRow": {"strike": 420, "bid": 5.9, "ask": 6.1, "mid": 6, "spread_pct": 4, "open_interest": 3000, "iv": 35},
+            }
+        )
+        validation = result["result"]["validation"]
+        self.assertTrue(validation["blocked"])
+        self.assertTrue(any("Long Put" in e and "bearish" in e for e in validation["errors"]))
+
+    def test_manual_premium_far_from_chain_mid_blocks(self) -> None:
+        # #6: typed premium 11.80 vs chain mid 6.83 (+73%) -> blocked with both values.
+        result = self._run_golden(
+            {
+                "ticker": "MSFT",
+                "direction": "Bearish",
+                "strategy": "Long Put",
+                "strike": 420,
+                "expiration": "2026-08-21",
+                "premium": 11.80,
+                "contracts": 1,
+                "stockPrice": 425,
+                "targetPrice": 405,
+                "historicalVolatility": 35,
+                "ivRank": 40,
+                "selectedRow": {"strike": 420, "bid": 6.7, "ask": 6.96, "mid": 6.83, "spread_pct": 4, "open_interest": 3000, "iv": 35},
+            }
+        )
+        output = result["result"]
+        check = output["summary"]["premiumCheck"]
+        self.assertEqual(check["status"], "blocked")
+        self.assertEqual(check["typed"], 11.8)
+        self.assertEqual(check["chainMid"], 6.83)
+        self.assertTrue(output["validation"]["blocked"])
+        self.assertTrue(any("chain mid" in e for e in output["validation"]["errors"]))
+
+    def test_premium_defaults_to_chain_mid_when_blank(self) -> None:
+        # #6: blank premium -> defaults to the chain mid, not blocked.
+        result = self._run_golden(
+            {
+                "ticker": "AAPL",
+                "direction": "Bullish",
+                "strategy": "Long Call",
+                "strike": 150,
+                "expiration": "2026-08-21",
+                "premium": 0,
+                "contracts": 1,
+                "stockPrice": 145,
+                "targetPrice": 155,
+                "historicalVolatility": 30,
+                "ivRank": 35,
+                "selectedRow": {"strike": 150, "bid": 4.9, "ask": 5.1, "mid": 5, "spread_pct": 4, "open_interest": 5000, "iv": 30},
+            }
+        )
+        check = result["result"]["summary"]["premiumCheck"]
+        self.assertEqual(check["status"], "default")
+        self.assertEqual(check["typed"], 5.0)
+        self.assertEqual(check["chainMid"], 5.0)
+        self.assertFalse(result["result"]["validation"]["blocked"])
 
 
 if __name__ == "__main__":

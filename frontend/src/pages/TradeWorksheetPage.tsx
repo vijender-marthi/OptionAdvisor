@@ -438,6 +438,8 @@ export default function TradeWorksheetPage() {
   const timeBuckets = evaluation?.scenario.timeBuckets ?? []
   const comparisons = evaluation?.comparisons ?? []
   const bestStrategy = evaluation?.bestStrategy ?? comparisons[0] ?? null
+  // #5/#6: source-of-truth blocking validation (direction/strategy, premium vs chain mid).
+  const validation = evaluation?.validation ?? { blocked: false, errors: [], warnings: [] }
   const estimatedValue = evaluation?.scenario.estimatedValue ?? 0
   const estimatedProfit = evaluation?.scenario.estimatedProfit ?? 0
   const estimatedRoi = evaluation?.scenario.estimatedRoi ?? 0
@@ -634,6 +636,14 @@ export default function TradeWorksheetPage() {
       {error && <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-300">{error}</div>}
       {journalError && <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-300">{journalError}</div>}
       {evaluationError && <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">{evaluationError}</div>}
+      {validation.blocked && (
+        <div className="mb-4 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
+          <div className="mb-1 font-bold uppercase tracking-wide">Blocked — resolve before trading</div>
+          <ul className="list-disc space-y-1 pl-5">
+            {validation.errors.map((err, i) => <li key={i}>{err}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Verdict-first: pre-trade guardrails catch contradictions before the score is trusted */}
       <div className="mb-5">
@@ -1173,7 +1183,9 @@ export default function TradeWorksheetPage() {
               <Field label="Emotion"><select value={journal.emotion} onChange={e => setJournal(prev => ({ ...prev, emotion: e.target.value as Emotion }))} className={smallInputCls}>{(['Calm', 'FOMO', 'Revenge', 'Speculative'] as Emotion[]).map(e => <option key={e}>{e}</option>)}</select></Field>
             </div>
             {(() => {
-              const blockReason = journal.invalidates.trim().length === 0
+              const blockReason = validation.blocked
+                ? 'Resolve the blocking validation above before saving.'
+                : journal.invalidates.trim().length === 0
                 ? 'Fill in “What invalidates the trade?” before saving.'
                 : Object.values(checklist).filter(Boolean).length < checklistItems.length
                   ? 'Complete the pre-buy checklist before saving.'
