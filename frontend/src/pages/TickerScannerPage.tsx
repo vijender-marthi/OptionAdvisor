@@ -1153,12 +1153,24 @@ export default function TickerScannerPage() {
                 </tr>
               </thead>
               <tbody>
-                {opps.map(o => (
-                  <tr key={o.id} onClick={() => navigate(getEngineRoute(o.engine, o.ticker))}
+                {opps.map(o => {
+                  const route = getEngineRoute(o.engine, o.ticker)
+                  return (
+                  <tr key={o.id} onClick={() => navigate(route)}
                     className="cursor-pointer border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40">
-                    <td className="px-3 py-2 font-mono font-bold text-gray-900 dark:text-white">{o.ticker}</td>
+                    <td className="px-3 py-2 font-mono font-bold">
+                      <a href={route} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                        title={`Open ${o.ticker} on the ${ccEngineLabel[o.engine]} page in a new tab`}
+                        className="text-violet-600 hover:underline dark:text-violet-300">{o.ticker}</a>
+                    </td>
                     <td className="px-3 py-2"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${ccStructPill(o.struct)}`}>{o.struct === 'bull' ? 'Bull' : o.struct === 'bear' ? 'Bear' : 'Flat'}</span></td>
-                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{ccEngineLabel[o.engine]}</td>
+                    <td className="px-3 py-2">
+                      <a href={route} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                        title={`Open the ${ccEngineLabel[o.engine]} page for ${o.ticker} in a new tab`}
+                        className="inline-flex items-center gap-1 text-violet-600 hover:underline dark:text-violet-300">
+                        {ccEngineLabel[o.engine]} <ArrowUpRight size={12} className="opacity-70" />
+                      </a>
+                    </td>
                     <td className="px-3 py-2"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${ccVerdictCls(o.verdict)}`}>{o.verdict.replace(/_/g, ' ')}</span></td>
                     <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><span className="block max-w-[260px] truncate">{o.strategy ?? '—'}</span></td>
                     <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{o.entry ?? '—'}</td>
@@ -1167,7 +1179,8 @@ export default function TickerScannerPage() {
                     <td className="px-3 py-2 text-right font-mono text-gray-600 dark:text-gray-300">{o.rr ?? '—'}</td>
                     <td className="px-3 py-2 text-right font-mono text-gray-500">{o.confidence != null ? `${o.confidence}%` : '—'}</td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
