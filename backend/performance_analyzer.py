@@ -71,6 +71,25 @@ def _week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())  # Monday
 
 
+def _week_entry(p: dict) -> dict:
+    """Compact per-trade record so the UI can expand a weekly bar into its trades."""
+    xd = _exit_date(p)
+    pct = p.get("realized_pnl_percent")
+    if pct is None:
+        pct = p.get("pnlPct")
+    return {
+        "id": str(p.get("id") or ""),
+        "ticker": str(p.get("ticker") or "").upper(),
+        "strategy": p.get("strategy") or "",
+        "bias": p.get("bias") or "",
+        "contracts": p.get("contracts"),
+        "source": p.get("source") or "",
+        "exit_date": xd.isoformat() if xd else None,
+        "realized_pnl": _resolved_realized_pnl(p),
+        "realized_pnl_percent": pct,
+    }
+
+
 def _closed(positions: list[dict]) -> list[dict]:
     return [
         p for p in positions
@@ -180,9 +199,11 @@ def analyze_performance(positions: list[dict], *, now: Optional[date] = None) ->
         by_week.setdefault(_week_start(xd), []).append(p)
     weekly = []
     for w in sorted(by_week):
-        a = _agg(by_week[w])
+        wk_rows = sorted(by_week[w], key=lambda p: (_exit_date(p) or date.min))
+        a = _agg(wk_rows)
         weekly.append({"week_start": w.isoformat(), "pnl": a["realized"],
-                       "n": a["n"], "win_rate": a["win_rate"]})
+                       "n": a["n"], "win_rate": a["win_rate"],
+                       "entries": [_week_entry(p) for p in wk_rows]})
 
     equity, max_dd = _equity_and_drawdown(daily)
 

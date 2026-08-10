@@ -7,6 +7,7 @@ import {
   Area, AreaChart, Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { fetchPositionsPerformance } from '../api/commandCenter'
+import { getEngineRoute } from '../routing/routes'
 
 // ── shapes returned by /positions-center/performance ────────────────────────
 interface Summary {
@@ -15,11 +16,16 @@ interface Summary {
   best: number; worst: number; max_drawdown: number; day_streak: number; trading_days: number
 }
 interface Bucket { key: string; n: number; realized: number; win_rate: number }
+interface WeekEntry {
+  id: string; ticker: string; strategy: string; bias: string
+  contracts: number | null; source: string; exit_date: string | null
+  realized_pnl: number | null; realized_pnl_percent: number | null
+}
 interface ThisWeek extends Summary { week_start: string; prior_avg_pnl: number; prior_avg_win_rate: number }
 interface Performance {
   summary: Summary
   daily: { date: string; pnl: number; n: number }[]
-  weekly: { week_start: string; pnl: number; n: number; win_rate: number }[]
+  weekly: { week_start: string; pnl: number; n: number; win_rate: number; entries?: WeekEntry[] }[]
   equity: { date: string; cum: number }[]
   by_structure: Bucket[]; by_hold: Bucket[]; by_source: Bucket[]; by_ticker: Bucket[]
   this_week: ThisWeek
@@ -129,6 +135,7 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
   const [coach, setCoach] = useState<Coaching | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -215,21 +222,83 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
         </ResponsiveContainer>
       </div>
 
-      {/* Weekly P&L bars */}
+      {/* Weekly P&L bars — click a bar to see that week's trades */}
       <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Weekly realized P&amp;L</div>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Weekly realized P&amp;L</div>
+          <div className="text-[10px] text-muted">Click a bar to see its trades</div>
+        </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={perf.weekly} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
             <XAxis dataKey="week_start" tick={{ fontSize: 10, fill: '#8a93a0' }} tickFormatter={(d: string) => d.slice(5)} />
             <YAxis tick={{ fontSize: 10, fill: '#8a93a0' }} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}$${Math.abs(Math.round(v / 100) / 10)}k`} width={48} />
             <ReferenceLine y={0} stroke="#8a93a0" strokeOpacity={0.4} />
-            <Tooltip formatter={(v: number) => [money(v), 'P&L']}
+            <Tooltip formatter={(v: number) => [money(v), 'P&L']} cursor={{ fill: 'rgba(124,58,237,0.08)' }}
               contentStyle={{ background: '#131822', border: '1px solid #262e3c', borderRadius: 8, fontSize: 12 }} />
-            <Bar dataKey="pnl" radius={[3, 3, 0, 0]}>
-              {perf.weekly.map((w, i) => <Cell key={i} fill={w.pnl >= 0 ? PROFIT : LOSS} />)}
+            <Bar dataKey="pnl" radius={[3, 3, 0, 0]} cursor="pointer"
+              onClick={(d: { week_start?: string; payload?: { week_start?: string } }) => {
+                const ws = d?.week_start ?? d?.payload?.week_start ?? null
+                setSelectedWeek(prev => (ws && prev === ws ? null : ws))
+              }}>
+              {perf.weekly.map((w, i) => (
+                <Cell key={i} fill={w.pnl >= 0 ? PROFIT : LOSS}
+                  fillOpacity={selectedWeek && selectedWeek !== w.week_start ? 0.35 : 1}
+                  stroke={selectedWeek === w.week_start ? '#7c3aed' : undefined} strokeWidth={selectedWeek === w.week_start ? 2 : 0} />
+              ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        {selectedWeek && (() => {
+          const wk = perf.weekly.find(w => w.week_start === selectedWeek)
+          const entries = wk?.entries ?? []
+          return (
+            <div className="mt-3 border-t border-slate-100 pt-3 dark:border-white/[0.06]">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-semibold text-secondary">
+                  Week of {selectedWeek} · <span className="text-muted">{entries.length} trade{entries.length === 1 ? '' : 's'}</span> ·{' '}
+                  <span className={pnlClass(wk?.pnl ?? 0)}>{money(wk?.pnl)}</span>
+                </div>
+                <button type="button" onClick={() => setSelectedWeek(null)} className="text-[11px] text-muted hover:text-secondary">Clear</button>
+              </div>
+              {entries.length === 0 ? (
+                <div className="py-3 text-center text-xs text-muted">No trade detail available for this week.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-wide text-muted">
+                        <th className="px-2 py-1 text-left">Ticker</th>
+                        <th className="px-2 py-1 text-left">Strategy</th>
+                        <th className="px-2 py-1 text-right">Qty</th>
+                        <th className="px-2 py-1 text-left">Exit</th>
+                        <th className="px-2 py-1 text-right">P&amp;L</th>
+                        <th className="px-2 py-1 text-right">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entries.map(e => (
+                        <tr key={e.id || `${e.ticker}-${e.exit_date}`} className="border-t border-slate-100 dark:border-white/[0.05]">
+                          <td className="px-2 py-1.5">
+                            <a href={getEngineRoute(e.source || 'regular', e.ticker)} target="_blank" rel="noopener noreferrer"
+                              title={`Open ${e.ticker} (${e.source || 'regular'}) in a new tab`}
+                              className="font-mono font-bold text-violet-600 hover:underline dark:text-violet-300 inline-flex items-center gap-1">
+                              {e.ticker} <ArrowUpRight size={11} className="opacity-70" />
+                            </a>
+                          </td>
+                          <td className="px-2 py-1.5 text-secondary"><span className="block max-w-[220px] truncate">{e.strategy || '—'}</span></td>
+                          <td className="px-2 py-1.5 text-right font-mono">{e.contracts ?? '—'}</td>
+                          <td className="px-2 py-1.5 font-mono text-muted">{e.exit_date ?? '—'}</td>
+                          <td className={`px-2 py-1.5 text-right font-mono font-semibold ${pnlClass(e.realized_pnl ?? 0)}`}>{e.realized_pnl != null ? money(e.realized_pnl) : '—'}</td>
+                          <td className={`px-2 py-1.5 text-right font-mono ${pnlClass(e.realized_pnl_percent ?? 0)}`}>{e.realized_pnl_percent != null ? `${e.realized_pnl_percent > 0 ? '+' : ''}${e.realized_pnl_percent.toFixed(1)}%` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Breakdowns unique to the retrospective view — structure/strategy lives on the Dashboard tab */}
