@@ -47,6 +47,25 @@ const pnlClass = (v: number) => (v > 0 ? 'text-emerald-500' : v < 0 ? 'text-rose
 const PROFIT = '#10b981'
 const LOSS = '#f43f5e'
 
+/** Theme-aware chart tooltip — readable in both light and dark mode (Recharts
+ *  inline contentStyle can't use Tailwind dark: variants, so use a custom node). */
+function ChartTooltip({ active, payload, label, valueLabel }: {
+  active?: boolean; payload?: { value?: number }[]; label?: string | number; valueLabel: string
+}) {
+  if (!active || !payload?.length) return null
+  const v = Number(payload[0]?.value ?? 0)
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-white/10 dark:bg-slate-800">
+      {label != null && label !== '' && (
+        <div className="mb-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">{label}</div>
+      )}
+      <div className={`font-mono font-semibold ${v >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+        {money(v)} <span className="font-normal text-slate-400 dark:text-slate-500">{valueLabel}</span>
+      </div>
+    </div>
+  )
+}
+
 function Kpi({ icon, label, value, cls, hint }: {
   icon: React.ReactNode; label: string; value: string; cls?: string; hint?: string
 }) {
@@ -215,8 +234,7 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8a93a0' }} tickFormatter={(d: string) => d.slice(5)} minTickGap={40} />
             <YAxis tick={{ fontSize: 10, fill: '#8a93a0' }} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}$${Math.abs(Math.round(v / 100) / 10)}k`} width={48} />
             <ReferenceLine y={0} stroke="#8a93a0" strokeOpacity={0.4} />
-            <Tooltip formatter={(v: number) => [money(v), 'Cumulative']} labelStyle={{ color: '#8a93a0' }}
-              contentStyle={{ background: '#131822', border: '1px solid #262e3c', borderRadius: 8, fontSize: 12 }} />
+            <Tooltip content={<ChartTooltip valueLabel="Cumulative" />} />
             <Area type="monotone" dataKey="cum" stroke={PROFIT} strokeWidth={2} fill="url(#eq)" />
           </AreaChart>
         </ResponsiveContainer>
@@ -233,17 +251,13 @@ export default function PerformanceCoachingTab({ refreshKey }: { refreshKey?: nu
             <XAxis dataKey="week_start" tick={{ fontSize: 10, fill: '#8a93a0' }} tickFormatter={(d: string) => d.slice(5)} />
             <YAxis tick={{ fontSize: 10, fill: '#8a93a0' }} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}$${Math.abs(Math.round(v / 100) / 10)}k`} width={48} />
             <ReferenceLine y={0} stroke="#8a93a0" strokeOpacity={0.4} />
-            <Tooltip formatter={(v: number) => [money(v), 'P&L']} cursor={{ fill: 'rgba(124,58,237,0.08)' }}
-              contentStyle={{ background: '#131822', border: '1px solid #262e3c', borderRadius: 8, fontSize: 12 }} />
-            <Bar dataKey="pnl" radius={[3, 3, 0, 0]} cursor="pointer"
-              onClick={(d: { week_start?: string; payload?: { week_start?: string } }) => {
-                const ws = d?.week_start ?? d?.payload?.week_start ?? null
-                setSelectedWeek(prev => (ws && prev === ws ? null : ws))
-              }}>
+            <Tooltip content={<ChartTooltip valueLabel="P&L" />} cursor={{ fill: 'rgba(124,58,237,0.10)' }} />
+            <Bar dataKey="pnl" radius={[3, 3, 0, 0]} cursor="pointer">
               {perf.weekly.map((w, i) => (
                 <Cell key={i} fill={w.pnl >= 0 ? PROFIT : LOSS}
                   fillOpacity={selectedWeek && selectedWeek !== w.week_start ? 0.35 : 1}
-                  stroke={selectedWeek === w.week_start ? '#7c3aed' : undefined} strokeWidth={selectedWeek === w.week_start ? 2 : 0} />
+                  stroke={selectedWeek === w.week_start ? '#7c3aed' : undefined} strokeWidth={selectedWeek === w.week_start ? 2 : 0}
+                  onClick={() => setSelectedWeek(prev => (prev === w.week_start ? null : w.week_start))} />
               ))}
             </Bar>
           </BarChart>
