@@ -76,8 +76,8 @@ export default function DayTradeFvgLayer({
         const yMid = clampY(yForPrice(f.mid))
         return (
           <g key={`fvg-${i}`}>
-            <rect x={xL} y={Math.min(yT, yB)} width={xR - xL} height={Math.max(1, Math.abs(yB - yT))} fill={color} opacity={f.mitigated ? 0.05 : 0.15} />
-            <line x1={xL} x2={xR} y1={yMid} y2={yMid} stroke={color} strokeWidth={1} strokeDasharray="3 3" opacity={f.mitigated ? 0.25 : 0.6} />
+            <rect x={xL} y={Math.min(yT, yB)} width={xR - xL} height={Math.max(1, Math.abs(yB - yT))} fill={color} opacity={f.mitigated ? 0.1 : 0.28} />
+            <line x1={xL} x2={xR} y1={yMid} y2={yMid} stroke={color} strokeWidth={1} strokeDasharray="3 3" opacity={f.mitigated ? 0.35 : 0.75} />
           </g>
         )
       })}
@@ -91,7 +91,7 @@ export default function DayTradeFvgLayer({
         const yB = clampY(yForPrice(ob.bottom))
         return (
           <g>
-            <rect x={xL} y={Math.min(yT, yB)} width={width - xL} height={Math.max(2, Math.abs(yB - yT))} fill="#8b5cf6" opacity={0.14} stroke="#8b5cf6" strokeOpacity={0.5} strokeDasharray="4 3" />
+            <rect x={xL} y={Math.min(yT, yB)} width={width - xL} height={Math.max(2, Math.abs(yB - yT))} fill="#8b5cf6" opacity={0.28} stroke="#8b5cf6" strokeOpacity={0.75} strokeDasharray="4 3" />
             <text x={width - 6} y={Math.min(yT, yB) - 3} textAnchor="end" className="fill-violet-500 text-[9px] font-black">ORDER BLOCK · exit</text>
           </g>
         )
