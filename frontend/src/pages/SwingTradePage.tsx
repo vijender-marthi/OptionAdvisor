@@ -310,9 +310,12 @@ function compactLabel(value: string | null | undefined): string {
 function formatSwingAxisTime(value: string | null | undefined): string {
   const raw = String(value || '').trim()
   if (!raw) return ''
-  const parsed = new Date(raw)
+  const hasExplicitTime = /T\d{2}:\d{2}/.test(raw)
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+  // Parse bare YYYY-MM-DD at local noon. `new Date('2026-08-17')` is UTC midnight,
+  // which renders as the previous calendar day for viewers west of UTC (e.g. US ET/PT).
+  const parsed = new Date(isDateOnly ? `${raw}T12:00:00` : raw)
   if (!Number.isNaN(parsed.getTime())) {
-    const hasExplicitTime = /T\d{2}:\d{2}/.test(raw)
     return parsed.toLocaleString([], hasExplicitTime
       ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
       : { month: 'short', day: 'numeric' })
